@@ -21,7 +21,9 @@
     "@ward-comms/database": "workspace:*",
     "@ward-comms/domain": "workspace:*",
     "@ward-comms/validation": "workspace:*",
+    "bullmq": "^5.12.12",
     "cookie-parser": "^1.4.7",
+    "ioredis": "^5.4.1",
     "pino": "^9.4.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"

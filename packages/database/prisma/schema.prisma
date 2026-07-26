@@ -47,6 +47,7 @@ model Ward {
   audienceGroups            AudienceGroup[]
   communicationDestinations CommunicationDestination[]
   campaigns                 Campaign[]
+  deliveryBatches           DeliveryBatch[]
   auditEvents               AuditEvent[]
 
   @@map("ward")
@@ -141,6 +142,7 @@ model ApplicationUser {
   createdCampaignVersions CampaignVersion[]     @relation("CampaignVersionCreatedBy")
   campaignApprovals       CampaignApproval[]    @relation("CampaignApprovalApprover")
   campaignSchedules       CampaignSchedule[]    @relation("CampaignScheduleCreatedBy")
+  createdDeliveryBatches  DeliveryBatch[]
 
   @@unique([wardId, username])
   @@unique([wardId, email])
@@ -239,6 +241,7 @@ model Person {
   relationshipsTo      PersonRelationship[]  @relation("PersonRelationshipTo")
   contactMethods       ContactMethod[]
   audienceMemberships  AudienceGroupMember[]
+  deliveryRecipients   DeliveryRecipient[]
 
   @@index([wardId, lastName, firstName])
   @@index([wardId, archivedAt])
@@ -338,8 +341,9 @@ model ContactMethod {
   updatedAt       DateTime          @updatedAt @map("updated_at")
   archivedAt      DateTime?         @map("archived_at")
 
-  person  Person          @relation(fields: [personId], references: [id], onDelete: Cascade)
-  consent ContactConsent?
+  person             Person              @relation(fields: [personId], references: [id], onDelete: Cascade)
+  consent            ContactConsent?
+  deliveryRecipients DeliveryRecipient[]
 
   @@unique([personId, type, value])
   @@index([personId])
@@ -431,9 +435,10 @@ model CommunicationDestination {
   updatedAt                DateTime             @updatedAt @map("updated_at")
   archivedAt               DateTime?            @map("archived_at")
 
-  ward          Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
-  audienceLinks AudienceDestination[]
-  campaignUses  CampaignDestination[]
+  ward               Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  audienceLinks      AudienceDestination[]
+  campaignUses       CampaignDestination[]
+  deliveryRecipients DeliveryRecipient[]
 
   @@unique([wardId, name])
   @@index([wardId, channel])
@@ -475,12 +480,13 @@ model Campaign {
   updatedAt       DateTime       @updatedAt @map("updated_at")
   archivedAt      DateTime?      @map("archived_at")
 
-  ward      Ward               @relation(fields: [wardId], references: [id], onDelete: Restrict)
-  createdBy ApplicationUser?   @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  versions  CampaignVersion[]
-  assets    CampaignAsset[]
-  approvals CampaignApproval[]
-  schedules CampaignSchedule[]
+  ward            Ward               @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  createdBy       ApplicationUser?   @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  versions        CampaignVersion[]
+  assets          CampaignAsset[]
+  approvals       CampaignApproval[]
+  schedules       CampaignSchedule[]
+  deliveryBatches DeliveryBatch[]
 
   @@index([wardId, status])
   @@index([wardId, archivedAt])
@@ -510,6 +516,7 @@ model CampaignVersion {
   audiences       CampaignAudience[]
   destinations    CampaignDestination[]
   approvals       CampaignApproval[]
+  deliveryBatches DeliveryBatch[]
 
   @@unique([campaignId, versionNumber])
   @@map("campaign_version")
@@ -613,9 +620,11 @@ model CampaignApproval {
   @@map("campaign_approval")
 }
 
-/// A requested send time for an approved campaign. Phase 8's delivery
-/// engine reads unpicked-up, uncancelled schedules to trigger a send — no
-/// scheduler/trigger logic is implemented in Phase 7.
+/// A requested send time for an approved campaign. No scheduler/trigger
+/// logic reads this table automatically yet in Phase 7 or Phase 8 — an
+/// operator (or, in a later phase, a scheduled job) calls the same
+/// `POST /campaigns/:id/send-now` / delivery-engine start path once
+/// `scheduledFor` has passed. See docs/delivery.md ("known gaps").
 model CampaignSchedule {
   id              String    @id @default(uuid())
   campaignId      String    @map("campaign_id")
@@ -629,6 +638,88 @@ model CampaignSchedule {
 
   @@index([campaignId])
   @@map("campaign_schedule")
+}
+
+// ---------------------------------------------------------------------------
+// Delivery engine (Phase 8 — simulated provider adapters only)
+// ---------------------------------------------------------------------------
+
+/// One send execution of a single CampaignVersion. `idempotencyKey` is
+/// derived from (campaignId, campaignVersionId) so retrying send reuses
+/// the existing batch instead of expanding recipients again (AGENTS.md #6/#7).
+model DeliveryBatch {
+  id                String              @id @default(uuid())
+  wardId            String              @map("ward_id")
+  campaignId        String              @map("campaign_id")
+  campaignVersionId String              @map("campaign_version_id")
+  idempotencyKey    String              @map("idempotency_key")
+  status            DeliveryBatchStatus @default(Pending)
+  totalRecipients   Int                 @default(0) @map("total_recipients")
+  sentCount         Int                 @default(0) @map("sent_count")
+  deadLetteredCount Int                 @default(0) @map("dead_lettered_count")
+  skippedCount      Int                 @default(0) @map("skipped_count")
+  createdByUserId   String?             @map("created_by_user_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  completedAt       DateTime?           @map("completed_at")
+
+  ward            Ward                @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  campaign        Campaign            @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  campaignVersion CampaignVersion     @relation(fields: [campaignVersionId], references: [id], onDelete: Restrict)
+  createdByUser   ApplicationUser?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  recipients      DeliveryRecipient[]
+
+  @@unique([wardId, idempotencyKey])
+  @@index([campaignId])
+  @@map("delivery_batch")
+}
+
+/// One expanded (person, channel) or (Facebook Page destination, channel)
+/// recipient within a DeliveryBatch. Unique per batch + idempotencyKey so
+/// re-expansion never duplicates rows.
+model DeliveryRecipient {
+  id                    String                  @id @default(uuid())
+  deliveryBatchId       String                  @map("delivery_batch_id")
+  personId              String?                 @map("person_id")
+  channel               CommunicationChannel
+  destinationId         String?                 @map("destination_id")
+  contactMethodId       String?                 @map("contact_method_id")
+  sourceAudienceGroupId String?                 @map("source_audience_group_id")
+  idempotencyKey        String                  @map("idempotency_key")
+  status                DeliveryRecipientStatus @default(Pending)
+  resolvedText          String?                 @map("resolved_text")
+  resolvedImageAssetId  String?                 @map("resolved_image_asset_id")
+  skipReason            String?                 @map("skip_reason")
+  attemptCount          Int                     @default(0) @map("attempt_count")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+
+  deliveryBatch DeliveryBatch             @relation(fields: [deliveryBatchId], references: [id], onDelete: Cascade)
+  person        Person?                   @relation(fields: [personId], references: [id], onDelete: SetNull)
+  destination   CommunicationDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  contactMethod ContactMethod?            @relation(fields: [contactMethodId], references: [id], onDelete: SetNull)
+  attempts      DeliveryAttempt[]
+
+  @@unique([deliveryBatchId, idempotencyKey])
+  @@index([deliveryBatchId, status])
+  @@index([personId])
+  @@map("delivery_recipient")
+}
+
+/// Append-only provider-call attempt for one DeliveryRecipient.
+model DeliveryAttempt {
+  id                  String                @id @default(uuid())
+  deliveryRecipientId String                @map("delivery_recipient_id")
+  attemptNumber       Int                   @map("attempt_number")
+  status              DeliveryAttemptStatus
+  providerMessageId   String?               @map("provider_message_id")
+  errorCode           String?               @map("error_code")
+  errorMessage        String?               @map("error_message")
+  attemptedAt         DateTime              @default(now()) @map("attempted_at")
+
+  deliveryRecipient DeliveryRecipient @relation(fields: [deliveryRecipientId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryRecipientId, attemptNumber])
+  @@map("delivery_attempt")
 }
 
 // ---------------------------------------------------------------------------
@@ -735,4 +826,28 @@ enum CampaignStatus {
 enum CampaignApprovalDecision {
   Approved
   Rejected
+}
+
+enum DeliveryBatchStatus {
+  Pending
+  Running
+  Completed
+  PartialFailure
+  Failed
+}
+
+enum DeliveryRecipientStatus {
+  Pending
+  Queued
+  Sending
+  Sent
+  Retrying
+  DeadLettered
+  Skipped
+}
+
+enum DeliveryAttemptStatus {
+  Succeeded
+  Failed
+  PermanentFailure
 }

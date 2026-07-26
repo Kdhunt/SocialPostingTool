@@ -2,9 +2,9 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { AudienceGroupRepository } from '../audiences/repositories/audience-group.repository.js';
 import { AudienceMemberRepository } from '../audiences/repositories/audience-member.repository.js';
+import { DeliveryModule } from '../delivery/delivery.module.js';
 import { CampaignsController } from './campaigns.controller.js';
 import { CampaignsService } from './campaigns.service.js';
-import { CampaignProviderSimulatorService } from './provider-simulator/campaign-provider-simulator.service.js';
 import { CampaignApprovalRepository } from './repositories/campaign-approval.repository.js';
 import { CampaignAssetRepository } from './repositories/campaign-asset.repository.js';
 import { CampaignAudienceRepository } from './repositories/campaign-audience.repository.js';
@@ -15,7 +15,7 @@ import { CampaignScheduleRepository } from './repositories/campaign-schedule.rep
 import { CampaignVersionRepository } from './repositories/campaign-version.repository.js';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, DeliveryModule],
   controllers: [CampaignsController],
   providers: [
     CampaignsService,
@@ -27,7 +27,6 @@ import { CampaignVersionRepository } from './repositories/campaign-version.repos
     CampaignDestinationRepository,
     CampaignApprovalRepository,
     CampaignScheduleRepository,
-    CampaignProviderSimulatorService,
     AudienceGroupRepository,
     AudienceMemberRepository,
   ],

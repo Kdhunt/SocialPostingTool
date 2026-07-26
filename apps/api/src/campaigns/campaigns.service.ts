@@ -25,7 +25,6 @@ import type {
 import { AuditService } from '../audit/audit.service.js';
 import { AudienceGroupRepository } from '../audiences/repositories/audience-group.repository.js';
 import { AudienceMemberRepository } from '../audiences/repositories/audience-member.repository.js';
-import { CampaignProviderSimulatorService } from './provider-simulator/campaign-provider-simulator.service.js';
 import { CampaignApprovalRepository } from './repositories/campaign-approval.repository.js';
 import { CampaignAssetRepository } from './repositories/campaign-asset.repository.js';
 import { CampaignAudienceRepository } from './repositories/campaign-audience.repository.js';
@@ -34,6 +33,7 @@ import { CampaignDestinationRepository } from './repositories/campaign-destinati
 import { CampaignRepository, type CampaignSearchOptions, type CampaignWithCurrentVersionCount } from './repositories/campaign.repository.js';
 import { CampaignScheduleRepository } from './repositories/campaign-schedule.repository.js';
 import { CampaignVersionRepository, type CampaignVersionWithDetails } from './repositories/campaign-version.repository.js';
+import { DeliveryService } from '../delivery/delivery.service.js';
 
 export interface CampaignActionContext {
   actorUserId: string;
@@ -66,7 +66,7 @@ export class CampaignsService {
     @Inject(CampaignScheduleRepository) private readonly schedules: CampaignScheduleRepository,
     @Inject(AudienceGroupRepository) private readonly audienceGroups: AudienceGroupRepository,
     @Inject(AudienceMemberRepository) private readonly audienceMembers: AudienceMemberRepository,
-    @Inject(CampaignProviderSimulatorService) private readonly providerSimulator: CampaignProviderSimulatorService,
+    @Inject(DeliveryService) private readonly delivery: DeliveryService,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
@@ -514,54 +514,13 @@ export class CampaignsService {
   }
 
   /**
-   * Simulates sending the campaign (phases/07-campaigns.md: no real
-   * provider calls). Resolves content per selected audience/channel and
-   * calls `CampaignProviderSimulatorService` once per resolved
-   * destination. Phase 8 replaces this with a real queued, retried,
-   * idempotent, per-recipient delivery engine.
+   * Starts the Phase 8 delivery engine for this campaign's current version
+   * (queued, idempotent, per-recipient). Provider adapters are simulated
+   * in this phase — see apps/worker and docs/delivery.md.
    */
   async sendNow(wardId: string, campaignId: string, context: CampaignActionContext): Promise<CampaignDetailDto> {
-    const campaign = await this.assertCampaignInWard(wardId, campaignId);
-    this.assertTransition(campaign.status, 'Sending');
-    const version = await this.requireCurrentVersion(campaignId);
-
-    await this.transitionStatus(wardId, campaignId, campaign.status, 'Sending', context);
-
-    // Sends are resolved per destination/channel here, not per audience or
-    // per recipient — a destination (e.g. one email list) can be reached by
-    // more than one selected audience, so there is no single "the" audience
-    // override to apply at this level. Per-recipient content resolution
-    // (which does need the audience-specific override) happens in
-    // `preview`; the Phase 8 delivery engine is expected to resolve and
-    // send per audience/recipient for real.
-    const results = version.destinations
-      .filter((link) => link.destination.archivedAt === null)
-      .map((link) => {
-        const text = resolveEffectiveText({
-          baseMessage: version.baseMessage,
-          channelText: version.channelVersions.find((c) => c.channel === link.destination.channel)?.text ?? null,
-          audienceOverrideText: null,
-        });
-        return this.providerSimulator.send({
-          destinationId: link.destinationId,
-          channel: link.destination.channel as CommunicationChannel,
-          text,
-          imageAssetId: version.baseImageAssetId,
-        });
-      });
-
-    await this.audit.record({
-      wardId,
-      actorUserId: context.actorUserId,
-      action: 'campaign.sent_simulated',
-      entityType: 'Campaign',
-      entityId: campaignId,
-      metadata: { destinationCount: results.length },
-      ipAddress: context.ipAddress,
-      userAgent: context.userAgent,
-    });
-
-    await this.transitionStatus(wardId, campaignId, 'Sending', 'Sent', context);
+    await this.assertCampaignInWard(wardId, campaignId);
+    await this.delivery.startDelivery(wardId, campaignId, context);
     return this.get(wardId, campaignId);
   }
 

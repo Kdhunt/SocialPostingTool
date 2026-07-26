@@ -150,11 +150,17 @@ endpoints (all require an authenticated session plus `campaigns.create` /
 - `GET /campaigns/:id/preview` — deduplicated recipient count and per-audience/per-channel resolved text
 - `GET /campaigns/:id/validation` — the same readiness check `submit` enforces
 - `POST /campaigns/:id/submit`, `POST /campaigns/:id/approve`, `POST /campaigns/:id/reject`, `POST /campaigns/:id/revise`
-- `POST /campaigns/:id/schedule`, `POST /campaigns/:id/send-now` (simulated — no real provider is ever called in this phase), `POST /campaigns/:id/cancel`
+- `POST /campaigns/:id/schedule`, `POST /campaigns/:id/send-now` (starts the Phase 8 delivery engine), `POST /campaigns/:id/cancel`
+- `GET|POST /campaigns/:id/delivery-batches`, `GET /campaigns/:id/delivery-batches/:batchId`
 
-Sending is always simulated locally via `CampaignProviderSimulatorService`
-— there is no real Email/SMS/Facebook integration until Phase 9, and no
-real delivery queue/retry/idempotency until Phase 8.
+### Delivery overview (Phase 8)
+
+`POST /campaigns/:id/send-now` expands recipients (overlap + consent),
+creates an idempotent `DeliveryBatch`, and enqueues one BullMQ job per
+pending recipient. The worker (`pnpm --filter @ward-comms/worker dev`)
+processes jobs through **simulated** Email/SMS/Facebook adapters with
+retries and dead-letter handling. See `docs/delivery.md`. Redis must be
+running (`docker compose up -d`).
 
 ## Common scripts
 

@@ -65,6 +65,12 @@ import {
   type UpdateCampaignRequest,
   type UpdateCampaignVersionRequest,
 } from '@ward-comms/validation';
+import {
+  deliveryBatchDetailSchema,
+  deliveryBatchListResponseSchema,
+  type DeliveryBatchDetailDto,
+  type DeliveryBatchListResponse,
+} from '@ward-comms/validation';
 import type { CommunicationChannel } from '@ward-comms/validation';
 
 export interface WardCommsApiClientOptions {
@@ -503,6 +509,21 @@ export class WardCommsApiClient {
   async sendCampaignNow(id: string): Promise<CampaignDetailDto> {
     const response = await this.request(`/campaigns/${id}/send-now`, { method: 'POST' });
     return campaignDetailSchema.parse(await response.json());
+  }
+
+  async listDeliveryBatches(campaignId: string): Promise<DeliveryBatchListResponse> {
+    const response = await this.request(`/campaigns/${campaignId}/delivery-batches`);
+    return deliveryBatchListResponseSchema.parse(await response.json());
+  }
+
+  async getDeliveryBatch(campaignId: string, batchId: string): Promise<DeliveryBatchDetailDto> {
+    const response = await this.request(`/campaigns/${campaignId}/delivery-batches/${batchId}`);
+    return deliveryBatchDetailSchema.parse(await response.json());
+  }
+
+  async startDeliveryBatch(campaignId: string): Promise<DeliveryBatchDetailDto> {
+    const response = await this.request(`/campaigns/${campaignId}/delivery-batches`, { method: 'POST' });
+    return deliveryBatchDetailSchema.parse(await response.json());
   }
 
   async cancelCampaign(id: string): Promise<CampaignDetailDto> {

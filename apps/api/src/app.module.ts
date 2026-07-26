@@ -7,8 +7,19 @@ import { AuthModule } from './auth/auth.module.js';
 import { DirectoryModule } from './directory/directory.module.js';
 import { AudiencesModule } from './audiences/audiences.module.js';
 import { CampaignsModule } from './campaigns/campaigns.module.js';
+import { DeliveryModule } from './delivery/delivery.module.js';
 
 @Module({
-  imports: [AppConfigModule, PrismaModule, AuditModule, HealthModule, AuthModule, DirectoryModule, AudiencesModule, CampaignsModule],
+  imports: [
+    AppConfigModule,
+    PrismaModule,
+    AuditModule,
+    HealthModule,
+    AuthModule,
+    DirectoryModule,
+    AudiencesModule,
+    CampaignsModule,
+    DeliveryModule,
+  ],
 })
 export class AppModule {}

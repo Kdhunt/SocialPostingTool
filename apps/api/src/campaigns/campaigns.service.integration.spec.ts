@@ -9,7 +9,10 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AudienceGroupRepository } from '../audiences/repositories/audience-group.repository.js';
 import { AudienceMemberRepository } from '../audiences/repositories/audience-member.repository.js';
-import { CampaignProviderSimulatorService } from './provider-simulator/campaign-provider-simulator.service.js';
+import { ContactMethodRepository } from '../directory/repositories/contact-method.repository.js';
+import { DeliveryService } from '../delivery/delivery.service.js';
+import { DeliveryBatchRepository } from '../delivery/repositories/delivery-batch.repository.js';
+import { DeliveryRecipientRepository } from '../delivery/repositories/delivery-recipient.repository.js';
 import { CampaignApprovalRepository } from './repositories/campaign-approval.repository.js';
 import { CampaignAssetRepository } from './repositories/campaign-asset.repository.js';
 import { CampaignAudienceRepository } from './repositories/campaign-audience.repository.js';
@@ -19,6 +22,13 @@ import { CampaignRepository } from './repositories/campaign.repository.js';
 import { CampaignScheduleRepository } from './repositories/campaign-schedule.repository.js';
 import { CampaignVersionRepository } from './repositories/campaign-version.repository.js';
 import { CampaignsService, type CampaignActionContext } from './campaigns.service.js';
+
+/** No-op queue so integration tests do not require Redis. */
+class StubDeliveryQueueService {
+  async enqueue(_deliveryRecipientId: string): Promise<void> {
+    return;
+  }
+}
 
 async function isMigratedDatabaseAvailable(prisma: PrismaService): Promise<boolean> {
   try {
@@ -36,6 +46,7 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
   const audit = new AuditService(prisma);
   const audienceGroups = new AudienceGroupRepository(prisma);
   const audienceMembers = new AudienceMemberRepository(prisma);
+  const contactMethods = new ContactMethodRepository(prisma);
   const campaigns = new CampaignRepository(prisma);
   const versions = new CampaignVersionRepository(prisma);
   const assets = new CampaignAssetRepository(prisma);
@@ -44,7 +55,19 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
   const campaignDestinations = new CampaignDestinationRepository(prisma);
   const approvals = new CampaignApprovalRepository(prisma);
   const schedules = new CampaignScheduleRepository(prisma);
-  const providerSimulator = new CampaignProviderSimulatorService();
+  const batches = new DeliveryBatchRepository(prisma);
+  const recipients = new DeliveryRecipientRepository(prisma);
+  const queue = new StubDeliveryQueueService() as never;
+  const delivery = new DeliveryService(
+    campaigns,
+    versions,
+    audienceMembers,
+    contactMethods,
+    batches,
+    recipients,
+    queue,
+    audit,
+  );
 
   const service = new CampaignsService(
     campaigns,
@@ -57,7 +80,7 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     schedules,
     audienceGroups,
     audienceMembers,
-    providerSimulator,
+    delivery,
     audit,
   );
 
@@ -118,6 +141,11 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
   afterEach(async () => {
     if (!wardId) return;
     await prisma.client.auditEvent.deleteMany({ where: { wardId } });
+    await prisma.client.deliveryAttempt.deleteMany({
+      where: { deliveryRecipient: { deliveryBatch: { wardId } } },
+    });
+    await prisma.client.deliveryRecipient.deleteMany({ where: { deliveryBatch: { wardId } } });
+    await prisma.client.deliveryBatch.deleteMany({ where: { wardId } });
     await prisma.client.campaignSchedule.deleteMany({ where: { campaign: { wardId } } });
     await prisma.client.campaignApproval.deleteMany({ where: { campaign: { wardId } } });
     await prisma.client.campaignDestination.deleteMany({ where: { campaignVersion: { campaign: { wardId } } } });
@@ -232,7 +260,7 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     await expect(service.schedule(wardId, created.id, new Date(Date.now() + 60_000), ctx())).rejects.toThrow();
   });
 
-  it('drafts, submits, approves, schedules, and simulates sending a fully valid campaign end to end', async () => {
+  it('drafts, submits, approves, and starts delivery for a fully valid campaign end to end', async () => {
     await setupWard();
     const personId = await createFictionalPerson('Recipient');
     const { audienceGroupId } = await createAudienceWithMembersAndDestination('Happy Path Audience', [personId]);
@@ -245,8 +273,13 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     const approved = await service.decideApproval(wardId, created.id, 'Approved', undefined, ctx());
     expect(approved.status).toBe('Approved');
 
+    // No granted consent on the person → expansion skips everyone and the
+    // batch completes immediately (no Redis worker required for this case).
     const sent = await service.sendNow(wardId, created.id, ctx());
     expect(sent.status).toBe('Sent');
+    const batches = await delivery.listForCampaign(wardId, created.id);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]?.skippedCount).toBeGreaterThan(0);
   });
 
   it('never lets an already-sent campaign be edited', async () => {

@@ -29,6 +29,16 @@ export class ContactMethodRepository {
     });
   }
 
+  /** Bulk fetch for delivery expansion — excludes archived methods. */
+  async listForPersons(personIds: string[]): Promise<(ContactMethod & { consent: ContactConsent | null })[]> {
+    if (personIds.length === 0) return [];
+    return this.prisma.client.contactMethod.findMany({
+      where: { personId: { in: personIds }, archivedAt: null },
+      include: { consent: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async findById(id: string): Promise<ContactMethod | null> {
     return this.prisma.client.contactMethod.findUnique({ where: { id } });
   }

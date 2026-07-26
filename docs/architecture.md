@@ -4,7 +4,7 @@
 
 Ward Communications Hub is a pnpm + Turborepo monorepo. It is a secure communications platform used by ward leaders to manage people, households, audience groups, campaigns, and multichannel communications (email, SMS, Facebook).
 
-This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), audience groups (Phase 6, see `docs/audiences.md`), and campaign drafting (Phase 7, see `docs/campaigns.md`). Delivery and provider integrations are introduced in later phases (see `phases/`).
+This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), audience groups (Phase 6, see `docs/audiences.md`), campaign drafting (Phase 7, see `docs/campaigns.md`), and the delivery engine (Phase 8, see `docs/delivery.md`). Provider integrations are introduced in Phase 9 (see `phases/09-provider-integrations.md`).
 
 ## Repository layout
 
@@ -67,7 +67,12 @@ Authorization is enforced with two composable guards: `SessionAuthGuard` establi
 
 ## `apps/api` module structure (Phase 7)
 
-- `campaigns/` — campaign drafting: `CampaignRepository`, `CampaignVersionRepository`, `CampaignAssetRepository`, `CampaignAudienceRepository`, `CampaignChannelVersionRepository`, `CampaignDestinationRepository`, `CampaignApprovalRepository`, and `CampaignScheduleRepository` handle data access only; `CampaignsService` applies the pure domain rules from `packages/domain/src/campaigns` (status-transition legality, submission validation, base/channel/audience content resolution, cross-audience overlap for preview) and writes an `AuditEvent` for every mutation; `campaigns/provider-simulator/CampaignProviderSimulatorService` is the only thing that stands in for a real Email/SMS/Facebook provider call in this phase; `CampaignsController` stays thin. See `docs/campaigns.md` for the versioning model, status transitions, and why the simulator boundary matters for Phase 8/9.
+- `campaigns/` — campaign drafting: `CampaignRepository`, `CampaignVersionRepository`, `CampaignAssetRepository`, `CampaignAudienceRepository`, `CampaignChannelVersionRepository`, `CampaignDestinationRepository`, `CampaignApprovalRepository`, and `CampaignScheduleRepository` handle data access only; `CampaignsService` applies the pure domain rules from `packages/domain/src/campaigns` (status-transition legality, submission validation, base/channel/audience content resolution, cross-audience overlap for preview) and writes an `AuditEvent` for every mutation; `CampaignsController` stays thin. `sendNow` delegates to the Phase 8 delivery engine. See `docs/campaigns.md`.
+
+## `apps/api` / `apps/worker` module structure (Phase 8)
+
+- `delivery/` (API) — `DeliveryBatchRepository`, `DeliveryRecipientRepository`, `DeliveryAttemptRepository`; `DeliveryService` expands recipients (overlap + consent), creates idempotent batches, and enqueues BullMQ jobs via `DeliveryQueueService`; `DeliveryController` stays thin. See `docs/delivery.md`.
+- `delivery/` (worker) — `processDeliveryRecipient` claims a recipient, calls simulated Email/SMS/Facebook adapters, records attempts, applies retry/dead-letter policy, and rolls up batch + campaign status. Retries never duplicate sends (claim guard + unique attempt numbers).
 
 ## Local development environment
 
