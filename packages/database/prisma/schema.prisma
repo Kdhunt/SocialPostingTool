@@ -382,13 +382,16 @@ model ContactConsent {
 /// ad hoc list). Group names are never hardcoded into business logic —
 /// see prisma/seed.ts for optional illustrative examples only.
 model AudienceGroup {
-  id          String    @id @default(uuid())
-  wardId      String    @map("ward_id")
-  name        String
-  description String?
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  archivedAt  DateTime? @map("archived_at")
+  id              String                 @id @default(uuid())
+  wardId          String                 @map("ward_id")
+  name            String
+  description     String?
+  membershipMode  AudienceMembershipMode @default(Manual) @map("membership_mode")
+  /// JSON rule definition (ageMin/ageMax, genders, householdRoles) — see packages/domain audience rule evaluation.
+  membershipRules Json?                  @map("membership_rules")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  archivedAt      DateTime?              @map("archived_at")
 
   ward         Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
   members      AudienceGroupMember[]
@@ -402,11 +405,12 @@ model AudienceGroup {
 
 /// Many-to-many membership of a Person in an AudienceGroup.
 model AudienceGroupMember {
-  id              String   @id @default(uuid())
-  audienceGroupId String   @map("audience_group_id")
-  personId        String   @map("person_id")
-  addedByUserId   String?  @map("added_by_user_id")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id              String               @id @default(uuid())
+  audienceGroupId String               @map("audience_group_id")
+  personId        String               @map("person_id")
+  source          AudienceMemberSource @default(Manual)
+  addedByUserId   String?              @map("added_by_user_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
 
   audienceGroup AudienceGroup    @relation(fields: [audienceGroupId], references: [id], onDelete: Cascade)
   person        Person           @relation(fields: [personId], references: [id], onDelete: Cascade)
@@ -523,14 +527,16 @@ model Campaign {
 /// always see exactly what was reviewed — see docs/campaigns.md
 /// ("audience version independence").
 model CampaignVersion {
-  id               String   @id @default(uuid())
-  campaignId       String   @map("campaign_id")
-  versionNumber    Int      @map("version_number")
-  baseMessage      String?  @map("base_message")
-  baseImageAssetId String?  @map("base_image_asset_id")
-  createdByUserId  String?  @map("created_by_user_id")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                            String                    @id @default(uuid())
+  campaignId                    String                    @map("campaign_id")
+  versionNumber                 Int                       @map("version_number")
+  baseMessage                   String?                   @map("base_message")
+  baseImageAssetId              String?                   @map("base_image_asset_id")
+  overlapResolutionStrategy     OverlapResolutionStrategy @default(FirstAudienceWins) @map("overlap_resolution_strategy")
+  preferSpecificAudienceGroupId String?                   @map("prefer_specific_audience_group_id")
+  createdByUserId               String?                   @map("created_by_user_id")
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
 
   campaign        Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   baseImageAsset  CampaignAsset?           @relation("CampaignVersionBaseImage", fields: [baseImageAssetId], references: [id], onDelete: SetNull)
@@ -568,12 +574,15 @@ model CampaignChannelVersion {
 /// storage"). `altText` is required so every campaign image ships with
 /// useful alt text (.cursor/rules/ui.mdc).
 model CampaignAsset {
-  id               String   @id @default(uuid())
-  campaignId       String   @map("campaign_id")
-  storageReference String   @map("storage_reference")
-  contentType      String   @map("content_type")
-  altText          String   @map("alt_text")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                 String                          @id @default(uuid())
+  campaignId         String                          @map("campaign_id")
+  storageReference   String                          @map("storage_reference")
+  contentType        String                          @map("content_type")
+  altText            String                          @map("alt_text")
+  confirmationStatus CampaignAssetConfirmationStatus @default(Confirmed) @map("confirmation_status")
+  isAiGenerated      Boolean                         @default(false) @map("is_ai_generated")
+  generationPrompt   String?                         @map("generation_prompt")
+  createdAt          DateTime                        @default(now()) @map("created_at")
 
   campaign               Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   usedAsBaseImageIn      CampaignVersion[]  @relation("CampaignVersionBaseImage")
@@ -873,4 +882,26 @@ enum DeliveryAttemptStatus {
   Succeeded
   Failed
   PermanentFailure
+}
+
+enum AudienceMembershipMode {
+  Manual
+  Rules
+}
+
+enum AudienceMemberSource {
+  Manual
+  Rules
+}
+
+enum CampaignAssetConfirmationStatus {
+  Pending
+  Confirmed
+  Rejected
+}
+
+enum OverlapResolutionStrategy {
+  FirstAudienceWins
+  PreferBase
+  PreferSpecificAudience
 }

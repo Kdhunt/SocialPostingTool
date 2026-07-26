@@ -15,6 +15,7 @@ export interface AppConfig {
   };
   worker: {
     healthPort: number;
+    schedulePollIntervalMs: number;
   };
   databaseUrl: string;
   redisUrl: string;
@@ -24,7 +25,9 @@ export interface AppConfig {
   };
   wardCodePepper: string;
   providerCredentialsEncryptionKey: string;
-  providerMode: 'simulated' | 'credentialed';
+  providerMode: 'simulated' | 'credentialed' | 'live';
+  openAiApiKey: string | undefined;
+  aiImageMode: 'simulated' | 'live';
   corsAllowedOrigins: string[];
 }
 
@@ -51,6 +54,7 @@ function toAppConfig(env: Env): AppConfig {
     },
     worker: {
       healthPort: env.WORKER_HEALTH_PORT,
+      schedulePollIntervalMs: env.SCHEDULE_POLL_INTERVAL_MS,
     },
     databaseUrl: env.DATABASE_URL,
     redisUrl: env.REDIS_URL,
@@ -61,6 +65,8 @@ function toAppConfig(env: Env): AppConfig {
     wardCodePepper: env.WARD_CODE_PEPPER,
     providerCredentialsEncryptionKey: env.PROVIDER_CREDENTIALS_ENCRYPTION_KEY,
     providerMode: env.PROVIDER_MODE,
+    openAiApiKey: env.OPENAI_API_KEY,
+    aiImageMode: env.AI_IMAGE_MODE,
     corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),

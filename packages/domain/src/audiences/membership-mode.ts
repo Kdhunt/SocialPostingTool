@@ -1,25 +1,54 @@
-// Audience membership mode.
+// Audience membership mode and rule definitions.
 //
-// Phase 6 only implements manual (explicit, user-assigned) membership.
-// This type exists so the application layer already has a stable place
-// to branch on membership mode once a rule-based engine (e.g. "everyone
-// under 18", "everyone in household X") is added in a later phase,
-// without having to introduce a new concept into every call site at that
-// point. Do NOT implement rule evaluation yet — phases/06-audiences.md
-// explicitly asks to prepare for it, not build it.
+// Manual membership is explicit user assignment. Rules mode stores a JSON
+// rule set on the audience group; applying rules replaces rule-sourced
+// members while manual adds are kept (union). See rule-evaluation.ts.
 
-export const AUDIENCE_MEMBERSHIP_MODES = ['Manual'] as const;
+import type { Gender, HouseholdRole } from '../enums.js';
+
+export const AUDIENCE_MEMBERSHIP_MODES = ['Manual', 'Rules'] as const;
 export type AudienceMembershipMode = (typeof AUDIENCE_MEMBERSHIP_MODES)[number];
 
-/**
- * Placeholder shape for a future rule-based membership definition (e.g.
- * "age between X and Y", "member of household Z"). Intentionally unused
- * by any current logic — it exists only so the eventual rules engine has
- * an agreed extension point to implement against, per
- * phases/06-audiences.md ("prepare the domain ... but do not implement a
- * rules engine yet").
- */
-export interface AudienceMembershipRule {
-  kind: string;
-  parameters: Record<string, unknown>;
+export const AUDIENCE_MEMBER_SOURCES = ['Manual', 'Rules'] as const;
+export type AudienceMemberSource = (typeof AUDIENCE_MEMBER_SOURCES)[number];
+
+/** Simple rule-based membership criteria evaluated against directory people. */
+export interface AudienceMembershipRules {
+  ageMin?: number;
+  ageMax?: number;
+  genders?: Gender[];
+  householdRoles?: HouseholdRole[];
+}
+
+/** Validates rule shape without evaluating people (used at API boundary). */
+export function isValidAudienceMembershipRules(value: unknown): value is AudienceMembershipRules {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+
+  const rules = value as Record<string, unknown>;
+
+  if (rules.ageMin !== undefined && (typeof rules.ageMin !== 'number' || rules.ageMin < 0)) {
+    return false;
+  }
+  if (rules.ageMax !== undefined && (typeof rules.ageMax !== 'number' || rules.ageMax < 0)) {
+    return false;
+  }
+  if (rules.ageMin !== undefined && rules.ageMax !== undefined && rules.ageMin > rules.ageMax) {
+    return false;
+  }
+
+  if (rules.genders !== undefined) {
+    if (!Array.isArray(rules.genders) || rules.genders.some((g) => typeof g !== 'string')) {
+      return false;
+    }
+  }
+
+  if (rules.householdRoles !== undefined) {
+    if (!Array.isArray(rules.householdRoles) || rules.householdRoles.some((r) => typeof r !== 'string')) {
+      return false;
+    }
+  }
+
+  return true;
 }

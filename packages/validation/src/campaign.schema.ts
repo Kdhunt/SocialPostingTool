@@ -28,9 +28,27 @@ export const campaignAssetSchema = z.object({
   storageReference: z.string(),
   contentType: z.string(),
   altText: z.string(),
+  confirmationStatus: z.enum(['Pending', 'Confirmed', 'Rejected']),
+  isAiGenerated: z.boolean(),
+  generationPrompt: z.string().nullable(),
   createdAt: z.string().datetime(),
 });
 export type CampaignAssetDto = z.infer<typeof campaignAssetSchema>;
+
+export const generateCampaignImageRequestSchema = z.object({
+  prompt: z.string().min(1).max(4000),
+  altText: z.string().min(1).max(1000),
+});
+export type GenerateCampaignImageRequest = z.infer<typeof generateCampaignImageRequestSchema>;
+
+export const overlapResolutionStrategySchema = z.enum(['FirstAudienceWins', 'PreferBase', 'PreferSpecificAudience']);
+export type OverlapResolutionStrategyDto = z.infer<typeof overlapResolutionStrategySchema>;
+
+export const setOverlapResolutionRequestSchema = z.object({
+  overlapResolutionStrategy: overlapResolutionStrategySchema,
+  preferSpecificAudienceGroupId: z.string().nullable().optional(),
+});
+export type SetOverlapResolutionRequest = z.infer<typeof setOverlapResolutionRequestSchema>;
 
 export const createCampaignAssetRequestSchema = z.object({
   storageReference: z.string().min(1),
@@ -87,6 +105,8 @@ export const campaignVersionSchema = z.object({
   versionNumber: z.number().int(),
   baseMessage: z.string().nullable(),
   baseImageAssetId: z.string().nullable(),
+  overlapResolutionStrategy: overlapResolutionStrategySchema.optional(),
+  preferSpecificAudienceGroupId: z.string().nullable().optional(),
   channelVersions: z.array(campaignChannelVersionSchema),
   audiences: z.array(campaignAudienceSchema),
   destinations: z.array(campaignDestinationSchema),
@@ -202,6 +222,19 @@ export const campaignPreviewResponseSchema = z.object({
   versionNumber: z.number().int(),
   totalUniqueRecipients: z.number().int(),
   overlapCount: z.number().int(),
+  overlapResolutionStrategy: overlapResolutionStrategySchema.optional(),
+  overlapConflicts: z
+    .array(
+      z.object({
+        personId: z.string(),
+        displayName: z.string(),
+        audienceGroupIds: z.array(z.string()),
+        winningAudienceGroupId: z.string().nullable(),
+        winningAudienceGroupName: z.string().nullable(),
+        usesBaseContent: z.boolean(),
+      }),
+    )
+    .optional(),
   audiences: z.array(campaignPreviewAudienceSchema),
 });
 export type CampaignPreviewResponse = z.infer<typeof campaignPreviewResponseSchema>;

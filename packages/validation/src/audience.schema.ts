@@ -39,6 +39,7 @@ export const audienceMemberSummarySchema = z.object({
   displayName: z.string(),
   isMinor: z.boolean(),
   isActive: z.boolean(),
+  source: z.enum(['Manual', 'Rules']).optional(),
 });
 export type AudienceMemberSummaryDto = z.infer<typeof audienceMemberSummarySchema>;
 
@@ -64,6 +65,16 @@ export const audienceGroupDetailSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   isActive: z.boolean(),
+  membershipMode: z.enum(['Manual', 'Rules']).optional(),
+  membershipRules: z
+    .object({
+      ageMin: z.number().int().optional(),
+      ageMax: z.number().int().optional(),
+      genders: z.array(z.enum(['Male', 'Female', 'NotSpecified'])).optional(),
+      householdRoles: z.array(z.enum(['Head', 'Member'])).optional(),
+    })
+    .nullable()
+    .optional(),
   members: z.array(audienceMemberSummarySchema),
   destinations: z.array(audienceDestinationSummarySchema),
   createdAt: z.string().datetime(),
