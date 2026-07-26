@@ -4,13 +4,19 @@ import { navigateTo, useRoute } from '#imports';
 import { ApiRequestError } from '@ward-comms/api-client';
 import type {
   AudienceGroupSummaryDto,
+  CampaignAssetDto,
   CampaignDetailDto,
   CampaignPreviewResponse,
   CampaignValidationResponse,
   CommunicationChannel,
+  DeliveryBatchDetailDto,
+  DeliveryBatchSummaryDto,
+  OverlapResolutionStrategyDto,
 } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
+
+definePageMeta({ layout: 'authenticated' });
 
 type PageState =
   | { kind: 'loading' }
@@ -43,6 +49,13 @@ const assetContentType = ref('image/jpeg');
 const assetAltText = ref('');
 const createdAssetIds = ref<string[]>([]);
 
+const aiPrompt = ref('');
+const aiAltText = ref('');
+const pendingAsset = ref<CampaignAssetDto | null>(null);
+
+const overlapStrategy = ref<OverlapResolutionStrategyDto>('FirstAudienceWins');
+const preferAudienceGroupId = ref('');
+
 const approvalComment = ref('');
 const scheduleAt = ref('');
 
@@ -52,6 +65,11 @@ const previewState = ref<{ kind: 'idle' } | { kind: 'loading' } | { kind: 'error
 const validationState = ref<
   { kind: 'idle' } | { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'loaded'; result: CampaignValidationResponse }
 >({ kind: 'idle' });
+
+const deliveryBatches = ref<DeliveryBatchSummaryDto[]>([]);
+const selectedBatch = ref<DeliveryBatchDetailDto | null>(null);
+const deliveryLoading = ref(false);
+const deliveryError = ref<string | null>(null);
 
 function permissions(): string[] {
   return authState.value.kind === 'authenticated' ? authState.value.user.permissions : [];
@@ -79,6 +97,8 @@ async function load(): Promise<void> {
     editName.value = campaign.name;
     editBaseMessage.value = campaign.currentVersion.baseMessage ?? '';
     editBaseImageAssetId.value = campaign.currentVersion.baseImageAssetId ?? '';
+    overlapStrategy.value = campaign.currentVersion.overlapResolutionStrategy ?? 'FirstAudienceWins';
+    preferAudienceGroupId.value = campaign.currentVersion.preferSpecificAudienceGroupId ?? '';
     for (const channel of CHANNELS) {
       channelDrafts.value[channel] = campaign.currentVersion.channelVersions.find((c) => c.channel === channel)?.text ?? '';
     }
@@ -105,7 +125,7 @@ onMounted(async () => {
     await navigateTo('/login');
     return;
   }
-  await Promise.all([load(), loadAudienceOptions()]);
+  await Promise.all([load(), loadAudienceOptions(), loadDeliveryBatches()]);
 });
 
 function withActionErrorHandling(action: () => Promise<CampaignDetailDto>): () => Promise<void> {
@@ -144,6 +164,49 @@ async function createAsset(): Promise<void> {
     actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to register the image.';
   }
 }
+
+async function generateAiImage(): Promise<void> {
+  actionError.value = null;
+  try {
+    pendingAsset.value = await client.generateCampaignImage(campaignId, {
+      prompt: aiPrompt.value,
+      altText: aiAltText.value,
+    });
+    aiPrompt.value = '';
+  } catch (error) {
+    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to generate image.';
+  }
+}
+
+async function confirmPendingAsset(): Promise<void> {
+  if (!pendingAsset.value) return;
+  actionError.value = null;
+  try {
+    pendingAsset.value = await client.confirmCampaignAsset(campaignId, pendingAsset.value.id);
+    createdAssetIds.value = [...createdAssetIds.value, pendingAsset.value.id];
+  } catch (error) {
+    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to confirm image.';
+  }
+}
+
+async function rejectPendingAsset(): Promise<void> {
+  if (!pendingAsset.value) return;
+  actionError.value = null;
+  try {
+    await client.rejectCampaignAsset(campaignId, pendingAsset.value.id);
+    pendingAsset.value = null;
+  } catch (error) {
+    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to discard image.';
+  }
+}
+
+const saveOverlapResolution = withActionErrorHandling(() =>
+  client.setCampaignOverlapResolution(campaignId, {
+    overlapResolutionStrategy: overlapStrategy.value,
+    preferSpecificAudienceGroupId:
+      overlapStrategy.value === 'PreferSpecificAudience' ? preferAudienceGroupId.value || null : null,
+  }),
+);
 
 function saveChannelText(channel: CommunicationChannel): Promise<void> {
   const text = channelDrafts.value[channel];
@@ -213,6 +276,37 @@ const reject = withActionErrorHandling(async () => {
 });
 const revise = withActionErrorHandling(() => client.reviseCampaign(campaignId));
 const sendNow = withActionErrorHandling(() => client.sendCampaignNow(campaignId));
+
+async function loadDeliveryBatches(): Promise<void> {
+  if (!canSend()) return;
+  deliveryLoading.value = true;
+  deliveryError.value = null;
+  try {
+    const { batches } = await client.listDeliveryBatches(campaignId);
+    deliveryBatches.value = batches;
+    if (batches.length > 0 && !selectedBatch.value) {
+      selectedBatch.value = await client.getDeliveryBatch(campaignId, batches[0].id);
+    }
+  } catch (error) {
+    deliveryError.value = error instanceof ApiRequestError ? error.message : 'Unable to load delivery results.';
+  } finally {
+    deliveryLoading.value = false;
+  }
+}
+
+async function viewBatch(batchId: string): Promise<void> {
+  deliveryError.value = null;
+  try {
+    selectedBatch.value = await client.getDeliveryBatch(campaignId, batchId);
+  } catch (error) {
+    deliveryError.value = error instanceof ApiRequestError ? error.message : 'Unable to load batch details.';
+  }
+}
+
+async function sendNowAndRefresh(): Promise<void> {
+  await sendNow();
+  await loadDeliveryBatches();
+}
 const cancel = withActionErrorHandling(() => client.cancelCampaign(campaignId));
 
 const schedule = withActionErrorHandling(() => {
@@ -261,9 +355,9 @@ async function archiveCampaign(): Promise<void> {
           <button
             v-if="canSend() && ['Approved', 'Scheduled'].includes(pageState.campaign.status)"
             type="button"
-            @click="sendNow"
+            @click="sendNowAndRefresh"
           >
-            Send now (simulated)
+            Send now
           </button>
           <button
             v-if="(canDraft() || canApprove() || canSend()) && !['Sent', 'Cancelled'].includes(pageState.campaign.status)"
@@ -336,6 +430,72 @@ async function archiveCampaign(): Promise<void> {
             <li v-for="id in createdAssetIds" :key="id">{{ id }}</li>
           </ul>
         </details>
+
+        <details class="campaign-page__assets" open>
+          <summary>Generate image with AI (requires confirmation before use)</summary>
+          <p class="campaign-page__hint">
+            Generated images are saved as drafts. Confirm before attaching as base or audience override.
+            Ward ContactConsent is separate from
+            <a href="https://account.churchofjesuschrist.org/subscriptions" rel="noopener noreferrer" target="_blank">
+              Church Account subscription preferences
+            </a>.
+          </p>
+          <form class="campaign-page__form" novalidate @submit.prevent="generateAiImage">
+            <label for="ai-prompt">Image prompt</label>
+            <textarea id="ai-prompt" v-model="aiPrompt" rows="2" required :disabled="!isEditable"></textarea>
+            <label for="ai-alt-text">Alt text for generated image</label>
+            <input id="ai-alt-text" v-model="aiAltText" type="text" required :disabled="!isEditable" />
+            <button type="submit" :disabled="!isEditable">Generate draft</button>
+          </form>
+          <div v-if="pendingAsset" class="campaign-page__ai-preview">
+            <p>
+              <strong>Pending draft:</strong> {{ pendingAsset.storageReference }}
+              ({{ pendingAsset.confirmationStatus }})
+            </p>
+            <img
+              v-if="pendingAsset.storageReference.startsWith('http')"
+              :src="pendingAsset.storageReference"
+              :alt="pendingAsset.altText"
+              class="campaign-page__ai-preview-image"
+            />
+            <div class="campaign-page__button-row">
+              <button type="button" :disabled="!isEditable" @click="confirmPendingAsset">Confirm</button>
+              <button type="button" class="campaign-page__danger" :disabled="!isEditable" @click="rejectPendingAsset">
+                Discard
+              </button>
+            </div>
+            <p class="campaign-page__hint">Confirming does not auto-attach — paste the asset ID into base content manually.</p>
+          </div>
+        </details>
+      </section>
+
+      <section aria-labelledby="overlap-heading">
+        <h2 id="overlap-heading">Overlap content resolution</h2>
+        <p class="campaign-page__hint">
+          When someone belongs to multiple selected audiences, choose which override content applies.
+        </p>
+        <form class="campaign-page__form" novalidate @submit.prevent="saveOverlapResolution">
+          <label for="overlap-strategy">Strategy</label>
+          <select id="overlap-strategy" v-model="overlapStrategy" :disabled="!isEditable">
+            <option value="FirstAudienceWins">First audience in list wins</option>
+            <option value="PreferBase">Prefer base campaign content</option>
+            <option value="PreferSpecificAudience">Prefer a specific audience</option>
+          </select>
+          <template v-if="overlapStrategy === 'PreferSpecificAudience'">
+            <label for="prefer-audience">Preferred audience</label>
+            <select id="prefer-audience" v-model="preferAudienceGroupId" :disabled="!isEditable">
+              <option value="" disabled>Choose audience</option>
+              <option
+                v-for="audience in pageState.kind === 'loaded' ? pageState.campaign.currentVersion.audiences : []"
+                :key="audience.audienceGroupId"
+                :value="audience.audienceGroupId"
+              >
+                {{ audience.audienceGroupName }}
+              </option>
+            </select>
+          </template>
+          <button type="submit" :disabled="!isEditable">Save strategy</button>
+        </form>
       </section>
 
       <section aria-labelledby="channels-heading">
@@ -402,7 +562,21 @@ async function archiveCampaign(): Promise<void> {
           <p>
             {{ previewState.preview.totalUniqueRecipients }} unique recipient(s) across selected audiences
             ({{ previewState.preview.overlapCount }} overlapping).
+            <span v-if="previewState.preview.overlapResolutionStrategy">
+              Strategy: {{ previewState.preview.overlapResolutionStrategy }}
+            </span>
           </p>
+          <div v-if="previewState.preview.overlapConflicts?.length" class="campaign-page__overlap-conflicts">
+            <h3>Overlap conflicts</h3>
+            <ul class="campaign-page__list">
+              <li v-for="conflict in previewState.preview.overlapConflicts" :key="conflict.personId">
+                {{ conflict.displayName }} —
+                <span v-if="conflict.usesBaseContent">uses base content</span>
+                <span v-else>won by {{ conflict.winningAudienceGroupName ?? conflict.winningAudienceGroupId }}</span>
+                (in {{ conflict.audienceGroupIds.length }} audiences)
+              </li>
+            </ul>
+          </div>
           <div v-for="audience in previewState.preview.audiences" :key="audience.audienceGroupId" class="campaign-page__preview-audience">
             <h3>{{ audience.audienceGroupName }} — {{ audience.recipientCount }} recipient(s)</h3>
             <ul class="campaign-page__list">
@@ -430,6 +604,36 @@ async function archiveCampaign(): Promise<void> {
             </li>
           </ul>
         </template>
+      </section>
+
+      <section v-if="canSend()" aria-labelledby="delivery-heading">
+        <h2 id="delivery-heading">Delivery results</h2>
+        <p v-if="deliveryLoading">Loading delivery batches…</p>
+        <p v-if="deliveryError" role="alert" class="campaign-page__error">{{ deliveryError }}</p>
+        <template v-else-if="deliveryBatches.length > 0">
+          <ul class="campaign-page__list">
+            <li v-for="batch in deliveryBatches" :key="batch.id">
+              <button type="button" @click="viewBatch(batch.id)">
+                Batch {{ batch.id.slice(0, 8) }}… — {{ batch.status }}
+                ({{ batch.sentCount }}/{{ batch.totalRecipients }} sent)
+              </button>
+            </li>
+          </ul>
+          <div v-if="selectedBatch" class="campaign-page__delivery-detail">
+            <h3>Recipient outcomes</h3>
+            <ul class="campaign-page__list">
+              <li v-for="recipient in selectedBatch.recipients" :key="recipient.id">
+                <span>{{ recipient.channel }}</span>
+                <span class="campaign-page__tag">{{ recipient.status }}</span>
+                <span v-if="recipient.skipReason" class="campaign-page__hint">{{ recipient.skipReason }}</span>
+                <span v-if="recipient.attempts.length > 0" class="campaign-page__hint">
+                  Last: {{ recipient.attempts[recipient.attempts.length - 1].errorCode ?? 'ok' }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </template>
+        <p v-else-if="!deliveryLoading">No delivery batches yet.</p>
       </section>
 
       <section aria-labelledby="history-heading">
@@ -576,6 +780,23 @@ async function archiveCampaign(): Promise<void> {
 
 .campaign-page__preview-audience {
   margin-top: 0.75rem;
+}
+
+.campaign-page__ai-preview {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #d0d7de;
+  border-radius: 0.375rem;
+}
+
+.campaign-page__ai-preview-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
+
+.campaign-page__overlap-conflicts {
+  margin: 0.75rem 0;
 }
 
 .campaign-page__tag {

@@ -48,6 +48,8 @@ onMounted(() => {
       </p>
       <StatusBadge :tone="toStatusBadgeTone(state)" :label="toStatusBadgeLabel(state)" />
       <p><router-link to="/directory">Search directory</router-link></p>
+      <p><router-link to="/audiences">View audiences</router-link></p>
+      <p><router-link to="/campaigns">View campaigns</router-link></p>
       <button type="button" @click="signOut">Sign out</button>
     </IonContent>
   </IonPage>
