@@ -13,8 +13,8 @@ export class SimulatedSmsProviderAdapter implements SmsProviderAdapter {
     if (request.toPhoneNumber.includes('555-0199')) {
       return {
         success: false,
-        errorCode: 'provider_unavailable',
-        errorMessage: 'Simulated transient failure: provider temporarily unavailable.',
+        errorCode: 'rate_limited',
+        errorMessage: 'Simulated transient failure: provider rate limited.',
       };
     }
     return { success: true, providerMessageId: `sim-sms-${randomUUID()}` };

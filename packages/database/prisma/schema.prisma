@@ -48,6 +48,7 @@ model Ward {
   communicationDestinations CommunicationDestination[]
   campaigns                 Campaign[]
   deliveryBatches           DeliveryBatch[]
+  providerCredentials       ProviderCredential[]
   auditEvents               AuditEvent[]
 
   @@map("ward")
@@ -419,11 +420,8 @@ model AudienceGroupMember {
 /// A configured place messages can be sent (an email list address, an SMS
 /// number pool, a Facebook Page, etc.). Only a non-secret provider
 /// reference and non-secret configuration are stored here — actual
-/// provider credentials belong in a managed secret store (see
-/// .cursor/rules/security.mdc and phases/09-provider-integrations.md), not
-/// in this table or in source control. Destinations are archived, never
-/// deleted, once delivery history exists (enforced by the Phase 7/8
-/// services that reference this table).
+/// provider credentials are stored encrypted in `ProviderCredential` (or
+/// a managed secret store in production). See docs/providers.md.
 model CommunicationDestination {
   id                       String               @id @default(uuid())
   wardId                   String               @map("ward_id")
@@ -443,6 +441,31 @@ model CommunicationDestination {
   @@unique([wardId, name])
   @@index([wardId, channel])
   @@map("communication_destination")
+}
+
+/// Encrypted provider credentials for a ward + channel + account reference.
+/// The ciphertext is AES-256-GCM under `PROVIDER_CREDENTIALS_ENCRYPTION_KEY`
+/// — plaintext secrets never appear in application records, logs, or API
+/// responses (AGENTS.md #1/#3; .cursor/rules/security.mdc).
+model ProviderCredential {
+  id                       String               @id @default(uuid())
+  wardId                   String               @map("ward_id")
+  channel                  CommunicationChannel
+  providerAccountReference String               @map("provider_account_reference")
+  /// AES-256-GCM payload: base64(iv).base64(ciphertext).base64(tag)
+  encryptedPayload         String               @map("encrypted_payload")
+  /// Key-id label for rotation (e.g. "v1"); never the key material itself.
+  encryptionKeyId          String               @default("v1") @map("encryption_key_id")
+  expiresAt                DateTime?            @map("expires_at")
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  revokedAt                DateTime?            @map("revoked_at")
+
+  ward Ward @relation(fields: [wardId], references: [id], onDelete: Restrict)
+
+  @@unique([wardId, channel, providerAccountReference])
+  @@index([wardId, channel])
+  @@map("provider_credential")
 }
 
 /// Many-to-many wiring between AudienceGroup and CommunicationDestination.

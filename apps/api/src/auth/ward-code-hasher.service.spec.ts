@@ -14,6 +14,8 @@ function fakeConfig(pepper: string): AppConfig {
     redisUrl: 'redis://localhost:6379',
     session: { secret: 'a'.repeat(32), refreshTokenSecret: 'b'.repeat(32) },
     wardCodePepper: pepper,
+    providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
+    providerMode: 'simulated',
     corsAllowedOrigins: ['http://localhost:3000'],
   };
 }

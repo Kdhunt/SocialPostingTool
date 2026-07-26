@@ -5,9 +5,7 @@ import { createRedisConnection } from './redis-connection.js';
 import { createHealthQueue, createHealthWorker } from './health-queue.js';
 import { createHealthServer } from './health-server.js';
 import { createDeliveryQueue, createDeliveryWorker } from './delivery/delivery-queue.js';
-import { SimulatedEmailProviderAdapter } from './delivery/providers/simulated-email-provider.adapter.js';
-import { SimulatedSmsProviderAdapter } from './delivery/providers/simulated-sms-provider.adapter.js';
-import { SimulatedFacebookPageProviderAdapter } from './delivery/providers/simulated-facebook-page-provider.adapter.js';
+import { createDeliveryProviders } from './providers/create-delivery-providers.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -23,12 +21,11 @@ async function bootstrap(): Promise<void> {
   const prisma = createPrismaClient();
   await prisma.$connect();
 
-  // Phase 9 swaps these for real SDK-backed adapters behind the same interfaces.
-  const providers = {
-    email: new SimulatedEmailProviderAdapter(),
-    sms: new SimulatedSmsProviderAdapter(),
-    facebookPage: new SimulatedFacebookPageProviderAdapter(),
-  };
+  const providers = createDeliveryProviders({
+    mode: config.providerMode,
+    prisma,
+    encryptionKey: config.providerCredentialsEncryptionKey,
+  });
 
   const deliveryQueue = createDeliveryQueue(redisConnection);
   const deliveryWorker = createDeliveryWorker({
@@ -41,7 +38,10 @@ async function bootstrap(): Promise<void> {
     logger.error({ jobId: job?.id, error: error.message }, 'Delivery job threw unexpectedly');
   });
 
-  logger.info({ port: config.worker.healthPort }, 'Ward Communications Hub worker started');
+  logger.info(
+    { port: config.worker.healthPort, providerMode: config.providerMode },
+    'Ward Communications Hub worker started',
+  );
 
   const shutdown = async (): Promise<void> => {
     logger.info('Shutting down worker');

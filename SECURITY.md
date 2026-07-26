@@ -48,4 +48,4 @@ Do not include real member data, credentials, or ward codes in a vulnerability r
 
 ## Scope
 
-This policy covers the repository foundation established in Phase 2 (monorepo tooling, health checks, environment validation) and the authentication/ward-code system established in Phase 4. Directory, audience, campaign, delivery, and provider-integration logic will extend this policy as they are implemented in later phases.
+This policy covers the repository foundation (Phase 2), authentication (Phase 4), directory/audiences/campaigns (Phases 5–7), the delivery engine (Phase 8), and provider credential encryption (Phase 9). See `docs/providers.md` for how Email/SMS/Facebook Page credentials are encrypted at rest and never returned by the API.

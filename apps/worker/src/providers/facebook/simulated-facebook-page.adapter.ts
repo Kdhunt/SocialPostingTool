@@ -5,6 +5,10 @@ import type {
   ProviderSendResult,
 } from '@ward-comms/domain';
 
+/**
+ * Facebook Page publishing only — Group publishing is intentionally
+ * unsupported (phases/09-provider-integrations.md).
+ */
 export class SimulatedFacebookPageProviderAdapter implements FacebookPageProviderAdapter {
   async post(request: FacebookPageSendRequest): Promise<ProviderSendResult> {
     const message = request.message ?? '';

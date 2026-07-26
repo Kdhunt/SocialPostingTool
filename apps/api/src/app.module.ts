@@ -8,6 +8,7 @@ import { DirectoryModule } from './directory/directory.module.js';
 import { AudiencesModule } from './audiences/audiences.module.js';
 import { CampaignsModule } from './campaigns/campaigns.module.js';
 import { DeliveryModule } from './delivery/delivery.module.js';
+import { ProvidersModule } from './providers/providers.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { DeliveryModule } from './delivery/delivery.module.js';
     AudiencesModule,
     CampaignsModule,
     DeliveryModule,
+    ProvidersModule,
   ],
 })
 export class AppModule {}

@@ -162,6 +162,13 @@ processes jobs through **simulated** Email/SMS/Facebook adapters with
 retries and dead-letter handling. See `docs/delivery.md`. Redis must be
 running (`docker compose up -d`).
 
+### Providers overview (Phase 9)
+
+Provider credentials are stored encrypted (`POST /provider-credentials`).
+Set `PROVIDER_MODE=credentialed` to require them before simulated/real
+sends. See `docs/providers.md`. Facebook Page publishing only — Groups
+are not supported.
+
 ## Common scripts
 
 Run from the repository root; Turborepo fans these out across the workspace:

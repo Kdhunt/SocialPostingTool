@@ -4,7 +4,7 @@
 
 Ward Communications Hub is a pnpm + Turborepo monorepo. It is a secure communications platform used by ward leaders to manage people, households, audience groups, campaigns, and multichannel communications (email, SMS, Facebook).
 
-This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), audience groups (Phase 6, see `docs/audiences.md`), campaign drafting (Phase 7, see `docs/campaigns.md`), and the delivery engine (Phase 8, see `docs/delivery.md`). Provider integrations are introduced in Phase 9 (see `phases/09-provider-integrations.md`).
+This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), audience groups (Phase 6, see `docs/audiences.md`), campaign drafting (Phase 7, see `docs/campaigns.md`), the delivery engine (Phase 8, see `docs/delivery.md`), and provider integrations (Phase 9, see `docs/providers.md`).
 
 ## Repository layout
 
@@ -72,7 +72,8 @@ Authorization is enforced with two composable guards: `SessionAuthGuard` establi
 ## `apps/api` / `apps/worker` module structure (Phase 8)
 
 - `delivery/` (API) — `DeliveryBatchRepository`, `DeliveryRecipientRepository`, `DeliveryAttemptRepository`; `DeliveryService` expands recipients (overlap + consent), creates idempotent batches, and enqueues BullMQ jobs via `DeliveryQueueService`; `DeliveryController` stays thin. See `docs/delivery.md`.
-- `delivery/` (worker) — `processDeliveryRecipient` claims a recipient, calls simulated Email/SMS/Facebook adapters, records attempts, applies retry/dead-letter policy, and rolls up batch + campaign status. Retries never duplicate sends (claim guard + unique attempt numbers).
+- `delivery/` (worker) — `processDeliveryRecipient` claims a recipient, calls Email/SMS/Facebook adapters, records attempts, applies retry/dead-letter policy, and rolls up batch + campaign status. Retries never duplicate sends (claim guard + unique attempt numbers).
+- `providers/` (API + worker) — encrypted `ProviderCredential` storage (API) and channel adapters (worker) selected by `PROVIDER_MODE`. SDKs stay out of domain; see `docs/providers.md`.
 
 ## Local development environment
 

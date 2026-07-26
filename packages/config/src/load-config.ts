@@ -23,6 +23,8 @@ export interface AppConfig {
     refreshTokenSecret: string;
   };
   wardCodePepper: string;
+  providerCredentialsEncryptionKey: string;
+  providerMode: 'simulated' | 'credentialed';
   corsAllowedOrigins: string[];
 }
 
@@ -57,6 +59,8 @@ function toAppConfig(env: Env): AppConfig {
       refreshTokenSecret: env.REFRESH_TOKEN_SECRET,
     },
     wardCodePepper: env.WARD_CODE_PEPPER,
+    providerCredentialsEncryptionKey: env.PROVIDER_CREDENTIALS_ENCRYPTION_KEY,
+    providerMode: env.PROVIDER_MODE,
     corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
