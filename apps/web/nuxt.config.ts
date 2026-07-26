@@ -3,6 +3,9 @@ import { defineNuxtConfig } from 'nuxt/config';
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-01',
   devtools: { enabled: true },
+  nitro: {
+    preset: 'vercel',
+  },
   devServer: {
     port: process.env.WEB_PORT ? Number(process.env.WEB_PORT) : 3000,
   },

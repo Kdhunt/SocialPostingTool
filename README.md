@@ -201,6 +201,20 @@ URLs. Confirmed assets are required before attaching to campaign content
 The Ionic shell (`apps/mobile`) includes audiences list/detail, campaigns
 list/detail, and approve/reject/revise/send-now actions when permissions allow.
 
+## Deploying the web app on Vercel
+
+Vercel hosts **`apps/web` (Nuxt)** only. The NestJS API and BullMQ worker need a
+separate host (they are not Nuxt).
+
+In the Vercel project settings:
+
+1. **Framework Preset:** Nuxt
+2. **Root Directory:** `apps/web` (include files outside the root directory)
+3. Do **not** set Root Directory to `apps/api` — that builds NestJS and is wrong for this project
+
+`apps/web/vercel.json` sets the Nuxt framework and a filtered Turbo build.
+Set `NUXT_PUBLIC_API_BASE_URL` to your deployed API origin.
+
 ## Common scripts
 
 Run from the repository root; Turborepo fans these out across the workspace:
