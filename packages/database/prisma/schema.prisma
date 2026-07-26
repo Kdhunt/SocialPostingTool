@@ -1,0 +1,23 @@
+// Phase 2 placeholder schema.
+// Domain entities (ward member, household, audience, campaign, delivery, etc.)
+// are introduced in Phase 3 (see phases/03-domain-model.md) with a proper
+// migration. Do not add product entities here without a migration and a
+// corresponding phase.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Minimal placeholder model used to verify the database connection, Prisma
+/// client generation, and migration pipeline before domain entities exist.
+model HealthCheck {
+  id        String   @id @default(uuid())
+  checkedAt DateTime @default(now()) @map("checked_at")
+
+  @@map("health_check")
+}

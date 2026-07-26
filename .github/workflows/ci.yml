@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: test
+  DATABASE_URL: postgresql://ward_comms:ward_comms_dev_password@localhost:5432/ward_comms_test
+  REDIS_URL: redis://localhost:6379
+  SESSION_SECRET: ci-test-session-secret-do-not-use-in-prod
+  REFRESH_TOKEN_SECRET: ci-test-refresh-secret-do-not-use-in-prod
+  WARD_CODE_PEPPER: ci-test-ward-code-pepper-do-not-use-in-prod
+  WARD_TIME_ZONE: America/Denver
+
+jobs:
+  build-and-test:
+    name: Install, lint, typecheck, test, build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ward_comms
+          POSTGRES_PASSWORD: ward_comms_dev_password
+          POSTGRES_DB: ward_comms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ward_comms -d ward_comms_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

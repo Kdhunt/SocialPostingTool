@@ -1,0 +1,22 @@
+---
+description: Security and privacy rules
+alwaysApply: true
+---
+
+# Security Rules
+
+- Hash passwords using Argon2id or an equivalently strong password hashing algorithm.
+- Hash the ward code separately from user passwords.
+- Use secure, HTTP only cookies for browser sessions.
+- Use short lived access tokens and secure refresh handling for mobile.
+- Add rate limiting to authentication.
+- Record failed login attempts without storing attempted passwords.
+- Store external provider secrets in a managed secret store in production.
+- Encrypt sensitive values at rest where appropriate.
+- Apply server side role and permission checks to every protected route.
+- Minimize access to date of birth and minor contact information.
+- Audit exports and bulk access.
+- Redact personal data from logs.
+- Validate and normalize email addresses and phone numbers.
+- Never send contact data to AI providers unless explicitly required and approved.
+- Include data retention and deletion hooks in the design.

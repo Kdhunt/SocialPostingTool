@@ -1,0 +1,39 @@
+---
+description: Architecture rules for Ward Communications Hub
+alwaysApply: true
+---
+
+# Architecture Rules
+
+The repository is a pnpm monorepo using Turborepo.
+
+Applications:
+
+- `apps/web`: Nuxt
+- `apps/mobile`: Ionic Vue and Capacitor
+- `apps/api`: NestJS
+- `apps/worker`: NestJS or lightweight TypeScript worker using shared services
+
+Packages:
+
+- `packages/database`: Prisma schema, generated client, migrations
+- `packages/domain`: framework independent business rules
+- `packages/api-client`: typed API client
+- `packages/validation`: shared schemas
+- `packages/ui`: shared visual components where practical
+- `packages/config`: environment and application configuration
+- `packages/testing`: test factories and utilities
+
+Do not allow UI components to import Prisma.
+
+Do not allow controllers to contain business rules.
+
+Do not allow provider SDKs inside the domain package.
+
+Use adapters for email, SMS, Facebook, storage, queues, and AI providers.
+
+Use transactions for changes that must remain consistent.
+
+Use outbox or queue safe patterns for communication dispatch.
+
+Use idempotency keys for campaign execution and provider publishing.

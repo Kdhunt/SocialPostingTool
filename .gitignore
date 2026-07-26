@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.output/
+.nuxt/
+.nitro/
+.cache/
+www/
+android/
+ios/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Testing / coverage
+coverage/
+.nyc_output/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Prisma
+packages/database/generated/
+
+# Misc
+*.local

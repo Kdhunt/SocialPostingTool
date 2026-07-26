@@ -1,0 +1,37 @@
+---
+description: Testing requirements
+alwaysApply: true
+---
+
+# Testing Rules
+
+Use:
+
+- Vitest for unit tests
+- NestJS testing tools for API tests
+- Playwright for web end to end tests
+- Testcontainers or isolated Docker services for database integration tests where practical
+
+Every business rule must have tests.
+
+High priority test areas:
+
+- Authentication
+- Ward code validation
+- Authorization
+- Household relationships
+- Audience membership
+- Audience overlap
+- Recipient deduplication
+- Consent enforcement
+- Campaign status transitions
+- Idempotent sending
+- Provider failure isolation
+- Audit creation
+- Minor data access restrictions
+
+Use generated fictional data only.
+
+Tests must not depend on execution order.
+
+Do not mock the domain layer when testing application services unless isolation is specifically required.

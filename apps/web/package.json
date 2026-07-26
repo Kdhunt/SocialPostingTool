@@ -1,0 +1,29 @@
+{
+  "name": "@ward-comms/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "start": "node .output/server/index.mjs",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "clean": "rimraf .output .nuxt dist",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@ward-comms/api-client": "workspace:*",
+    "@ward-comms/ui": "workspace:*",
+    "@ward-comms/validation": "workspace:*",
+    "nuxt": "4.0.3",
+    "vue": "^3.4.38",
+    "vue-router": "^4.4.3"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "^3.14.1",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

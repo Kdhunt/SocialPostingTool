@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.output
+.nuxt
+.turbo
+coverage
+pnpm-lock.yaml
+packages/database/generated
+android
+ios
+www

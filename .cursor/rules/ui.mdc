@@ -1,0 +1,22 @@
+---
+description: Frontend and mobile interface rules
+alwaysApply: true
+---
+
+# UI Rules
+
+- Use Vue 3 composition API.
+- Use TypeScript.
+- Use accessible form controls.
+- Support keyboard navigation.
+- Provide visible focus states.
+- Do not rely on color alone for status.
+- Require useful image alt text.
+- Use responsive layouts.
+- Keep complex administration desktop first.
+- Prioritize campaign creation, preview, approval, and member lookup on mobile.
+- Do not duplicate domain rules in components.
+- Use shared validation schemas where appropriate.
+- Handle loading, empty, error, and success states explicitly.
+- Avoid inline styles.
+- Avoid `!important`.

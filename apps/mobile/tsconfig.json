@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "composite": false,
+    "declaration": false,
+    "jsx": "preserve",
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"]
+}
