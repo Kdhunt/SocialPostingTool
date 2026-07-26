@@ -100,6 +100,25 @@ for exact hashing calls.
 
 See `docs/threat-model-auth.md` for the full threat model and known limitations.
 
+### Directory overview
+
+Once signed in, visit `http://localhost:3000/directory` (web) or the
+"Search directory" link on the mobile home screen. Key endpoints (all
+require an authenticated session plus `directory.read` / `directory.write`,
+see `docs/directory.md`):
+
+- `GET /directory/people?query=&includeInactive=&householdId=&limit=`, `GET /directory/people/:id`
+- `POST /directory/people`, `PATCH /directory/people/:id`, `POST /directory/people/:id/archive` / `.../restore`
+- `POST /directory/people/:id/contact-methods`, `PATCH .../contact-methods/:id`, `DELETE .../contact-methods/:id`
+- `PATCH /directory/people/:id/contact-methods/:contactMethodId/consent` (the only way consent changes — never inferred)
+- `POST /directory/people/:id/relationships`, `DELETE .../relationships/:relationshipId`
+- `POST /directory/people/:id/household-memberships`, `DELETE .../household-memberships/:membershipId`
+- `GET /directory/households`, `GET /directory/households/:id`, `POST /directory/households`, `PATCH /directory/households/:id`, `POST /directory/households/:id/archive`
+
+Date of birth and contact methods are withheld for minors unless the
+caller holds the `minors.contact.read` permission (see
+`docs/directory.md`).
+
 ## Common scripts
 
 Run from the repository root; Turborepo fans these out across the workspace:

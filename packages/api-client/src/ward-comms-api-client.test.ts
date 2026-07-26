@@ -60,4 +60,42 @@ describe('WardCommsApiClient', () => {
       clientType: 'web',
     });
   });
+
+  it('builds a directory search query string only from provided fields', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ people: [] }), { status: 200 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    await client.searchPeople({ query: 'Doe', includeInactive: true });
+
+    const [url] = fetchImpl.mock.calls[0] as [string];
+    expect(url).toBe('http://localhost:3001/directory/people?query=Doe&includeInactive=true');
+  });
+
+  it('creates a person with the given payload', async () => {
+    const person = {
+      id: 'p1',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      preferredName: null,
+      gender: 'Female',
+      dateOfBirth: null,
+      isMinor: false,
+      isActive: true,
+      restricted: false,
+      contactMethods: [],
+      householdMemberships: [],
+      relationships: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(person), { status: 200 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    const result = await client.createPerson({ firstName: 'Jane', lastName: 'Doe' });
+
+    expect(result.id).toBe('p1');
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/directory/people');
+    expect(init.method).toBe('POST');
+  });
 });

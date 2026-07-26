@@ -25,7 +25,8 @@ class MobileAuthStore {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
 
-  private readonly client = new WardCommsApiClient({
+  /** Shared client for authenticated requests (directory, audiences, campaigns, ...). */
+  readonly client = new WardCommsApiClient({
     baseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001',
     getAccessToken: () => this.accessToken,
   });

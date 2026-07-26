@@ -9,6 +9,26 @@ import {
   type SessionResponse,
   type WardCodeVerifyResponse,
 } from '@ward-comms/validation';
+import {
+  householdDetailSchema,
+  householdListResponseSchema,
+  personDetailSchema,
+  personListResponseSchema,
+  type AddHouseholdMembershipRequest,
+  type CreateContactMethodRequest,
+  type CreateHouseholdRequest,
+  type CreatePersonRequest,
+  type CreateRelationshipRequest,
+  type HouseholdDetailDto,
+  type HouseholdListResponse,
+  type PersonDetailDto,
+  type PersonListResponse,
+  type PersonSearchQuery,
+  type UpdateConsentRequest,
+  type UpdateContactMethodRequest,
+  type UpdateHouseholdRequest,
+  type UpdatePersonRequest,
+} from '@ward-comms/validation';
 
 export interface WardCommsApiClientOptions {
   baseUrl: string;
@@ -116,5 +136,135 @@ export class WardCommsApiClient {
 
   async logout(): Promise<void> {
     await this.request('/auth/logout', { method: 'POST' });
+  }
+
+  // --- Directory: people -----------------------------------------------------
+
+  async searchPeople(query: PersonSearchQuery = {}): Promise<PersonListResponse> {
+    const params = new URLSearchParams();
+    if (query.query) params.set('query', query.query);
+    if (query.includeInactive !== undefined) params.set('includeInactive', String(query.includeInactive));
+    if (query.householdId) params.set('householdId', query.householdId);
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    const search = params.toString();
+    const response = await this.request(`/directory/people${search ? `?${search}` : ''}`);
+    return personListResponseSchema.parse(await response.json());
+  }
+
+  async getPerson(id: string): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${id}`);
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async createPerson(input: CreatePersonRequest): Promise<PersonDetailDto> {
+    const response = await this.request('/directory/people', { method: 'POST', body: JSON.stringify(input) });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async updatePerson(id: string, input: UpdatePersonRequest): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async archivePerson(id: string): Promise<void> {
+    await this.request(`/directory/people/${id}/archive`, { method: 'POST' });
+  }
+
+  async restorePerson(id: string): Promise<void> {
+    await this.request(`/directory/people/${id}/restore`, { method: 'POST' });
+  }
+
+  async addContactMethod(personId: string, input: CreateContactMethodRequest): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/contact-methods`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async updateContactMethod(
+    personId: string,
+    contactMethodId: string,
+    input: UpdateContactMethodRequest,
+  ): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/contact-methods/${contactMethodId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async archiveContactMethod(personId: string, contactMethodId: string): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/contact-methods/${contactMethodId}`, {
+      method: 'DELETE',
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async setConsent(personId: string, contactMethodId: string, input: UpdateConsentRequest): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/contact-methods/${contactMethodId}/consent`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async addRelationship(personId: string, input: CreateRelationshipRequest): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/relationships`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async archiveRelationship(personId: string, relationshipId: string): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/relationships/${relationshipId}`, {
+      method: 'DELETE',
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async addHouseholdMembership(personId: string, input: AddHouseholdMembershipRequest): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/household-memberships`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  async endHouseholdMembership(personId: string, membershipId: string): Promise<PersonDetailDto> {
+    const response = await this.request(`/directory/people/${personId}/household-memberships/${membershipId}`, {
+      method: 'DELETE',
+    });
+    return personDetailSchema.parse(await response.json());
+  }
+
+  // --- Directory: households ---------------------------------------------------
+
+  async listHouseholds(includeInactive = false): Promise<HouseholdListResponse> {
+    const response = await this.request(`/directory/households?includeInactive=${String(includeInactive)}`);
+    return householdListResponseSchema.parse(await response.json());
+  }
+
+  async getHousehold(id: string): Promise<HouseholdDetailDto> {
+    const response = await this.request(`/directory/households/${id}`);
+    return householdDetailSchema.parse(await response.json());
+  }
+
+  async createHousehold(input: CreateHouseholdRequest): Promise<HouseholdDetailDto> {
+    const response = await this.request('/directory/households', { method: 'POST', body: JSON.stringify(input) });
+    return householdDetailSchema.parse(await response.json());
+  }
+
+  async updateHousehold(id: string, input: UpdateHouseholdRequest): Promise<HouseholdDetailDto> {
+    const response = await this.request(`/directory/households/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return householdDetailSchema.parse(await response.json());
+  }
+
+  async archiveHousehold(id: string): Promise<void> {
+    await this.request(`/directory/households/${id}/archive`, { method: 'POST' });
   }
 }

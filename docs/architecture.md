@@ -4,7 +4,7 @@
 
 Ward Communications Hub is a pnpm + Turborepo monorepo. It is a secure communications platform used by ward leaders to manage people, households, audience groups, campaigns, and multichannel communications (email, SMS, Facebook).
 
-This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`) and authentication (Phase 4, see `docs/threat-model-auth.md`). Audience logic, campaigns, delivery, and provider integrations are introduced in later phases (see `phases/`).
+This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), and the directory (Phase 5, see `docs/directory.md`). Audience logic, campaigns, delivery, and provider integrations are introduced in later phases (see `phases/`).
 
 ## Repository layout
 
@@ -56,6 +56,10 @@ Provider integrations (email, SMS, Facebook, storage, queues, AI) are implemente
 - `common/` — framework-agnostic utilities shared across modules (signed-token HMAC helper, opaque session-token hashing, Zod body-parsing helper), kept dependency-free of Nest decorators where possible so they stay easy to unit test.
 
 Authorization is enforced with two composable guards: `SessionAuthGuard` establishes *who* the caller is (cookie for web, `Authorization: Bearer` for mobile) and rejects unauthenticated/expired/revoked/disabled sessions; `PermissionsGuard` reads `@RequirePermission(...)` metadata and rejects callers whose role's permissions don't include the required one. Both run server-side on every route that opts in — the frontend's own view of permissions is never trusted for authorization decisions.
+
+## `apps/api` module structure (Phase 5)
+
+- `directory/` — the ward directory: `PersonRepository`, `HouseholdRepository`, `ContactMethodRepository`, `RelationshipRepository`, and `HouseholdMembershipRepository` handle data access only; `DirectoryService` applies the pure domain rules (minor-data redaction, self-relationship checks, contact normalization, relationship-pair construction) and writes an `AuditEvent` for every mutation; `DirectoryController` stays thin, parsing/validating requests via `parseBody` and delegating everything else. See `docs/directory.md` for the family-structure rules (divorce, remarriage, guardianship, single-parent households) and the minor-data-restriction policy.
 
 ## Local development environment
 

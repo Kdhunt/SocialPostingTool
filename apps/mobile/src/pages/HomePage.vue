@@ -47,6 +47,7 @@ onMounted(() => {
         Signed in as <strong>{{ mobileAuthStore.state.value.user.displayName }}</strong>.
       </p>
       <StatusBadge :tone="toStatusBadgeTone(state)" :label="toStatusBadgeLabel(state)" />
+      <p><router-link to="/directory">Search directory</router-link></p>
       <button type="button" @click="signOut">Sign out</button>
     </IonContent>
   </IonPage>
