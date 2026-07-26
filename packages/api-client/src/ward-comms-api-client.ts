@@ -47,6 +47,25 @@ import {
   type DestinationListResponse,
   type UpdateAudienceGroupRequest,
 } from '@ward-comms/validation';
+import {
+  campaignDetailSchema,
+  campaignListResponseSchema,
+  campaignPreviewResponseSchema,
+  campaignValidationResponseSchema,
+  type AddCampaignAudienceRequest,
+  type CampaignDetailDto,
+  type CampaignListResponse,
+  type CampaignPreviewResponse,
+  type CampaignSearchQuery,
+  type CampaignValidationResponse,
+  type CreateCampaignAssetRequest,
+  type CreateCampaignRequest,
+  type SetCampaignChannelTextRequest,
+  type UpdateCampaignAudienceRequest,
+  type UpdateCampaignRequest,
+  type UpdateCampaignVersionRequest,
+} from '@ward-comms/validation';
+import type { CommunicationChannel } from '@ward-comms/validation';
 
 export interface WardCommsApiClientOptions {
   baseUrl: string;
@@ -372,5 +391,122 @@ export class WardCommsApiClient {
 
   async archiveDestination(id: string): Promise<void> {
     await this.request(`/communication-destinations/${id}/archive`, { method: 'POST' });
+  }
+
+  // --- Campaigns -----------------------------------------------------------------
+
+  async searchCampaigns(query: CampaignSearchQuery = {}): Promise<CampaignListResponse> {
+    const params = new URLSearchParams();
+    if (query.query) params.set('query', query.query);
+    if (query.status) params.set('status', query.status);
+    if (query.includeArchived !== undefined) params.set('includeArchived', String(query.includeArchived));
+    const search = params.toString();
+    const response = await this.request(`/campaigns${search ? `?${search}` : ''}`);
+    return campaignListResponseSchema.parse(await response.json());
+  }
+
+  async getCampaign(id: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}`);
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async previewCampaign(id: string): Promise<CampaignPreviewResponse> {
+    const response = await this.request(`/campaigns/${id}/preview`);
+    return campaignPreviewResponseSchema.parse(await response.json());
+  }
+
+  async validateCampaign(id: string): Promise<CampaignValidationResponse> {
+    const response = await this.request(`/campaigns/${id}/validation`);
+    return campaignValidationResponseSchema.parse(await response.json());
+  }
+
+  async createCampaign(input: CreateCampaignRequest): Promise<CampaignDetailDto> {
+    const response = await this.request('/campaigns', { method: 'POST', body: JSON.stringify(input) });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async updateCampaignName(id: string, input: UpdateCampaignRequest): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async archiveCampaign(id: string): Promise<void> {
+    await this.request(`/campaigns/${id}/archive`, { method: 'POST' });
+  }
+
+  async updateCampaignContent(id: string, input: UpdateCampaignVersionRequest): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/content`, { method: 'PATCH', body: JSON.stringify(input) });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async createCampaignAsset(id: string, input: CreateCampaignAssetRequest): Promise<{ id: string }> {
+    const response = await this.request(`/campaigns/${id}/assets`, { method: 'POST', body: JSON.stringify(input) });
+    return (await response.json()) as { id: string };
+  }
+
+  async addCampaignAudience(id: string, input: AddCampaignAudienceRequest): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/audiences`, { method: 'POST', body: JSON.stringify(input) });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async updateCampaignAudience(id: string, audienceGroupId: string, input: UpdateCampaignAudienceRequest): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/audiences/${audienceGroupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async removeCampaignAudience(id: string, audienceGroupId: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/audiences/${audienceGroupId}`, { method: 'DELETE' });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async setCampaignChannelText(id: string, input: SetCampaignChannelTextRequest): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/channel-text`, { method: 'POST', body: JSON.stringify(input) });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async removeCampaignChannelText(id: string, channel: CommunicationChannel): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/channel-text/${channel}`, { method: 'DELETE' });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async submitCampaignForApproval(id: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/submit`, { method: 'POST' });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async approveCampaign(id: string, comment?: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/approve`, { method: 'POST', body: JSON.stringify({ comment }) });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async rejectCampaign(id: string, comment?: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async reviseCampaign(id: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/revise`, { method: 'POST' });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async scheduleCampaign(id: string, scheduledFor: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify({ scheduledFor }),
+    });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async sendCampaignNow(id: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/send-now`, { method: 'POST' });
+    return campaignDetailSchema.parse(await response.json());
+  }
+
+  async cancelCampaign(id: string): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/cancel`, { method: 'POST' });
+    return campaignDetailSchema.parse(await response.json());
   }
 }

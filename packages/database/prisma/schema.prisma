@@ -46,6 +46,7 @@ model Ward {
   households                Household[]
   audienceGroups            AudienceGroup[]
   communicationDestinations CommunicationDestination[]
+  campaigns                 Campaign[]
   auditEvents               AuditEvent[]
 
   @@map("ward")
@@ -130,12 +131,16 @@ model ApplicationUser {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   archivedAt          DateTime? @map("archived_at")
 
-  ward                 Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
-  roles                UserRole[]
-  sessions             UserSession[]
-  auditEvents          AuditEvent[]
-  recordedConsents     ContactConsent[]
-  addedAudienceMembers AudienceGroupMember[]
+  ward                    Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  roles                   UserRole[]
+  sessions                UserSession[]
+  auditEvents             AuditEvent[]
+  recordedConsents        ContactConsent[]
+  addedAudienceMembers    AudienceGroupMember[]
+  createdCampaigns        Campaign[]            @relation("CampaignCreatedBy")
+  createdCampaignVersions CampaignVersion[]     @relation("CampaignVersionCreatedBy")
+  campaignApprovals       CampaignApproval[]    @relation("CampaignApprovalApprover")
+  campaignSchedules       CampaignSchedule[]    @relation("CampaignScheduleCreatedBy")
 
   @@unique([wardId, username])
   @@unique([wardId, email])
@@ -383,6 +388,7 @@ model AudienceGroup {
   ward         Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
   members      AudienceGroupMember[]
   destinations AudienceDestination[]
+  campaignUses CampaignAudience[]
 
   @@unique([wardId, name])
   @@index([wardId, archivedAt])
@@ -427,6 +433,7 @@ model CommunicationDestination {
 
   ward          Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
   audienceLinks AudienceDestination[]
+  campaignUses  CampaignDestination[]
 
   @@unique([wardId, name])
   @@index([wardId, channel])
@@ -446,6 +453,182 @@ model AudienceDestination {
   @@unique([audienceGroupId, destinationId])
   @@index([destinationId])
   @@map("audience_destination")
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns (Phase 7 — drafting only; no real provider sending yet)
+// ---------------------------------------------------------------------------
+
+/// A communication campaign container. All actual content (message, image,
+/// per-channel and per-audience overrides) lives on `CampaignVersion` and
+/// its children so that a campaign's history across edits/rejections stays
+/// reconstructable — `Campaign` itself only tracks identity and lifecycle
+/// status. See `packages/domain/src/campaigns/campaign-status.ts` for the
+/// allowed status transitions.
+model Campaign {
+  id              String         @id @default(uuid())
+  wardId          String         @map("ward_id")
+  name            String
+  status          CampaignStatus @default(Draft)
+  createdByUserId String?        @map("created_by_user_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  archivedAt      DateTime?      @map("archived_at")
+
+  ward      Ward               @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  createdBy ApplicationUser?   @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  versions  CampaignVersion[]
+  assets    CampaignAsset[]
+  approvals CampaignApproval[]
+  schedules CampaignSchedule[]
+
+  @@index([wardId, status])
+  @@index([wardId, archivedAt])
+  @@map("campaign")
+}
+
+/// A single edit-history snapshot of a campaign's content. The version with
+/// the highest `versionNumber` for a campaign is the current one. A new
+/// version is created (rather than mutating an existing one) once a version
+/// has ever been submitted for approval, so approvers and audit history
+/// always see exactly what was reviewed — see docs/campaigns.md
+/// ("audience version independence").
+model CampaignVersion {
+  id               String   @id @default(uuid())
+  campaignId       String   @map("campaign_id")
+  versionNumber    Int      @map("version_number")
+  baseMessage      String?  @map("base_message")
+  baseImageAssetId String?  @map("base_image_asset_id")
+  createdByUserId  String?  @map("created_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  campaign        Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  baseImageAsset  CampaignAsset?           @relation("CampaignVersionBaseImage", fields: [baseImageAssetId], references: [id], onDelete: SetNull)
+  createdBy       ApplicationUser?         @relation("CampaignVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  channelVersions CampaignChannelVersion[]
+  audiences       CampaignAudience[]
+  destinations    CampaignDestination[]
+  approvals       CampaignApproval[]
+
+  @@unique([campaignId, versionNumber])
+  @@map("campaign_version")
+}
+
+/// A per-channel text override for a campaign version (e.g. a shorter SMS
+/// variant of the base message). Falls back to `CampaignVersion.baseMessage`
+/// when no row exists for a channel.
+model CampaignChannelVersion {
+  id                String               @id @default(uuid())
+  campaignVersionId String               @map("campaign_version_id")
+  channel           CommunicationChannel
+  text              String
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  campaignVersion CampaignVersion @relation(fields: [campaignVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignVersionId, channel])
+  @@map("campaign_channel_version")
+}
+
+/// An image (or other media) uploaded for use in a campaign. Only a
+/// storage reference is kept here — actual file storage is a Phase 9+
+/// concern (see .cursor/rules/architecture.mdc: "use adapters for ...
+/// storage"). `altText` is required so every campaign image ships with
+/// useful alt text (.cursor/rules/ui.mdc).
+model CampaignAsset {
+  id               String   @id @default(uuid())
+  campaignId       String   @map("campaign_id")
+  storageReference String   @map("storage_reference")
+  contentType      String   @map("content_type")
+  altText          String   @map("alt_text")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  campaign               Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  usedAsBaseImageIn      CampaignVersion[]  @relation("CampaignVersionBaseImage")
+  usedAsAudienceOverride CampaignAudience[] @relation("CampaignAudienceOverrideImage")
+
+  @@index([campaignId])
+  @@map("campaign_asset")
+}
+
+/// One of the audiences selected for a specific campaign version, with
+/// optional audience-specific text/image overrides. Scoped to
+/// `campaignVersionId` (not `campaignId`) so overrides never leak between
+/// versions — editing version 2 can never change what version 1's
+/// approvers saw.
+model CampaignAudience {
+  id                   String   @id @default(uuid())
+  campaignVersionId    String   @map("campaign_version_id")
+  audienceGroupId      String   @map("audience_group_id")
+  overrideText         String?  @map("override_text")
+  overrideImageAssetId String?  @map("override_image_asset_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  campaignVersion    CampaignVersion @relation(fields: [campaignVersionId], references: [id], onDelete: Cascade)
+  audienceGroup      AudienceGroup   @relation(fields: [audienceGroupId], references: [id], onDelete: Restrict)
+  overrideImageAsset CampaignAsset?  @relation("CampaignAudienceOverrideImage", fields: [overrideImageAssetId], references: [id], onDelete: SetNull)
+
+  @@unique([campaignVersionId, audienceGroupId])
+  @@index([audienceGroupId])
+  @@map("campaign_audience")
+}
+
+/// The communication destinations resolved for a campaign version (the
+/// deduplicated union of active destinations linked to its selected
+/// audiences at the time of resolution). Recomputed whenever the version's
+/// audience selection changes while still editable; frozen once submitted.
+model CampaignDestination {
+  id                String   @id @default(uuid())
+  campaignVersionId String   @map("campaign_version_id")
+  destinationId     String   @map("destination_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  campaignVersion CampaignVersion          @relation(fields: [campaignVersionId], references: [id], onDelete: Cascade)
+  destination     CommunicationDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+
+  @@unique([campaignVersionId, destinationId])
+  @@index([destinationId])
+  @@map("campaign_destination")
+}
+
+/// A single approve/reject decision on a submitted campaign version. Never
+/// updated after creation — a resubmission after rejection produces a new
+/// row, preserving the full approval history.
+model CampaignApproval {
+  id                String                   @id @default(uuid())
+  campaignId        String                   @map("campaign_id")
+  campaignVersionId String                   @map("campaign_version_id")
+  approverUserId    String?                  @map("approver_user_id")
+  decision          CampaignApprovalDecision
+  comment           String?
+  decidedAt         DateTime                 @default(now()) @map("decided_at")
+
+  campaign        Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignVersion CampaignVersion  @relation(fields: [campaignVersionId], references: [id], onDelete: Cascade)
+  approver        ApplicationUser? @relation("CampaignApprovalApprover", fields: [approverUserId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId])
+  @@map("campaign_approval")
+}
+
+/// A requested send time for an approved campaign. Phase 8's delivery
+/// engine reads unpicked-up, uncancelled schedules to trigger a send — no
+/// scheduler/trigger logic is implemented in Phase 7.
+model CampaignSchedule {
+  id              String    @id @default(uuid())
+  campaignId      String    @map("campaign_id")
+  scheduledFor    DateTime  @map("scheduled_for")
+  createdByUserId String?   @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  cancelledAt     DateTime? @map("cancelled_at")
+
+  campaign  Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdBy ApplicationUser? @relation("CampaignScheduleCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId])
+  @@map("campaign_schedule")
 }
 
 // ---------------------------------------------------------------------------
@@ -533,4 +716,23 @@ enum CommunicationChannel {
   Email
   Sms
   FacebookPage
+}
+
+/// Campaign lifecycle status. See
+/// `packages/domain/src/campaigns/campaign-status.ts` for the allowed
+/// transition graph — `Sent` and `Cancelled` are terminal.
+enum CampaignStatus {
+  Draft
+  PendingApproval
+  Approved
+  Rejected
+  Scheduled
+  Sending
+  Sent
+  Cancelled
+}
+
+enum CampaignApprovalDecision {
+  Approved
+  Rejected
 }

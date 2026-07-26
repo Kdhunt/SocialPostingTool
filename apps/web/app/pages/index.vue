@@ -49,6 +49,7 @@ onMounted(() => {
         <p>Signed in as <strong>{{ authState.user.displayName }}</strong>.</p>
         <p><NuxtLink to="/directory">Go to directory</NuxtLink></p>
         <p><NuxtLink to="/audiences">Go to audiences</NuxtLink></p>
+        <p><NuxtLink to="/campaigns">Go to campaigns</NuxtLink></p>
         <button type="button" @click="logout">Sign out</button>
       </template>
       <template v-else-if="authState.kind === 'anonymous'">

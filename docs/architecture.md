@@ -4,7 +4,7 @@
 
 Ward Communications Hub is a pnpm + Turborepo monorepo. It is a secure communications platform used by ward leaders to manage people, households, audience groups, campaigns, and multichannel communications (email, SMS, Facebook).
 
-This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), and audience groups (Phase 6, see `docs/audiences.md`). Campaigns, delivery, and provider integrations are introduced in later phases (see `phases/`).
+This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), audience groups (Phase 6, see `docs/audiences.md`), and campaign drafting (Phase 7, see `docs/campaigns.md`). Delivery and provider integrations are introduced in later phases (see `phases/`).
 
 ## Repository layout
 
@@ -64,6 +64,10 @@ Authorization is enforced with two composable guards: `SessionAuthGuard` establi
 ## `apps/api` module structure (Phase 6)
 
 - `audiences/` — audience groups and communication destinations: `AudienceGroupRepository`, `AudienceMemberRepository`, `AudienceDestinationRepository`, and `CommunicationDestinationRepository` handle data access only; `AudiencesService` applies the pure domain rules (safe-delete eligibility, duplicate-membership detection, cross-audience overlap deduplication for preview) and writes an `AuditEvent` for every mutation; `AudiencesController` (audience CRUD, membership, destination links, preview) and `DestinationsController` (destination CRUD) stay thin. See `docs/audiences.md` for the safe-delete rule, the overlap/duplicate-detection design, and why no organization name is ever hardcoded into this module.
+
+## `apps/api` module structure (Phase 7)
+
+- `campaigns/` — campaign drafting: `CampaignRepository`, `CampaignVersionRepository`, `CampaignAssetRepository`, `CampaignAudienceRepository`, `CampaignChannelVersionRepository`, `CampaignDestinationRepository`, `CampaignApprovalRepository`, and `CampaignScheduleRepository` handle data access only; `CampaignsService` applies the pure domain rules from `packages/domain/src/campaigns` (status-transition legality, submission validation, base/channel/audience content resolution, cross-audience overlap for preview) and writes an `AuditEvent` for every mutation; `campaigns/provider-simulator/CampaignProviderSimulatorService` is the only thing that stands in for a real Email/SMS/Facebook provider call in this phase; `CampaignsController` stays thin. See `docs/campaigns.md` for the versioning model, status transitions, and why the simulator boundary matters for Phase 8/9.
 
 ## Local development environment
 

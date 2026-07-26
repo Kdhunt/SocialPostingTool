@@ -14,17 +14,17 @@ export class PermissionsGuard implements CanActivate {
   constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredPermission = this.reflector.get<string | undefined>(REQUIRE_PERMISSION_KEY, context.getHandler());
+    const requiredPermissions = this.reflector.get<string[] | undefined>(REQUIRE_PERMISSION_KEY, context.getHandler());
 
-    if (!requiredPermission) {
+    if (!requiredPermissions || requiredPermissions.length === 0) {
       return true;
     }
 
     const request = context.switchToHttp().getRequest<Request & AuthenticatedRequest>();
-    const hasPermission = request.authContext.user.permissions.includes(requiredPermission);
+    const hasPermission = requiredPermissions.some((permission) => request.authContext.user.permissions.includes(permission));
 
     if (!hasPermission) {
-      throw new ForbiddenException(`Missing required permission: ${requiredPermission}`);
+      throw new ForbiddenException(`Missing required permission: one of [${requiredPermissions.join(', ')}]`);
     }
 
     return true;

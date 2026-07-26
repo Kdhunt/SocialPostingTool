@@ -27,3 +27,6 @@ export * from './directory/contact-method-rules.js';
 export * from './audiences/membership-mode.js';
 export * from './audiences/overlap.js';
 export * from './audiences/safe-delete.js';
+export * from './campaigns/campaign-status.js';
+export * from './campaigns/campaign-submission-validation.js';
+export * from './campaigns/content-resolution.js';

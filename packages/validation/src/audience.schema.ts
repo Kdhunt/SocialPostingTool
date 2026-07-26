@@ -6,6 +6,7 @@ import { z } from 'zod';
 // its own names through these generic create/rename requests.
 
 export const communicationChannelSchema = z.enum(['Email', 'Sms', 'FacebookPage']);
+export type CommunicationChannel = z.infer<typeof communicationChannelSchema>;
 
 // --- Communication destinations ------------------------------------------------
 

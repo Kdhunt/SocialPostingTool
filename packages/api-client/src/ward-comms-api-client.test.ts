@@ -143,4 +143,77 @@ describe('WardCommsApiClient', () => {
     expect(url).toBe('http://localhost:3001/audiences/preview');
     expect(JSON.parse(init.body as string)).toEqual({ audienceGroupIds: ['a1', 'a2'] });
   });
+
+  it('builds a campaign search query string only from provided fields', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ campaigns: [] }), { status: 200 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    await client.searchCampaigns({ query: 'Fall', status: 'Draft' });
+
+    const [url] = fetchImpl.mock.calls[0] as [string];
+    expect(url).toBe('http://localhost:3001/campaigns?query=Fall&status=Draft');
+  });
+
+  it('creates a campaign with the given payload', async () => {
+    const campaign = {
+      id: 'c1',
+      name: 'Fictional Campaign',
+      status: 'Draft',
+      isActive: true,
+      currentVersion: {
+        id: 'cv1',
+        versionNumber: 1,
+        baseMessage: 'Hello ward!',
+        baseImageAssetId: null,
+        channelVersions: [],
+        audiences: [],
+        destinations: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      approvals: [],
+      schedules: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(campaign), { status: 200 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    const result = await client.createCampaign({ name: 'Fictional Campaign', baseMessage: 'Hello ward!' });
+
+    expect(result.id).toBe('c1');
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/campaigns');
+    expect(init.method).toBe('POST');
+  });
+
+  it('posts an approval decision with an optional comment', async () => {
+    const campaign = {
+      id: 'c1',
+      name: 'Fictional Campaign',
+      status: 'Approved',
+      isActive: true,
+      currentVersion: {
+        id: 'cv1',
+        versionNumber: 1,
+        baseMessage: 'Hello ward!',
+        baseImageAssetId: null,
+        channelVersions: [],
+        audiences: [],
+        destinations: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      approvals: [],
+      schedules: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(campaign), { status: 200 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    await client.approveCampaign('c1', 'Looks good');
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/campaigns/c1/approve');
+    expect(JSON.parse(init.body as string)).toEqual({ comment: 'Looks good' });
+  });
 });

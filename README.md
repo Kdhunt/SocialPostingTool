@@ -136,6 +136,26 @@ endpoints (all require an authenticated session plus `audiences.read` /
 No audience or destination name is ever hardcoded in business logic — a
 ward names its own audience groups through the "Create audience" screen.
 
+### Campaigns overview
+
+Once signed in, visit `http://localhost:3000/campaigns` (web). Key
+endpoints (all require an authenticated session plus `campaigns.create` /
+`campaigns.approve` / `campaigns.send`, see `docs/campaigns.md`):
+
+- `GET /campaigns?query=&status=&includeArchived=`, `GET /campaigns/:id`
+- `POST /campaigns`, `PATCH /campaigns/:id` (rename), `POST /campaigns/:id/archive`
+- `PATCH /campaigns/:id/content` (base message/image; only while `Draft`), `POST /campaigns/:id/assets`
+- `POST /campaigns/:id/audiences`, `PATCH .../audiences/:audienceGroupId`, `DELETE .../audiences/:audienceGroupId`
+- `POST /campaigns/:id/channel-text`, `DELETE /campaigns/:id/channel-text/:channel`
+- `GET /campaigns/:id/preview` — deduplicated recipient count and per-audience/per-channel resolved text
+- `GET /campaigns/:id/validation` — the same readiness check `submit` enforces
+- `POST /campaigns/:id/submit`, `POST /campaigns/:id/approve`, `POST /campaigns/:id/reject`, `POST /campaigns/:id/revise`
+- `POST /campaigns/:id/schedule`, `POST /campaigns/:id/send-now` (simulated — no real provider is ever called in this phase), `POST /campaigns/:id/cancel`
+
+Sending is always simulated locally via `CampaignProviderSimulatorService`
+— there is no real Email/SMS/Facebook integration until Phase 9, and no
+real delivery queue/retry/idempotency until Phase 8.
+
 ## Common scripts
 
 Run from the repository root; Turborepo fans these out across the workspace:

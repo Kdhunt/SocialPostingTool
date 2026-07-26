@@ -10,7 +10,9 @@ export type AudienceGroupWithDetails = AudienceGroup & {
   members: {
     person: { id: string; firstName: string; lastName: string; preferredName: string | null; dateOfBirth: Date | null; archivedAt: Date | null };
   }[];
-  destinations: { destination: { id: string; name: string; channel: string } }[];
+  destinations: {
+    destination: { id: string; name: string; channel: string; archivedAt: Date | null };
+  }[];
 };
 
 export interface AudienceGroupSearchOptions {
@@ -64,7 +66,7 @@ export class AudienceGroupRepository {
             },
           },
         },
-        destinations: { include: { destination: { select: { id: true, name: true, channel: true } } } },
+        destinations: { include: { destination: { select: { id: true, name: true, channel: true, archivedAt: true } } } },
       },
     });
   }
