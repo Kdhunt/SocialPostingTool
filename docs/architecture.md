@@ -4,7 +4,7 @@
 
 Ward Communications Hub is a pnpm + Turborepo monorepo. It is a secure communications platform used by ward leaders to manage people, households, audience groups, campaigns, and multichannel communications (email, SMS, Facebook).
 
-This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), and the directory (Phase 5, see `docs/directory.md`). Audience logic, campaigns, delivery, and provider integrations are introduced in later phases (see `phases/`).
+This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), and audience groups (Phase 6, see `docs/audiences.md`). Campaigns, delivery, and provider integrations are introduced in later phases (see `phases/`).
 
 ## Repository layout
 
@@ -60,6 +60,10 @@ Authorization is enforced with two composable guards: `SessionAuthGuard` establi
 ## `apps/api` module structure (Phase 5)
 
 - `directory/` — the ward directory: `PersonRepository`, `HouseholdRepository`, `ContactMethodRepository`, `RelationshipRepository`, and `HouseholdMembershipRepository` handle data access only; `DirectoryService` applies the pure domain rules (minor-data redaction, self-relationship checks, contact normalization, relationship-pair construction) and writes an `AuditEvent` for every mutation; `DirectoryController` stays thin, parsing/validating requests via `parseBody` and delegating everything else. See `docs/directory.md` for the family-structure rules (divorce, remarriage, guardianship, single-parent households) and the minor-data-restriction policy.
+
+## `apps/api` module structure (Phase 6)
+
+- `audiences/` — audience groups and communication destinations: `AudienceGroupRepository`, `AudienceMemberRepository`, `AudienceDestinationRepository`, and `CommunicationDestinationRepository` handle data access only; `AudiencesService` applies the pure domain rules (safe-delete eligibility, duplicate-membership detection, cross-audience overlap deduplication for preview) and writes an `AuditEvent` for every mutation; `AudiencesController` (audience CRUD, membership, destination links, preview) and `DestinationsController` (destination CRUD) stay thin. See `docs/audiences.md` for the safe-delete rule, the overlap/duplicate-detection design, and why no organization name is ever hardcoded into this module.
 
 ## Local development environment
 

@@ -29,6 +29,24 @@ import {
   type UpdateHouseholdRequest,
   type UpdatePersonRequest,
 } from '@ward-comms/validation';
+import {
+  audienceGroupDetailSchema,
+  audienceListResponseSchema,
+  audiencePreviewResponseSchema,
+  communicationDestinationSchema,
+  destinationListResponseSchema,
+  type AddAudienceDestinationRequest,
+  type AddAudienceMemberRequest,
+  type AudienceGroupDetailDto,
+  type AudienceListResponse,
+  type AudiencePreviewResponse,
+  type AudienceSearchQuery,
+  type CommunicationDestinationDto,
+  type CreateAudienceGroupRequest,
+  type CreateCommunicationDestinationRequest,
+  type DestinationListResponse,
+  type UpdateAudienceGroupRequest,
+} from '@ward-comms/validation';
 
 export interface WardCommsApiClientOptions {
   baseUrl: string;
@@ -266,5 +284,93 @@ export class WardCommsApiClient {
 
   async archiveHousehold(id: string): Promise<void> {
     await this.request(`/directory/households/${id}/archive`, { method: 'POST' });
+  }
+
+  // --- Audiences -----------------------------------------------------------------
+
+  async searchAudiences(query: AudienceSearchQuery = {}): Promise<AudienceListResponse> {
+    const params = new URLSearchParams();
+    if (query.query) params.set('query', query.query);
+    if (query.includeArchived !== undefined) params.set('includeArchived', String(query.includeArchived));
+    const search = params.toString();
+    const response = await this.request(`/audiences${search ? `?${search}` : ''}`);
+    return audienceListResponseSchema.parse(await response.json());
+  }
+
+  async getAudience(id: string): Promise<AudienceGroupDetailDto> {
+    const response = await this.request(`/audiences/${id}`);
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async createAudience(input: CreateAudienceGroupRequest): Promise<AudienceGroupDetailDto> {
+    const response = await this.request('/audiences', { method: 'POST', body: JSON.stringify(input) });
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async updateAudience(id: string, input: UpdateAudienceGroupRequest): Promise<AudienceGroupDetailDto> {
+    const response = await this.request(`/audiences/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async archiveAudience(id: string): Promise<void> {
+    await this.request(`/audiences/${id}/archive`, { method: 'POST' });
+  }
+
+  async restoreAudience(id: string): Promise<void> {
+    await this.request(`/audiences/${id}/restore`, { method: 'POST' });
+  }
+
+  async deleteAudience(id: string): Promise<void> {
+    await this.request(`/audiences/${id}`, { method: 'DELETE' });
+  }
+
+  async addAudienceMember(id: string, input: AddAudienceMemberRequest): Promise<AudienceGroupDetailDto> {
+    const response = await this.request(`/audiences/${id}/members`, { method: 'POST', body: JSON.stringify(input) });
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async removeAudienceMember(id: string, personId: string): Promise<AudienceGroupDetailDto> {
+    const response = await this.request(`/audiences/${id}/members/${personId}`, { method: 'DELETE' });
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async addAudienceDestination(id: string, input: AddAudienceDestinationRequest): Promise<AudienceGroupDetailDto> {
+    const response = await this.request(`/audiences/${id}/destinations`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async removeAudienceDestination(id: string, destinationId: string): Promise<AudienceGroupDetailDto> {
+    const response = await this.request(`/audiences/${id}/destinations/${destinationId}`, { method: 'DELETE' });
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async previewAudiences(audienceGroupIds: string[]): Promise<AudiencePreviewResponse> {
+    const response = await this.request('/audiences/preview', {
+      method: 'POST',
+      body: JSON.stringify({ audienceGroupIds }),
+    });
+    return audiencePreviewResponseSchema.parse(await response.json());
+  }
+
+  // --- Communication destinations --------------------------------------------------
+
+  async listDestinations(includeArchived = false): Promise<DestinationListResponse> {
+    const response = await this.request(`/communication-destinations?includeArchived=${String(includeArchived)}`);
+    return destinationListResponseSchema.parse(await response.json());
+  }
+
+  async createDestination(input: CreateCommunicationDestinationRequest): Promise<CommunicationDestinationDto> {
+    const response = await this.request('/communication-destinations', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return communicationDestinationSchema.parse(await response.json());
+  }
+
+  async archiveDestination(id: string): Promise<void> {
+    await this.request(`/communication-destinations/${id}/archive`, { method: 'POST' });
   }
 }

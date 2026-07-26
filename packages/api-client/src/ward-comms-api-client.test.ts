@@ -98,4 +98,49 @@ describe('WardCommsApiClient', () => {
     expect(url).toBe('http://localhost:3001/directory/people');
     expect(init.method).toBe('POST');
   });
+
+  it('builds an audience search query string only from provided fields', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ audiences: [] }), { status: 200 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    await client.searchAudiences({ query: 'Youth', includeArchived: true });
+
+    const [url] = fetchImpl.mock.calls[0] as [string];
+    expect(url).toBe('http://localhost:3001/audiences?query=Youth&includeArchived=true');
+  });
+
+  it('creates an audience group with the given payload', async () => {
+    const group = {
+      id: 'ag1',
+      name: 'Whatever the ward calls it',
+      description: null,
+      isActive: true,
+      members: [],
+      destinations: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(group), { status: 200 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    const result = await client.createAudience({ name: 'Whatever the ward calls it' });
+
+    expect(result.id).toBe('ag1');
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/audiences');
+    expect(init.method).toBe('POST');
+  });
+
+  it('posts a preview request with the given audience group ids', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ totalCount: 0, overlapCount: 0, members: [] }), { status: 200 }),
+    );
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    await client.previewAudiences(['a1', 'a2']);
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/audiences/preview');
+    expect(JSON.parse(init.body as string)).toEqual({ audienceGroupIds: ['a1', 'a2'] });
+  });
 });

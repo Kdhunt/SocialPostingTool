@@ -39,6 +39,7 @@ const permissions: PermissionSeed[] = [
     key: 'minors.contact.read',
     description: 'View contact information for minors. Restricted by design.',
   },
+  { key: 'audiences.read', description: 'View audience groups, their members, and destinations.' },
   { key: 'audiences.manage', description: 'Create, edit, and manage audience groups.' },
   { key: 'destinations.manage', description: 'Configure communication destinations.' },
   { key: 'campaigns.create', description: 'Draft and edit communication campaigns.' },
@@ -65,6 +66,7 @@ const roles: RoleSeed[] = [
     description: 'Manages audiences, destinations, and campaign sending.',
     permissionKeys: [
       'directory.read',
+      'audiences.read',
       'audiences.manage',
       'destinations.manage',
       'campaigns.create',
@@ -76,7 +78,7 @@ const roles: RoleSeed[] = [
   {
     name: 'Contributor',
     description: 'Maintains directory data and drafts campaigns for approval.',
-    permissionKeys: ['directory.read', 'directory.write', 'campaigns.create'],
+    permissionKeys: ['directory.read', 'directory.write', 'audiences.read', 'campaigns.create'],
   },
   {
     name: 'Viewer',

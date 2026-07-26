@@ -119,6 +119,23 @@ Date of birth and contact methods are withheld for minors unless the
 caller holds the `minors.contact.read` permission (see
 `docs/directory.md`).
 
+### Audiences overview
+
+Once signed in, visit `http://localhost:3000/audiences` (web). Key
+endpoints (all require an authenticated session plus `audiences.read` /
+`audiences.manage` / `destinations.manage`, see `docs/audiences.md`):
+
+- `GET /audiences?query=&includeArchived=`, `GET /audiences/:id`
+- `POST /audiences`, `PATCH /audiences/:id` (rename/edit description)
+- `POST /audiences/:id/archive` / `.../restore`, `DELETE /audiences/:id` (only succeeds when the audience has no members and no destinations)
+- `POST /audiences/:id/members`, `DELETE /audiences/:id/members/:personId`
+- `POST /audiences/:id/destinations`, `DELETE /audiences/:id/destinations/:destinationId`
+- `POST /audiences/preview` → `{ audienceGroupIds: string[] }`, returns deduplicated membership across the given audiences
+- `GET /communication-destinations?includeArchived=`, `POST /communication-destinations`, `POST /communication-destinations/:id/archive`
+
+No audience or destination name is ever hardcoded in business logic — a
+ward names its own audience groups through the "Create audience" screen.
+
 ## Common scripts
 
 Run from the repository root; Turborepo fans these out across the workspace:
