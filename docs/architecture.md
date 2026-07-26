@@ -4,7 +4,7 @@
 
 Ward Communications Hub is a pnpm + Turborepo monorepo. It is a secure communications platform used by ward leaders to manage people, households, audience groups, campaigns, and multichannel communications (email, SMS, Facebook).
 
-This document describes the repository-level architecture established in Phase 2 (Repository Foundation). Domain entities, authentication, audience logic, campaigns, and provider integrations are introduced in later phases (see `phases/`).
+This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`) and authentication (Phase 4, see `docs/threat-model-auth.md`). Audience logic, campaigns, delivery, and provider integrations are introduced in later phases (see `phases/`).
 
 ## Repository layout
 
@@ -47,6 +47,15 @@ Provider integrations (email, SMS, Facebook, storage, queues, AI) are implemente
 ## Dependency injection in apps/api
 
 `apps/api` runs under `tsx` (esbuild) for `dev`/`start` and is type-checked/emitted with `tsc` for `build`. esbuild does not emit the `design:paramtypes` metadata that NestJS's implicit constructor-type dependency injection relies on (`emitDecoratorMetadata`). To keep behavior identical between `tsx` and a real `tsc` build, every constructor-injected dependency in `apps/api` must use an explicit `@Inject(Token)` decorator rather than relying on implicit type reflection. See `apps/api/src/health/health.controller.ts` for the pattern.
+
+## `apps/api` module structure (Phase 4)
+
+- `prisma/` — `PrismaModule`/`PrismaService`, a global module wrapping `PrismaClient` with NestJS lifecycle hooks. This is the only place `@ward-comms/database`'s generated client is instantiated.
+- `audit/` — `AuditModule`/`AuditService`, a global module used to append `AuditEvent` rows. Any module recording a sensitive action depends on this rather than writing to the table directly.
+- `auth/` — authentication module: password/ward-code hashing adapters, repositories (`UserRepository`, `SessionRepository`, `WardCodeRepository`), `AuthService` (orchestration — the only place login/session business rules live outside `packages/domain`), `SessionAuthGuard` + `PermissionsGuard` for server-side authorization, and a thin `AuthController` that only parses/validates requests and calls `AuthService`.
+- `common/` — framework-agnostic utilities shared across modules (signed-token HMAC helper, opaque session-token hashing, Zod body-parsing helper), kept dependency-free of Nest decorators where possible so they stay easy to unit test.
+
+Authorization is enforced with two composable guards: `SessionAuthGuard` establishes *who* the caller is (cookie for web, `Authorization: Bearer` for mobile) and rejects unauthenticated/expired/revoked/disabled sessions; `PermissionsGuard` reads `@RequirePermission(...)` metadata and rejects callers whose role's permissions don't include the required one. Both run server-side on every route that opts in — the frontend's own view of permissions is never trusted for authorization decisions.
 
 ## Local development environment
 

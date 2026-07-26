@@ -1,1 +1,1 @@
-export { WardCommsApiClient, type WardCommsApiClientOptions } from './ward-comms-api-client.js';
+export { WardCommsApiClient, ApiRequestError, type WardCommsApiClientOptions } from './ward-comms-api-client.js';

@@ -18,3 +18,7 @@ export * from './age.js';
 export * from './relationship-rules.js';
 export * from './consent-rules.js';
 export * from './contact-normalization.js';
+export * from './auth/password-policy.js';
+export * from './auth/lockout-policy.js';
+export * from './auth/ward-code-policy.js';
+export * from './auth/session-policy.js';

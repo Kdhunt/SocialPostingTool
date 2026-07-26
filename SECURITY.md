@@ -33,6 +33,19 @@ Do not include real member data, credentials, or ward codes in a vulnerability r
 - Database schema changes are made only through Prisma migrations, never by hand-editing the database.
 - Docker Compose services (PostgreSQL, Redis) are for local development only; production configuration uses managed, access-controlled infrastructure.
 
+## Authentication (Phase 4)
+
+- Passwords are hashed with Argon2id via `@node-rs/argon2` (prebuilt native binding, no plaintext password ever persisted or logged).
+- The ward code is hashed **separately** from passwords, combined with a server-side pepper (`WARD_CODE_PEPPER`) before hashing, and stored in its own `ward_code_version` table so it can be rotated without touching user records.
+- The ward code must be re-verified on a device's first sign-in and again after every ward code rotation — enforced by a pure, unit-tested domain rule (`packages/domain/src/auth/ward-code-policy.ts`), not left to client behavior.
+- Web sessions use an HTTP-only, `SameSite=Lax` cookie (`Secure` in production); the raw session token is never placed in localStorage/sessionStorage and never readable by JavaScript.
+- Mobile clients use a short-lived (15 minute) stateless access token plus a longer-lived, rotating refresh token; refresh tokens rotate on every use so a stolen token has a bounded reuse window.
+- Only SHA-256 hashes of session/refresh tokens are stored server-side (`user_session` table); the raw values exist only transiently in the response that issues them.
+- Failed login attempts increment a persisted counter and trigger an exponential-backoff lockout after 5 consecutive failures; the attempted password itself is never recorded. A best-effort in-process rate limiter provides additional protection on the login and ward-code endpoints (see `docs/threat-model-auth.md` for the distributed-rate-limiting gap this leaves).
+- Every login attempt (success, failure, lockout, disabled-account block), ward code attempt, token refresh, logout, session revocation, and account enable/disable is written to the append-only `audit_event` table — never including the attempted password or ward code value.
+- Administrators can disable an account (`users.manage` permission, enforced server-side); disabling immediately revokes all of that account's active sessions.
+- See `docs/threat-model-auth.md` for the full threat model, mitigations, and explicitly documented known limitations.
+
 ## Scope
 
-This policy currently covers the repository foundation established in Phase 2 (monorepo tooling, health checks, environment validation). Authentication, ward code handling, audience logic, and provider integrations will extend this policy as they are implemented in later phases.
+This policy covers the repository foundation established in Phase 2 (monorepo tooling, health checks, environment validation) and the authentication/ward-code system established in Phase 4. Directory, audience, campaign, delivery, and provider-integration logic will extend this policy as they are implemented in later phases.

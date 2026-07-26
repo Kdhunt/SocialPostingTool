@@ -71,6 +71,34 @@ Once running:
 
 - API health check: `http://localhost:3001/health`
 - Web health page: `http://localhost:3000`
+- Web sign-in: `http://localhost:3000/login`
+
+### Creating a user to sign in with
+
+Phase 4 ships the authentication system but no user-management UI yet.
+Create a ward, a ward code, and a user directly against the database to try
+the login flow locally:
+
+```bash
+pnpm --filter @ward-comms/database db:seed   # seeds Role/Permission catalog only
+```
+
+Then use `pnpm --filter @ward-comms/database exec prisma studio` (or a short
+script using `@node-rs/argon2` to hash a password/ward code) to create a
+`Ward`, an `ApplicationUser` with an Argon2id `passwordHash`, and a
+`WardCodeVersion` with a peppered Argon2id `codeHash`. See
+`docs/threat-model-auth.md` and `apps/api/src/auth/auth.service.integration.spec.ts`
+for exact hashing calls.
+
+### Authentication overview
+
+- `POST /auth/login` → `{ username, password, clientType?: 'web'|'mobile' }`
+- `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (only when `/auth/login` responds `ward_code_required`)
+- `POST /auth/refresh` → `{ refreshToken }` (mobile only)
+- `POST /auth/logout`, `GET /auth/session`, `GET /auth/sessions`, `POST /auth/sessions/:id/revoke`
+- `POST /auth/users/:id/disable` / `.../enable` (requires the `users.manage` permission)
+
+See `docs/threat-model-auth.md` for the full threat model and known limitations.
 
 ## Common scripts
 
