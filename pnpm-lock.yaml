@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^9.9.0
         version: 9.39.5
+      '@playwright/test':
+        specifier: ^1.49.1
+        version: 1.62.0
       eslint:
         specifier: ^9.9.0
         version: 9.39.5(jiti@2.7.0)
@@ -190,13 +193,19 @@ importers:
     devDependencies:
       '@nuxt/test-utils':
         specifier: ^3.14.1
-        version: 3.23.0(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))
+        version: 3.23.0(@playwright/test@1.62.0)(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(playwright-core@1.62.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))
       typescript:
         specifier: ^5.5.4
         version: 5.9.3
       vitest:
         specifier: ^2.0.5
         version: 2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0)
+
+  apps/web-e2e:
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.49.1
+        version: 1.62.0
 
   apps/worker:
     dependencies:
@@ -218,6 +227,9 @@ importers:
       ioredis:
         specifier: ^5.4.1
         version: 5.11.1
+      nodemailer:
+        specifier: ^6.9.15
+        version: 6.10.1
       pino:
         specifier: ^9.4.0
         version: 9.14.0
@@ -225,6 +237,9 @@ importers:
       '@types/node':
         specifier: ^20.14.15
         version: 20.19.43
+      '@types/nodemailer':
+        specifier: ^6.4.16
+        version: 6.4.24
       tsx:
         specifier: ^4.19.0
         version: 4.23.1
@@ -267,6 +282,9 @@ importers:
         specifier: ^5.19.1
         version: 5.22.0(prisma@5.22.0)
     devDependencies:
+      '@node-rs/argon2':
+        specifier: ^2.0.0
+        version: 2.0.2
       prisma:
         specifier: ^5.19.1
         version: 5.22.0
@@ -1727,6 +1745,11 @@ packages:
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
 
+  '@playwright/test@1.62.0':
+    resolution: {integrity: sha512-9zOJ6ZQRAena31MpOH9VSzIz8Ou3YJ/wtY/eQm5T2uhfhG7/U3COrMS8xOtUrZrp9OgdmzEnIYODye3nY1VqzA==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
@@ -2197,6 +2220,9 @@ packages:
 
   '@types/node@20.19.43':
     resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
+
+  '@types/nodemailer@6.4.24':
+    resolution: {integrity: sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==}
 
   '@types/qs@6.15.1':
     resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
@@ -3435,6 +3461,11 @@ packages:
   fs.realpath@1.0.0:
     resolution: {integrity: sha512-OO0pH2lK6a0hZnAdau5ItzHPI6pUlvI7jMVnxUQRtw4owF2wk8lOSabtGDCTP4Ggrg2MbGnWO9X8K1t4+fGMDw==}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -4190,6 +4221,10 @@ packages:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
     engines: {node: '>=18'}
 
+  nodemailer@6.10.1:
+    resolution: {integrity: sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==}
+    engines: {node: '>=6.0.0'}
+
   nopt@7.2.1:
     resolution: {integrity: sha512-taM24ViiimT/XntxbPyJQzCG+p4EKOpgD3mxFwW38mGjVUrfERQOeY4EDHjdnptttfHuHQXFx+lTP08Q+mLa/w==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
@@ -4401,6 +4436,16 @@ packages:
 
   pkg-types@2.3.1:
     resolution: {integrity: sha512-y+ichcgc2LrADuhLNAx8DFjVfgz91pRxfZdI3UDhxHvcVEZsenLO+7XaU5vOp0u/7V/wZ+plyuQxtrDlZJ+yeg==}
+
+  playwright-core@1.62.0:
+    resolution: {integrity: sha512-nsNRyq0r2zsG8AcRHWknc9QRA5XCueC7gWMrs+Gx2tlZn9hcl8zudfh00lhJPY1DE7NmZ6bDsT9g2yey8mXljA==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.62.0:
+    resolution: {integrity: sha512-Z14dG305dgaLu6foB1TXQagFiW8JfSUIUaUuPaKQ6NtBPKF1P/qXcqfh6c6K/icPqdy37JmjbiBXf6JNg6Sylw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
@@ -6896,7 +6941,7 @@ snapshots:
       rc9: 3.0.1
       std-env: 4.2.0
 
-  '@nuxt/test-utils@3.23.0(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))':
+  '@nuxt/test-utils@3.23.0(@playwright/test@1.62.0)(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(playwright-core@1.62.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))':
     dependencies:
       '@clack/prompts': 1.0.0-alpha.9
       '@nuxt/kit': 3.21.9(magicast@0.5.3)
@@ -6924,11 +6969,13 @@ snapshots:
       tinyexec: 1.2.4
       ufo: 1.6.4
       unplugin: 2.3.11
-      vitest-environment-nuxt: 1.0.1(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))
+      vitest-environment-nuxt: 1.0.1(@playwright/test@1.62.0)(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(playwright-core@1.62.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))
       vue: 3.5.40(typescript@5.9.3)
     optionalDependencies:
+      '@playwright/test': 1.62.0
       '@vue/test-utils': 2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3))
       jsdom: 25.0.1
+      playwright-core: 1.62.0
       vitest: 2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0)
     transitivePeerDependencies:
       - crossws
@@ -7166,6 +7213,10 @@ snapshots:
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
+
+  '@playwright/test@1.62.0':
+    dependencies:
+      playwright: 1.62.0
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -7521,6 +7572,10 @@ snapshots:
   '@types/node@20.19.43':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/nodemailer@6.4.24':
+    dependencies:
+      '@types/node': 20.19.43
 
   '@types/qs@6.15.1': {}
 
@@ -8967,6 +9022,9 @@ snapshots:
 
   fs.realpath@1.0.0: {}
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -9785,6 +9843,8 @@ snapshots:
 
   node-releases@2.0.51: {}
 
+  nodemailer@6.10.1: {}
+
   nopt@7.2.1:
     dependencies:
       abbrev: 2.0.0
@@ -10168,6 +10228,14 @@ snapshots:
       confbox: 0.2.4
       exsolve: 1.1.0
       pathe: 2.0.3
+
+  playwright-core@1.62.0: {}
+
+  playwright@1.62.0:
+    dependencies:
+      playwright-core: 1.62.0
+    optionalDependencies:
+      fsevents: 2.3.2
 
   plist@3.1.1:
     dependencies:
@@ -11331,9 +11399,9 @@ snapshots:
       tsx: 4.23.1
       yaml: 2.9.0
 
-  vitest-environment-nuxt@1.0.1(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0)):
+  vitest-environment-nuxt@1.0.1(@playwright/test@1.62.0)(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(playwright-core@1.62.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0)):
     dependencies:
-      '@nuxt/test-utils': 3.23.0(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))
+      '@nuxt/test-utils': 3.23.0(@playwright/test@1.62.0)(@vue/test-utils@2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3)))(crossws@0.4.10(srvx@0.11.22))(jsdom@25.0.1)(magicast@0.5.3)(playwright-core@1.62.0)(typescript@5.9.3)(vitest@2.1.9(@types/node@20.19.43)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.49.0))
     transitivePeerDependencies:
       - '@cucumber/cucumber'
       - '@jest/globals'
