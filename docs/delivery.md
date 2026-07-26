@@ -1,8 +1,9 @@
-# Delivery engine (Phase 8)
+# Delivery engine (Phase 8 + post-phase)
 
 The delivery engine expands an approved campaign version into concrete
 recipients, enqueues one BullMQ job per recipient, and processes each job
-through simulated provider adapters (email, SMS, Facebook Page).
+through Email/SMS/Facebook Page adapters (simulated, credentialed-simulated,
+or live depending on `PROVIDER_MODE`).
 
 ## Behavior
 
@@ -21,6 +22,10 @@ through simulated provider adapters (email, SMS, Facebook Page).
   dead-lettered.
 - **Audit** — `delivery.batch.started`, `delivery.recipient.sent`,
   `delivery.recipient.dead_lettered`, plus campaign status changes.
+- **Scheduled sends** — the worker polls `CampaignSchedule` rows where
+  `scheduledFor <= now`, `cancelledAt` is null, and the campaign status
+  is `Scheduled`, then starts delivery through the same idempotent batch
+  path as `send-now`. Interval: `SCHEDULE_POLL_INTERVAL_MS` (default 60s).
 
 ## API
 
@@ -35,10 +40,12 @@ Requires `campaigns.send` (start) or `campaigns.send` /
 ## Running locally
 
 1. PostgreSQL + Redis via `docker compose up -d`
-2. Apply migrations, start API and worker:
+2. Apply migrations, seed, start API and worker:
 
 ```bash
 pnpm --filter @ward-comms/database db:migrate
+pnpm --filter @ward-comms/database db:seed
+pnpm --filter @ward-comms/database db:seed:dev
 pnpm --filter @ward-comms/api dev
 pnpm --filter @ward-comms/worker dev
 ```
@@ -56,9 +63,6 @@ pnpm --filter @ward-comms/worker dev
 
 ## Known gaps
 
-- `CampaignSchedule` is stored but not auto-polled; an operator must
-  call send-now after `scheduledFor`.
 - When a person belongs to multiple overlapping audiences with different
   overrides, the first contributing audience (stable merge order) wins
   for content resolution.
-- Provider adapters are simulated only — real SDKs arrive in Phase 9.

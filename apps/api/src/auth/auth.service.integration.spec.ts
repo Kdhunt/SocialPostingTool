@@ -30,7 +30,7 @@ function fakeConfig(): AppConfig {
     wardTimeZone: 'America/Denver',
     api: { host: '0.0.0.0', port: 3001, url: 'http://localhost:3001' },
     web: { port: 3000, url: 'http://localhost:3000' },
-    worker: { healthPort: 3002 },
+    worker: { healthPort: 3002, schedulePollIntervalMs: 60_000 },
     databaseUrl: process.env.DATABASE_URL ?? '',
     redisUrl: 'redis://localhost:6379',
     session: { secret: 'a'.repeat(32), refreshTokenSecret: 'b'.repeat(32) },

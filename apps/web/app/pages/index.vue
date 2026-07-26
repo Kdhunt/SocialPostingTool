@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'authenticated' });
 import { ref, onMounted } from 'vue';
 import { useRuntimeConfig } from '#imports';
 import { WardCommsApiClient } from '@ward-comms/api-client';

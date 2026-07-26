@@ -4,20 +4,23 @@ import type {
   FacebookPageSendRequest,
   ProviderSendResult,
 } from '@ward-comms/domain';
-import {
-  parseFacebookPageCredentials,
-  resolveCredentialPlaintext,
-} from '../credentials/resolve-credentials.js';
+import { resolveCredentialPlaintext } from '../credentials/resolve-credentials.js';
 import type { ProviderCredentialLookup } from '../credentials/types.js';
+import {
+  LiveFacebookPageProviderAdapter,
+  parseFacebookGraphCredentials,
+} from './live-facebook-page.adapter.js';
 import { SimulatedFacebookPageProviderAdapter } from './simulated-facebook-page.adapter.js';
 
 export class CredentialedFacebookPageProviderAdapter implements FacebookPageProviderAdapter {
-  private readonly inner = new SimulatedFacebookPageProviderAdapter();
+  private readonly simulated = new SimulatedFacebookPageProviderAdapter();
+  private readonly live = new LiveFacebookPageProviderAdapter();
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly lookup: ProviderCredentialLookup,
     private readonly encryptionKey: string,
+    private readonly useLiveProviders: boolean,
   ) {}
 
   async post(request: FacebookPageSendRequest): Promise<ProviderSendResult> {
@@ -57,7 +60,18 @@ export class CredentialedFacebookPageProviderAdapter implements FacebookPageProv
       return { success: false, errorCode: resolved.errorCode, errorMessage: resolved.errorMessage };
     }
 
-    parseFacebookPageCredentials(resolved.plaintext);
-    return this.inner.post(request);
+    try {
+      const credentials = parseFacebookGraphCredentials(resolved.plaintext);
+      if (this.useLiveProviders) {
+        return this.live.post(request, credentials);
+      }
+      return this.simulated.post(request);
+    } catch (error) {
+      return {
+        success: false,
+        errorCode: 'unauthorized',
+        errorMessage: error instanceof Error ? error.message : 'Invalid Facebook credentials.',
+      };
+    }
   }
 }

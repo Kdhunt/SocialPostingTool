@@ -1,24 +1,25 @@
 import type { PrismaClient } from '@ward-comms/database';
 import type { EmailProviderAdapter, EmailSendRequest, ProviderSendResult } from '@ward-comms/domain';
-import { parseEmailCredentials, resolveCredentialPlaintext } from '../credentials/resolve-credentials.js';
+import { resolveCredentialPlaintext } from '../credentials/resolve-credentials.js';
 import type { ProviderCredentialLookup } from '../credentials/types.js';
+import { LiveEmailProviderAdapter, parseLiveEmailCredentials } from './live-email.adapter.js';
 import { SimulatedEmailProviderAdapter } from './simulated-email.adapter.js';
 
 /**
  * Credential-gated email adapter. Loads encrypted credentials for the
  * destination's providerAccountReference, refuses expired/missing
- * credentials with permanent error codes, then delegates the actual send
- * to the simulated (dev) or future SDK-backed inner adapter. No provider
- * SDK is imported here — Phase 9 keeps SDKs out of domain and behind this
- * adapter boundary.
+ * credentials with permanent error codes, then delegates to simulated
+ * (credentialed mode) or live SendGrid/SMTP (live mode).
  */
 export class CredentialedEmailProviderAdapter implements EmailProviderAdapter {
-  private readonly inner = new SimulatedEmailProviderAdapter();
+  private readonly simulated = new SimulatedEmailProviderAdapter();
+  private readonly live = new LiveEmailProviderAdapter();
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly lookup: ProviderCredentialLookup,
     private readonly encryptionKey: string,
+    private readonly useLiveProviders: boolean,
   ) {}
 
   async send(request: EmailSendRequest): Promise<ProviderSendResult> {
@@ -51,8 +52,18 @@ export class CredentialedEmailProviderAdapter implements EmailProviderAdapter {
       return { success: false, errorCode: resolved.errorCode, errorMessage: resolved.errorMessage };
     }
 
-    // Touch parsed credentials so misconfigured JSON fails closed before send.
-    parseEmailCredentials(resolved.plaintext);
-    return this.inner.send(request);
+    try {
+      const credentials = parseLiveEmailCredentials(resolved.plaintext);
+      if (this.useLiveProviders) {
+        return this.live.send(request, credentials);
+      }
+      return this.simulated.send(request);
+    } catch (error) {
+      return {
+        success: false,
+        errorCode: 'unauthorized',
+        errorMessage: error instanceof Error ? error.message : 'Invalid email credentials.',
+      };
+    }
   }
 }

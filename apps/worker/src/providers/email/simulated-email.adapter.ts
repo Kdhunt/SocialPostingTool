@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { EmailProviderAdapter, EmailSendRequest, ProviderSendResult } from '@ward-comms/domain';
+import { appendEmailFooter } from '../communication-footer.js';
 
 /**
  * Simulated Email adapter (no SDK). Magic recipient addresses drive
@@ -7,6 +8,7 @@ import type { EmailProviderAdapter, EmailSendRequest, ProviderSendResult } from 
  */
 export class SimulatedEmailProviderAdapter implements EmailProviderAdapter {
   async send(request: EmailSendRequest): Promise<ProviderSendResult> {
+    const body = appendEmailFooter(request.body);
     if (request.toAddress.includes('simulate-permanent-failure')) {
       return {
         success: false,
@@ -28,6 +30,7 @@ export class SimulatedEmailProviderAdapter implements EmailProviderAdapter {
         errorMessage: 'Simulated transient failure: provider timed out.',
       };
     }
+    void body;
     return { success: true, providerMessageId: `sim-email-${randomUUID()}` };
   }
 }

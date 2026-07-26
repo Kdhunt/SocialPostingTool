@@ -31,4 +31,9 @@ describe('validatePasswordStrength', () => {
     expect(result.valid).toBe(false);
     expect(result.errors.some((error) => error.includes('too common'))).toBe(true);
   });
+
+  it('accepts the fictional dev seed password', () => {
+    const result = validatePasswordStrength('ChangeMeNow!23');
+    expect(result.valid).toBe(true);
+  });
 });

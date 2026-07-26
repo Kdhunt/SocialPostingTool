@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'authenticated' });
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
 import { ApiRequestError } from '@ward-comms/api-client';

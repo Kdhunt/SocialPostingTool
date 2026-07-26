@@ -75,4 +75,75 @@ export class UserRepository {
     }
     return [...keys];
   }
+
+  async listForWard(wardId: string): Promise<
+    Array<{
+      id: string;
+      username: string;
+      displayName: string;
+      disabledAt: Date | null;
+      lastLoginAt: Date | null;
+      roles: Array<{ id: string; name: string }>;
+    }>
+  > {
+    const users = await this.prisma.client.applicationUser.findMany({
+      where: { wardId, archivedAt: null },
+      orderBy: { username: 'asc' },
+      include: { roles: { include: { role: true } } },
+    });
+    return users.map((user) => ({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      disabledAt: user.disabledAt,
+      lastLoginAt: user.lastLoginAt,
+      roles: user.roles.map((userRole) => ({ id: userRole.role.id, name: userRole.role.name })),
+    }));
+  }
+
+  async findByIdForWard(wardId: string, userId: string): Promise<ApplicationUser | null> {
+    return this.prisma.client.applicationUser.findFirst({
+      where: { id: userId, wardId, archivedAt: null },
+    });
+  }
+
+  async create(input: {
+    wardId: string;
+    username: string;
+    displayName: string;
+    passwordHash: string;
+    roleIds: string[];
+  }): Promise<ApplicationUser> {
+    return this.prisma.client.$transaction(async (tx) => {
+      const user = await tx.applicationUser.create({
+        data: {
+          wardId: input.wardId,
+          username: input.username,
+          displayName: input.displayName,
+          passwordHash: input.passwordHash,
+          passwordUpdatedAt: new Date(),
+        },
+      });
+      await tx.userRole.createMany({
+        data: input.roleIds.map((roleId) => ({ userId: user.id, roleId })),
+      });
+      return user;
+    });
+  }
+
+  async assignRoles(userId: string, roleIds: string[]): Promise<void> {
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { userId } });
+      await tx.userRole.createMany({
+        data: roleIds.map((roleId) => ({ userId, roleId })),
+      });
+    });
+  }
+
+  async isUsernameTaken(wardId: string, username: string): Promise<boolean> {
+    const existing = await this.prisma.client.applicationUser.findFirst({
+      where: { wardId, username, archivedAt: null },
+    });
+    return existing !== null;
+  }
 }

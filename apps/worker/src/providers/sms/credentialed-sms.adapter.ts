@@ -1,16 +1,19 @@
 import type { PrismaClient } from '@ward-comms/database';
 import type { ProviderSendResult, SmsProviderAdapter, SmsSendRequest } from '@ward-comms/domain';
-import { parseSmsCredentials, resolveCredentialPlaintext } from '../credentials/resolve-credentials.js';
+import { resolveCredentialPlaintext } from '../credentials/resolve-credentials.js';
 import type { ProviderCredentialLookup } from '../credentials/types.js';
+import { LiveSmsProviderAdapter, parseTwilioSmsCredentials } from './live-sms.adapter.js';
 import { SimulatedSmsProviderAdapter } from './simulated-sms.adapter.js';
 
 export class CredentialedSmsProviderAdapter implements SmsProviderAdapter {
-  private readonly inner = new SimulatedSmsProviderAdapter();
+  private readonly simulated = new SimulatedSmsProviderAdapter();
+  private readonly live = new LiveSmsProviderAdapter();
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly lookup: ProviderCredentialLookup,
     private readonly encryptionKey: string,
+    private readonly useLiveProviders: boolean,
   ) {}
 
   async send(request: SmsSendRequest): Promise<ProviderSendResult> {
@@ -43,7 +46,18 @@ export class CredentialedSmsProviderAdapter implements SmsProviderAdapter {
       return { success: false, errorCode: resolved.errorCode, errorMessage: resolved.errorMessage };
     }
 
-    parseSmsCredentials(resolved.plaintext);
-    return this.inner.send(request);
+    try {
+      const credentials = parseTwilioSmsCredentials(resolved.plaintext);
+      if (this.useLiveProviders) {
+        return this.live.send(request, credentials);
+      }
+      return this.simulated.send(request);
+    } catch (error) {
+      return {
+        success: false,
+        errorCode: 'unauthorized',
+        errorMessage: error instanceof Error ? error.message : 'Invalid SMS credentials.',
+      };
+    }
   }
 }

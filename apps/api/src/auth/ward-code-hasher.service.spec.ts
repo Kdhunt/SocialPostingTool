@@ -9,7 +9,7 @@ function fakeConfig(pepper: string): AppConfig {
     wardTimeZone: 'America/Denver',
     api: { host: '0.0.0.0', port: 3001, url: 'http://localhost:3001' },
     web: { port: 3000, url: 'http://localhost:3000' },
-    worker: { healthPort: 3002 },
+    worker: { healthPort: 3002, schedulePollIntervalMs: 60_000 },
     databaseUrl: 'postgresql://user:pass@localhost:5432/db',
     redisUrl: 'redis://localhost:6379',
     session: { secret: 'a'.repeat(32), refreshTokenSecret: 'b'.repeat(32) },

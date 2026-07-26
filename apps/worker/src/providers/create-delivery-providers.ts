@@ -38,7 +38,7 @@ export class PrismaProviderCredentialLookup implements ProviderCredentialLookup 
 }
 
 export interface CreateDeliveryProvidersOptions {
-  mode: 'simulated' | 'credentialed';
+  mode: 'simulated' | 'credentialed' | 'live';
   prisma: PrismaClient;
   encryptionKey: string;
 }
@@ -57,13 +57,25 @@ export function createDeliveryProviders(options: CreateDeliveryProvidersOptions)
   }
 
   const lookup = new PrismaProviderCredentialLookup(options.prisma);
+  const useLiveProviders = options.mode === 'live';
   return {
-    email: new CredentialedEmailProviderAdapter(options.prisma, lookup, options.encryptionKey),
-    sms: new CredentialedSmsProviderAdapter(options.prisma, lookup, options.encryptionKey),
+    email: new CredentialedEmailProviderAdapter(
+      options.prisma,
+      lookup,
+      options.encryptionKey,
+      useLiveProviders,
+    ),
+    sms: new CredentialedSmsProviderAdapter(
+      options.prisma,
+      lookup,
+      options.encryptionKey,
+      useLiveProviders,
+    ),
     facebookPage: new CredentialedFacebookPageProviderAdapter(
       options.prisma,
       lookup,
       options.encryptionKey,
+      useLiveProviders,
     ),
   };
 }

@@ -22,7 +22,7 @@ describe('CredentialedEmailProviderAdapter', () => {
       },
     } as never;
 
-    const adapter = new CredentialedEmailProviderAdapter(prisma, lookup, 'a'.repeat(32));
+    const adapter = new CredentialedEmailProviderAdapter(prisma, lookup, 'a'.repeat(32), false);
     const result = await adapter.send({
       destinationId: 'dest-1',
       toAddress: 'ok@example.test',
@@ -60,7 +60,7 @@ describe('CredentialedEmailProviderAdapter', () => {
       },
     } as never;
 
-    const adapter = new CredentialedEmailProviderAdapter(prisma, lookup, 'a'.repeat(32));
+    const adapter = new CredentialedEmailProviderAdapter(prisma, lookup, 'a'.repeat(32), false);
     const result = await adapter.send({
       destinationId: 'dest-1',
       toAddress: 'ok@example.test',
@@ -98,7 +98,7 @@ describe('CredentialedEmailProviderAdapter', () => {
       },
     } as never;
 
-    const adapter = new CredentialedEmailProviderAdapter(prisma, lookup, 'a'.repeat(32));
+    const adapter = new CredentialedEmailProviderAdapter(prisma, lookup, 'a'.repeat(32), false);
     const result = await adapter.send({
       destinationId: 'dest-1',
       toAddress: 'ok@example.test',

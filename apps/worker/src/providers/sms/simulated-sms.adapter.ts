@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { ProviderSendResult, SmsProviderAdapter, SmsSendRequest } from '@ward-comms/domain';
+import { appendSmsFooter } from '../communication-footer.js';
 
 export class SimulatedSmsProviderAdapter implements SmsProviderAdapter {
   async send(request: SmsSendRequest): Promise<ProviderSendResult> {
+    const body = appendSmsFooter(request.body);
     if (request.toPhoneNumber.includes('555-0100')) {
       return {
         success: false,
@@ -17,6 +19,7 @@ export class SimulatedSmsProviderAdapter implements SmsProviderAdapter {
         errorMessage: 'Simulated transient failure: provider rate limited.',
       };
     }
+    void body;
     return { success: true, providerMessageId: `sim-sms-${randomUUID()}` };
   }
 }

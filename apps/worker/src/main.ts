@@ -6,6 +6,7 @@ import { createHealthQueue, createHealthWorker } from './health-queue.js';
 import { createHealthServer } from './health-server.js';
 import { createDeliveryQueue, createDeliveryWorker } from './delivery/delivery-queue.js';
 import { createDeliveryProviders } from './providers/create-delivery-providers.js';
+import { startSchedulePoller } from './schedule/process-due-schedules.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -38,13 +39,23 @@ async function bootstrap(): Promise<void> {
     logger.error({ jobId: job?.id, error: error.message }, 'Delivery job threw unexpectedly');
   });
 
+  const schedulePoller = startSchedulePoller(
+    { prisma, deliveryQueue },
+    config.worker.schedulePollIntervalMs,
+  );
+
   logger.info(
-    { port: config.worker.healthPort, providerMode: config.providerMode },
+    {
+      port: config.worker.healthPort,
+      providerMode: config.providerMode,
+      schedulePollIntervalMs: config.worker.schedulePollIntervalMs,
+    },
     'Ward Communications Hub worker started',
   );
 
   const shutdown = async (): Promise<void> => {
     logger.info('Shutting down worker');
+    clearInterval(schedulePoller);
     healthServer.close();
     await deliveryWorker.close();
     await deliveryQueue.close();

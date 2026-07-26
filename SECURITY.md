@@ -46,6 +46,11 @@ Do not include real member data, credentials, or ward codes in a vulnerability r
 - Administrators can disable an account (`users.manage` permission, enforced server-side); disabling immediately revokes all of that account's active sessions.
 - See `docs/threat-model-auth.md` for the full threat model, mitigations, and explicitly documented known limitations.
 
+## Communication preferences (post-phase)
+
+- Ward-local `ContactConsent` is separate from Church Account subscriptions managed at https://account.churchofjesuschrist.org/subscriptions — we never scrape that site or infer its state into our consent model (see `docs/communication-preferences.md`).
+- Outbound Email and SMS include an informational footer linking to that URL; it is not a ward-local unsubscribe mechanism.
+
 ## Scope
 
 This policy covers the repository foundation (Phase 2), authentication (Phase 4), directory/audiences/campaigns (Phases 5–7), the delivery engine (Phase 8), and provider credential encryption (Phase 9). See `docs/providers.md` for how Email/SMS/Facebook Page credentials are encrypted at rest and never returned by the API.
