@@ -8,6 +8,7 @@ export type AudienceGroupWithCounts = AudienceGroup & {
 
 export type AudienceGroupWithDetails = AudienceGroup & {
   members: {
+    source: string;
     person: { id: string; firstName: string; lastName: string; preferredName: string | null; dateOfBirth: Date | null; archivedAt: Date | null };
   }[];
   destinations: {
@@ -90,7 +91,15 @@ export class AudienceGroupRepository {
     });
   }
 
-  async update(id: string, input: { name?: string; description?: string | null }): Promise<AudienceGroup> {
+  async update(
+    id: string,
+    input: {
+      name?: string;
+      description?: string | null;
+      membershipMode?: 'Manual' | 'Rules';
+      membershipRules?: unknown;
+    },
+  ): Promise<AudienceGroup> {
     return this.prisma.client.audienceGroup.update({ where: { id }, data: input });
   }
 

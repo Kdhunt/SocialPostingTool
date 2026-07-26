@@ -46,21 +46,30 @@ import {
   type CreateCommunicationDestinationRequest,
   type DestinationListResponse,
   type UpdateAudienceGroupRequest,
+  type SetAudienceRulesRequest,
+  type AudienceRulesPreviewResponse,
+  type AudienceRulesApplyResponse,
 } from '@ward-comms/validation';
 import {
+  audienceRulesApplyResponseSchema,
+  audienceRulesPreviewResponseSchema,
+  campaignAssetSchema,
   campaignDetailSchema,
   campaignListResponseSchema,
   campaignPreviewResponseSchema,
   campaignValidationResponseSchema,
   type AddCampaignAudienceRequest,
   type CampaignDetailDto,
+  type CampaignAssetDto,
   type CampaignListResponse,
   type CampaignPreviewResponse,
   type CampaignSearchQuery,
   type CampaignValidationResponse,
   type CreateCampaignAssetRequest,
   type CreateCampaignRequest,
+  type GenerateCampaignImageRequest,
   type SetCampaignChannelTextRequest,
+  type SetOverlapResolutionRequest,
   type UpdateCampaignAudienceRequest,
   type UpdateCampaignRequest,
   type UpdateCampaignVersionRequest,
@@ -70,6 +79,29 @@ import {
   deliveryBatchListResponseSchema,
   type DeliveryBatchDetailDto,
   type DeliveryBatchListResponse,
+} from '@ward-comms/validation';
+import {
+  auditListResponseSchema,
+  roleListResponseSchema,
+  userListResponseSchema,
+  userSummarySchema,
+  wardCodeInfoSchema,
+  createUserRequestSchema,
+  type AuditListResponse,
+  type AuditSearchQuery,
+  type CreateUserRequest,
+  type RoleListResponse,
+  type UserListResponse,
+  type UserSummaryDto,
+  type WardCodeInfoDto,
+} from '@ward-comms/validation';
+import {
+  providerCredentialListResponseSchema,
+  providerCredentialSummarySchema,
+  upsertProviderCredentialRequestSchema,
+  type ProviderCredentialListResponse,
+  type ProviderCredentialSummaryDto,
+  type UpsertProviderCredentialRequest,
 } from '@ward-comms/validation';
 import type { CommunicationChannel } from '@ward-comms/validation';
 
@@ -179,6 +211,84 @@ export class WardCommsApiClient {
 
   async logout(): Promise<void> {
     await this.request('/auth/logout', { method: 'POST' });
+  }
+
+  // --- Admin: users & ward -----------------------------------------------------
+
+  async listUsers(): Promise<UserListResponse> {
+    const response = await this.request('/users');
+    return userListResponseSchema.parse(await response.json());
+  }
+
+  async listRoles(): Promise<RoleListResponse> {
+    const response = await this.request('/users/roles');
+    return roleListResponseSchema.parse(await response.json());
+  }
+
+  async createUser(input: CreateUserRequest): Promise<UserSummaryDto> {
+    const response = await this.request('/users', {
+      method: 'POST',
+      body: JSON.stringify(createUserRequestSchema.parse(input)),
+    });
+    return userSummarySchema.parse(await response.json());
+  }
+
+  async assignUserRoles(userId: string, roleIds: string[]): Promise<UserSummaryDto> {
+    const response = await this.request(`/users/${userId}/roles`, {
+      method: 'PUT',
+      body: JSON.stringify({ roleIds }),
+    });
+    return userSummarySchema.parse(await response.json());
+  }
+
+  async disableUser(userId: string): Promise<void> {
+    await this.request(`/auth/users/${userId}/disable`, { method: 'POST' });
+  }
+
+  async enableUser(userId: string): Promise<void> {
+    await this.request(`/auth/users/${userId}/enable`, { method: 'POST' });
+  }
+
+  async getWardCodeInfo(): Promise<WardCodeInfoDto | null> {
+    const response = await this.request('/ward/code');
+    const body: unknown = await response.json();
+    if (body === null) return null;
+    return wardCodeInfoSchema.parse(body);
+  }
+
+  async rotateWardCode(newWardCode: string): Promise<WardCodeInfoDto> {
+    const response = await this.request('/ward/code/rotate', {
+      method: 'POST',
+      body: JSON.stringify({ newWardCode }),
+    });
+    return wardCodeInfoSchema.parse(await response.json());
+  }
+
+  async listAuditEvents(query: AuditSearchQuery = {}): Promise<AuditListResponse> {
+    const params = new URLSearchParams();
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.action) params.set('action', query.action);
+    if (query.entityType) params.set('entityType', query.entityType);
+    const search = params.toString();
+    const response = await this.request(`/audit${search ? `?${search}` : ''}`);
+    return auditListResponseSchema.parse(await response.json());
+  }
+
+  async listProviderCredentials(): Promise<ProviderCredentialListResponse> {
+    const response = await this.request('/provider-credentials');
+    return providerCredentialListResponseSchema.parse(await response.json());
+  }
+
+  async upsertProviderCredential(input: UpsertProviderCredentialRequest): Promise<ProviderCredentialSummaryDto> {
+    const response = await this.request('/provider-credentials', {
+      method: 'POST',
+      body: JSON.stringify(upsertProviderCredentialRequestSchema.parse(input)),
+    });
+    return providerCredentialSummarySchema.parse(await response.json());
+  }
+
+  async revokeProviderCredential(id: string): Promise<void> {
+    await this.request(`/provider-credentials/${id}/revoke`, { method: 'POST' });
   }
 
   // --- Directory: people -----------------------------------------------------
@@ -359,6 +469,21 @@ export class WardCommsApiClient {
     return audienceGroupDetailSchema.parse(await response.json());
   }
 
+  async setAudienceRules(id: string, input: SetAudienceRulesRequest): Promise<AudienceGroupDetailDto> {
+    const response = await this.request(`/audiences/${id}/rules`, { method: 'PUT', body: JSON.stringify(input) });
+    return audienceGroupDetailSchema.parse(await response.json());
+  }
+
+  async previewAudienceRules(id: string): Promise<AudienceRulesPreviewResponse> {
+    const response = await this.request(`/audiences/${id}/rules/preview`);
+    return audienceRulesPreviewResponseSchema.parse(await response.json());
+  }
+
+  async applyAudienceRules(id: string): Promise<AudienceRulesApplyResponse> {
+    const response = await this.request(`/audiences/${id}/rules/apply`, { method: 'POST' });
+    return audienceRulesApplyResponseSchema.parse(await response.json());
+  }
+
   async addAudienceDestination(id: string, input: AddAudienceDestinationRequest): Promise<AudienceGroupDetailDto> {
     const response = await this.request(`/audiences/${id}/destinations`, {
       method: 'POST',
@@ -448,6 +573,26 @@ export class WardCommsApiClient {
   async createCampaignAsset(id: string, input: CreateCampaignAssetRequest): Promise<{ id: string }> {
     const response = await this.request(`/campaigns/${id}/assets`, { method: 'POST', body: JSON.stringify(input) });
     return (await response.json()) as { id: string };
+  }
+
+  async generateCampaignImage(id: string, input: GenerateCampaignImageRequest): Promise<CampaignAssetDto> {
+    const response = await this.request(`/campaigns/${id}/assets/generate`, { method: 'POST', body: JSON.stringify(input) });
+    return campaignAssetSchema.parse(await response.json());
+  }
+
+  async confirmCampaignAsset(id: string, assetId: string): Promise<CampaignAssetDto> {
+    const response = await this.request(`/campaigns/${id}/assets/${assetId}/confirm`, { method: 'POST' });
+    return campaignAssetSchema.parse(await response.json());
+  }
+
+  async rejectCampaignAsset(id: string, assetId: string): Promise<CampaignAssetDto> {
+    const response = await this.request(`/campaigns/${id}/assets/${assetId}/reject`, { method: 'POST' });
+    return campaignAssetSchema.parse(await response.json());
+  }
+
+  async setCampaignOverlapResolution(id: string, input: SetOverlapResolutionRequest): Promise<CampaignDetailDto> {
+    const response = await this.request(`/campaigns/${id}/overlap-resolution`, { method: 'PATCH', body: JSON.stringify(input) });
+    return campaignDetailSchema.parse(await response.json());
   }
 
   async addCampaignAudience(id: string, input: AddCampaignAudienceRequest): Promise<CampaignDetailDto> {

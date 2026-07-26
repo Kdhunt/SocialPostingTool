@@ -127,4 +127,35 @@ export class PersonRepository {
       data: { archivedAt: null },
     });
   }
+
+  /** Active ward people with household roles for audience rule evaluation. */
+  async listActiveForRuleEvaluation(wardId: string): Promise<
+    {
+      id: string;
+      firstName: string;
+      lastName: string;
+      preferredName: string | null;
+      gender: 'Male' | 'Female' | 'NotSpecified';
+      dateOfBirth: Date | null;
+      archivedAt: Date | null;
+      householdMemberships: { householdRole: 'Head' | 'Member'; endedAt: Date | null }[];
+    }[]
+  > {
+    return this.prisma.client.person.findMany({
+      where: { wardId, archivedAt: null },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        preferredName: true,
+        gender: true,
+        dateOfBirth: true,
+        archivedAt: true,
+        householdMemberships: {
+          where: { endedAt: null },
+          select: { householdRole: true, endedAt: true },
+        },
+      },
+    });
+  }
 }

@@ -6,11 +6,14 @@ import {
   createCampaignAssetRequestSchema,
   createCampaignRequestSchema,
   decideCampaignApprovalRequestSchema,
+  generateCampaignImageRequestSchema,
   scheduleCampaignRequestSchema,
   setCampaignChannelTextRequestSchema,
+  setOverlapResolutionRequestSchema,
   updateCampaignAudienceRequestSchema,
   updateCampaignRequestSchema,
   updateCampaignVersionRequestSchema,
+  type CampaignAssetDto,
   type CampaignDetailDto,
   type CampaignListResponse,
   type CampaignPreviewResponse,
@@ -115,6 +118,52 @@ export class CampaignsController {
   ): Promise<{ id: string }> {
     const dto = parseBody(createCampaignAssetRequestSchema, body);
     return this.campaigns.createAsset(user.wardId, id, dto, buildContext(user, req));
+  }
+
+  @RequirePermission('campaigns.create')
+  @Post(':id/assets/generate')
+  async generateImage(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<CampaignAssetDto> {
+    const dto = parseBody(generateCampaignImageRequestSchema, body);
+    return this.campaigns.generateImageDraft(user.wardId, id, dto, buildContext(user, req));
+  }
+
+  @RequirePermission('campaigns.create')
+  @Post(':id/assets/:assetId/confirm')
+  async confirmAsset(
+    @Param('id') id: string,
+    @Param('assetId') assetId: string,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<CampaignAssetDto> {
+    return this.campaigns.confirmGeneratedAsset(user.wardId, id, assetId, buildContext(user, req));
+  }
+
+  @RequirePermission('campaigns.create')
+  @Post(':id/assets/:assetId/reject')
+  async rejectAsset(
+    @Param('id') id: string,
+    @Param('assetId') assetId: string,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<CampaignAssetDto> {
+    return this.campaigns.rejectGeneratedAsset(user.wardId, id, assetId, buildContext(user, req));
+  }
+
+  @RequirePermission('campaigns.create')
+  @Patch(':id/overlap-resolution')
+  async setOverlapResolution(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<CampaignDetailDto> {
+    const dto = parseBody(setOverlapResolutionRequestSchema, body);
+    return this.campaigns.setOverlapResolution(user.wardId, id, dto, buildContext(user, req));
   }
 
   @RequirePermission('campaigns.create')

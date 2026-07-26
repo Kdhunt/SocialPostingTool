@@ -71,7 +71,15 @@ export class CampaignVersionRepository {
     });
   }
 
-  async updateContent(id: string, input: { baseMessage?: string | null; baseImageAssetId?: string | null }): Promise<CampaignVersion> {
+  async updateContent(
+    id: string,
+    input: {
+      baseMessage?: string | null;
+      baseImageAssetId?: string | null;
+      overlapResolutionStrategy?: 'FirstAudienceWins' | 'PreferBase' | 'PreferSpecificAudience';
+      preferSpecificAudienceGroupId?: string | null;
+    },
+  ): Promise<CampaignVersion> {
     return this.prisma.client.campaignVersion.update({ where: { id }, data: input });
   }
 }

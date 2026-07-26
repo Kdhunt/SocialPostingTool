@@ -1,30 +1,40 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Campaign, CampaignApprovalDecision, CampaignStatus, CommunicationChannel } from '@prisma/client';
 import {
+  buildOverlapConflicts,
+  canConfirmAsset,
+  canRejectAsset,
   checkChannelTextLength,
   findOverlappingPeople,
+  isAssetUsableInCampaign,
   isValidCampaignStatusTransition,
   mergeAudienceMemberships,
   resolveEffectiveImageAssetId,
   resolveEffectiveText,
   validateCampaignForSubmission,
+  type ImageGenerationAdapter,
 } from '@ward-comms/domain';
 import type {
   AddCampaignAudienceRequest,
+  CampaignAssetDto,
   CampaignDetailDto,
   CampaignPreviewResponse,
   CampaignSummaryDto,
   CampaignValidationResponse,
   CreateCampaignAssetRequest,
   CreateCampaignRequest,
+  GenerateCampaignImageRequest,
   SetCampaignChannelTextRequest,
+  SetOverlapResolutionRequest,
   UpdateCampaignAudienceRequest,
   UpdateCampaignRequest,
   UpdateCampaignVersionRequest,
 } from '@ward-comms/validation';
+import { IMAGE_GENERATION_ADAPTER } from '../ai/image-generation.module.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AudienceGroupRepository } from '../audiences/repositories/audience-group.repository.js';
 import { AudienceMemberRepository } from '../audiences/repositories/audience-member.repository.js';
+import { PersonRepository } from '../directory/repositories/person.repository.js';
 import { CampaignApprovalRepository } from './repositories/campaign-approval.repository.js';
 import { CampaignAssetRepository } from './repositories/campaign-asset.repository.js';
 import { CampaignAudienceRepository } from './repositories/campaign-audience.repository.js';
@@ -66,8 +76,10 @@ export class CampaignsService {
     @Inject(CampaignScheduleRepository) private readonly schedules: CampaignScheduleRepository,
     @Inject(AudienceGroupRepository) private readonly audienceGroups: AudienceGroupRepository,
     @Inject(AudienceMemberRepository) private readonly audienceMembers: AudienceMemberRepository,
+    @Inject(PersonRepository) private readonly people: PersonRepository,
     @Inject(DeliveryService) private readonly delivery: DeliveryService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(IMAGE_GENERATION_ADAPTER) private readonly imageGeneration: ImageGenerationAdapter,
   ) {}
 
   // --- Reads -----------------------------------------------------------------
@@ -222,6 +234,141 @@ export class CampaignsService {
     });
 
     return { id: asset.id };
+  }
+
+  async generateImageDraft(
+    wardId: string,
+    campaignId: string,
+    input: GenerateCampaignImageRequest,
+    context: CampaignActionContext,
+  ): Promise<CampaignAssetDto> {
+    const campaign = await this.assertCampaignInWard(wardId, campaignId);
+    this.assertEditable(campaign.status);
+
+    const generated = await this.imageGeneration.generateImage({ prompt: input.prompt });
+    const asset = await this.assets.create({
+      campaignId,
+      storageReference: generated.storageReference,
+      contentType: generated.contentType,
+      altText: input.altText,
+      confirmationStatus: 'Pending',
+      isAiGenerated: true,
+      generationPrompt: input.prompt,
+    });
+
+    await this.audit.record({
+      wardId,
+      actorUserId: context.actorUserId,
+      action: 'campaign.asset.generated',
+      entityType: 'CampaignAsset',
+      entityId: asset.id,
+      metadata: { isAiGenerated: true },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+
+    return this.toAssetDto(asset);
+  }
+
+  async confirmGeneratedAsset(
+    wardId: string,
+    campaignId: string,
+    assetId: string,
+    context: CampaignActionContext,
+  ): Promise<CampaignAssetDto> {
+    const campaign = await this.assertCampaignInWard(wardId, campaignId);
+    this.assertEditable(campaign.status);
+    const asset = await this.assets.findByIdForCampaign(campaignId, assetId);
+    if (!asset) {
+      throw new NotFoundException('Campaign asset not found.');
+    }
+    if (!canConfirmAsset(asset.confirmationStatus)) {
+      throw new BadRequestException('Only pending generated assets can be confirmed.');
+    }
+
+    const updated = await this.assets.updateConfirmationStatus(assetId, 'Confirmed');
+
+    await this.audit.record({
+      wardId,
+      actorUserId: context.actorUserId,
+      action: 'campaign.asset.confirmed',
+      entityType: 'CampaignAsset',
+      entityId: assetId,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+
+    return this.toAssetDto(updated);
+  }
+
+  async rejectGeneratedAsset(
+    wardId: string,
+    campaignId: string,
+    assetId: string,
+    context: CampaignActionContext,
+  ): Promise<CampaignAssetDto> {
+    const campaign = await this.assertCampaignInWard(wardId, campaignId);
+    this.assertEditable(campaign.status);
+    const asset = await this.assets.findByIdForCampaign(campaignId, assetId);
+    if (!asset) {
+      throw new NotFoundException('Campaign asset not found.');
+    }
+    if (!canRejectAsset(asset.confirmationStatus)) {
+      throw new BadRequestException('Only pending generated assets can be rejected.');
+    }
+
+    const updated = await this.assets.updateConfirmationStatus(assetId, 'Rejected');
+
+    await this.audit.record({
+      wardId,
+      actorUserId: context.actorUserId,
+      action: 'campaign.asset.rejected',
+      entityType: 'CampaignAsset',
+      entityId: assetId,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+
+    return this.toAssetDto(updated);
+  }
+
+  async setOverlapResolution(
+    wardId: string,
+    campaignId: string,
+    input: SetOverlapResolutionRequest,
+    context: CampaignActionContext,
+  ): Promise<CampaignDetailDto> {
+    const campaign = await this.assertCampaignInWard(wardId, campaignId);
+    this.assertEditable(campaign.status);
+    const version = await this.requireCurrentVersion(campaignId);
+
+    if (input.overlapResolutionStrategy === 'PreferSpecificAudience') {
+      if (!input.preferSpecificAudienceGroupId) {
+        throw new BadRequestException('PreferSpecificAudience requires preferSpecificAudienceGroupId.');
+      }
+      const selected = version.audiences.some((a) => a.audienceGroupId === input.preferSpecificAudienceGroupId);
+      if (!selected) {
+        throw new BadRequestException('The preferred audience must be selected for this campaign.');
+      }
+    }
+
+    await this.versions.updateContent(version.id, {
+      overlapResolutionStrategy: input.overlapResolutionStrategy,
+      preferSpecificAudienceGroupId: input.preferSpecificAudienceGroupId ?? null,
+    });
+
+    await this.audit.record({
+      wardId,
+      actorUserId: context.actorUserId,
+      action: 'campaign.overlap_resolution.updated',
+      entityType: 'CampaignVersion',
+      entityId: version.id,
+      metadata: { strategy: input.overlapResolutionStrategy },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+
+    return this.get(wardId, campaignId);
   }
 
   // --- Audiences ---------------------------------------------------------------
@@ -399,6 +546,34 @@ export class CampaignsService {
     );
     const merged = mergeAudienceMemberships(membershipSets);
     const overlapping = findOverlappingPeople(membershipSets);
+    const audienceOrder = version.audiences.map((a) => a.audienceGroupId);
+    const audienceNameById = new Map(version.audiences.map((a) => [a.audienceGroupId, a.audienceGroup.name]));
+
+    const overlapConflictsRaw = buildOverlapConflicts(
+      merged,
+      audienceOrder,
+      version.overlapResolutionStrategy,
+      version.preferSpecificAudienceGroupId,
+    );
+
+    const overlapConflicts = await Promise.all(
+      overlapConflictsRaw.map(async (conflict) => {
+        const person = await this.people.findByIdForWard(wardId, conflict.personId);
+        const displayName = person
+          ? (person.preferredName ?? `${person.firstName} ${person.lastName}`)
+          : 'Unknown';
+        return {
+          personId: conflict.personId,
+          displayName,
+          audienceGroupIds: conflict.audienceGroupIds,
+          winningAudienceGroupId: conflict.winningAudienceGroupId,
+          winningAudienceGroupName: conflict.winningAudienceGroupId
+            ? (audienceNameById.get(conflict.winningAudienceGroupId) ?? null)
+            : null,
+          usesBaseContent: conflict.usesBaseContent,
+        };
+      }),
+    );
 
     const audiences = version.audiences.map((audience) => {
       const personIds = membershipSets.find((s) => s.audienceGroupId === audience.audienceGroupId)?.personIds ?? [];
@@ -431,6 +606,8 @@ export class CampaignsService {
       versionNumber: version.versionNumber,
       totalUniqueRecipients: merged.length,
       overlapCount: overlapping.length,
+      overlapResolutionStrategy: version.overlapResolutionStrategy,
+      overlapConflicts,
       audiences,
     };
   }
@@ -587,6 +764,31 @@ export class CampaignsService {
     if (!asset) {
       throw new NotFoundException('Campaign asset not found.');
     }
+    if (!isAssetUsableInCampaign(asset.confirmationStatus)) {
+      throw new BadRequestException('This asset must be confirmed before it can be used in campaign content.');
+    }
+  }
+
+  private toAssetDto(asset: {
+    id: string;
+    storageReference: string;
+    contentType: string;
+    altText: string;
+    confirmationStatus: 'Pending' | 'Confirmed' | 'Rejected';
+    isAiGenerated: boolean;
+    generationPrompt: string | null;
+    createdAt: Date;
+  }): CampaignAssetDto {
+    return {
+      id: asset.id,
+      storageReference: asset.storageReference,
+      contentType: asset.contentType,
+      altText: asset.altText,
+      confirmationStatus: asset.confirmationStatus,
+      isAiGenerated: asset.isAiGenerated,
+      generationPrompt: asset.generationPrompt,
+      createdAt: asset.createdAt.toISOString(),
+    };
   }
 
   /** Recomputes the deduplicated, active-only destination set for a version from its (about-to-be) selected audiences. */
@@ -649,6 +851,8 @@ export class CampaignsService {
       versionNumber: version.versionNumber,
       baseMessage: version.baseMessage,
       baseImageAssetId: version.baseImageAssetId,
+      overlapResolutionStrategy: version.overlapResolutionStrategy,
+      preferSpecificAudienceGroupId: version.preferSpecificAudienceGroupId,
       channelVersions: version.channelVersions.map((c) => ({ channel: c.channel as CommunicationChannel, text: c.text })),
       audiences: version.audiences.map((a) => ({
         audienceGroupId: a.audienceGroupId,

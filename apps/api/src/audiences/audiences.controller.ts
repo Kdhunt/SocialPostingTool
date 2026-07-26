@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   addAudienceDestinationRequestSchema,
@@ -6,10 +6,13 @@ import {
   audiencePreviewRequestSchema,
   audienceSearchQuerySchema,
   createAudienceGroupRequestSchema,
+  setAudienceRulesRequestSchema,
   updateAudienceGroupRequestSchema,
   type AudienceGroupDetailDto,
   type AudienceListResponse,
   type AudiencePreviewResponse,
+  type AudienceRulesApplyResponse,
+  type AudienceRulesPreviewResponse,
 } from '@ward-comms/validation';
 import { parseBody } from '../common/parse-body.util.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -113,6 +116,34 @@ export class AudiencesController {
     @Req() req: Request,
   ): Promise<AudienceGroupDetailDto> {
     return this.audiences.removeMember(user.wardId, id, personId, buildContext(user, req));
+  }
+
+  @RequirePermission('audiences.manage')
+  @Put(':id/rules')
+  async setRules(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<AudienceGroupDetailDto> {
+    const dto = parseBody(setAudienceRulesRequestSchema, body);
+    return this.audiences.setRules(user.wardId, id, dto, buildContext(user, req));
+  }
+
+  @RequirePermission('audiences.read')
+  @Get(':id/rules/preview')
+  async previewRules(@Param('id') id: string, @CurrentUser() user: AuthContext['user']): Promise<AudienceRulesPreviewResponse> {
+    return this.audiences.previewRules(user.wardId, id);
+  }
+
+  @RequirePermission('audiences.manage')
+  @Post(':id/rules/apply')
+  async applyRules(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<AudienceRulesApplyResponse> {
+    return this.audiences.applyRules(user.wardId, id, buildContext(user, req));
   }
 
   @RequirePermission('audiences.manage')

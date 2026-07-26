@@ -1,15 +1,18 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type CommunicationChannel } from '@prisma/client';
-import { checkAudienceSafeToDelete, isDuplicateMembership, isMinor, mergeAudienceMemberships } from '@ward-comms/domain';
+import { checkAudienceSafeToDelete, findPeopleMatchingRules, isDuplicateMembership, isMinor, isValidAudienceMembershipRules, mergeAudienceMemberships, type AudienceMembershipRules, type PersonForRuleEvaluation } from '@ward-comms/domain';
 import type {
   AddAudienceDestinationRequest,
   AddAudienceMemberRequest,
   AudienceGroupDetailDto,
   AudienceGroupSummaryDto,
   AudiencePreviewResponse,
+  AudienceRulesApplyResponse,
+  AudienceRulesPreviewResponse,
   CommunicationDestinationDto,
   CreateAudienceGroupRequest,
   CreateCommunicationDestinationRequest,
+  SetAudienceRulesRequest,
   UpdateAudienceGroupRequest,
 } from '@ward-comms/validation';
 import { AuditService } from '../audit/audit.service.js';
@@ -186,7 +189,7 @@ export class AudiencesService {
       throw new ConflictException('This person is already a member of this audience.');
     }
 
-    await this.members.add(audienceGroupId, input.personId, context.actorUserId);
+    await this.members.add(audienceGroupId, input.personId, context.actorUserId, 'Manual');
 
     await this.audit.record({
       wardId,
@@ -223,6 +226,90 @@ export class AudiencesService {
     });
 
     return this.get(wardId, audienceGroupId);
+  }
+
+  // --- Rule-based membership ---------------------------------------------------
+
+  async setRules(
+    wardId: string,
+    audienceGroupId: string,
+    input: SetAudienceRulesRequest,
+    context: AudienceActionContext,
+  ): Promise<AudienceGroupDetailDto> {
+    await this.assertGroupInWard(wardId, audienceGroupId);
+
+    if (input.membershipMode === 'Rules') {
+      if (!input.membershipRules || !isValidAudienceMembershipRules(input.membershipRules)) {
+        throw new BadRequestException('Rules mode requires valid membership rules.');
+      }
+    }
+
+    await this.groups.update(audienceGroupId, {
+      membershipMode: input.membershipMode,
+      membershipRules: input.membershipMode === 'Rules' ? input.membershipRules : null,
+    });
+
+    await this.audit.record({
+      wardId,
+      actorUserId: context.actorUserId,
+      action: 'audience.rules.updated',
+      entityType: 'AudienceGroup',
+      entityId: audienceGroupId,
+      metadata: { membershipMode: input.membershipMode },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+
+    return this.get(wardId, audienceGroupId);
+  }
+
+  async previewRules(wardId: string, audienceGroupId: string): Promise<AudienceRulesPreviewResponse> {
+    const group = await this.assertGroupInWard(wardId, audienceGroupId);
+    if (group.membershipMode !== 'Rules' || !group.membershipRules) {
+      throw new BadRequestException('This audience does not have rules configured.');
+    }
+
+    const rules = group.membershipRules as AudienceMembershipRules;
+    const matches = await this.evaluateRulesForWard(wardId, rules);
+
+    return {
+      matchCount: matches.length,
+      members: matches.map((person) => ({
+        personId: person.personId,
+        displayName: person.displayName,
+        isMinor: isMinor(person.dateOfBirth),
+      })),
+    };
+  }
+
+  async applyRules(wardId: string, audienceGroupId: string, context: AudienceActionContext): Promise<AudienceRulesApplyResponse> {
+    const group = await this.assertGroupInWard(wardId, audienceGroupId);
+    if (group.membershipMode !== 'Rules' || !group.membershipRules) {
+      throw new BadRequestException('This audience does not have rules configured.');
+    }
+
+    const rules = group.membershipRules as AudienceMembershipRules;
+    const matches = await this.evaluateRulesForWard(wardId, rules);
+    const personIds = matches.map((person) => person.personId);
+
+    const { removedCount, addedCount } = await this.members.replaceRuleMembers(
+      audienceGroupId,
+      personIds,
+      context.actorUserId,
+    );
+
+    await this.audit.record({
+      wardId,
+      actorUserId: context.actorUserId,
+      action: 'audience.rules.applied',
+      entityType: 'AudienceGroup',
+      entityId: audienceGroupId,
+      metadata: { removedCount, addedCount, matchCount: personIds.length },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+
+    return { addedCount, removedCount };
   }
 
   // --- Destinations --------------------------------------------------------------
@@ -419,11 +506,14 @@ export class AudiencesService {
       name: group.name,
       description: group.description,
       isActive: group.archivedAt === null,
+      membershipMode: group.membershipMode,
+      membershipRules: (group.membershipRules as AudienceGroupDetailDto['membershipRules']) ?? null,
       members: group.members.map((membership) => ({
         personId: membership.person.id,
         displayName: membership.person.preferredName ?? `${membership.person.firstName} ${membership.person.lastName}`,
         isMinor: isMinor(membership.person.dateOfBirth),
         isActive: membership.person.archivedAt === null,
+        source: membership.source as 'Manual' | 'Rules',
       })),
       destinations: group.destinations.map((link) => ({
         destinationId: link.destination.id,
@@ -433,5 +523,27 @@ export class AudiencesService {
       createdAt: group.createdAt.toISOString(),
       updatedAt: group.updatedAt.toISOString(),
     };
+  }
+
+  private async evaluateRulesForWard(
+    wardId: string,
+    rules: AudienceMembershipRules,
+  ): Promise<{ personId: string; displayName: string; dateOfBirth: Date | null }[]> {
+    const people = await this.people.listActiveForRuleEvaluation(wardId);
+    const candidates: PersonForRuleEvaluation[] = people.map((person) => ({
+      personId: person.id,
+      gender: person.gender,
+      dateOfBirth: person.dateOfBirth,
+      householdRoles: person.householdMemberships.map((m) => m.householdRole),
+      archivedAt: person.archivedAt,
+    }));
+    const matchingIds = new Set(findPeopleMatchingRules(candidates, rules));
+    return people
+      .filter((person) => matchingIds.has(person.id))
+      .map((person) => ({
+        personId: person.id,
+        displayName: person.preferredName ?? `${person.firstName} ${person.lastName}`,
+        dateOfBirth: person.dateOfBirth,
+      }));
   }
 }

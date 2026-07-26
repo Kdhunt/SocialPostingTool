@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
+import { AiImageModule } from '../ai/ai-image.module.js';
 import { AudienceGroupRepository } from '../audiences/repositories/audience-group.repository.js';
 import { AudienceMemberRepository } from '../audiences/repositories/audience-member.repository.js';
+import { PersonRepository } from '../directory/repositories/person.repository.js';
 import { DeliveryModule } from '../delivery/delivery.module.js';
 import { CampaignsController } from './campaigns.controller.js';
 import { CampaignsService } from './campaigns.service.js';
@@ -15,7 +17,7 @@ import { CampaignScheduleRepository } from './repositories/campaign-schedule.rep
 import { CampaignVersionRepository } from './repositories/campaign-version.repository.js';
 
 @Module({
-  imports: [AuthModule, DeliveryModule],
+  imports: [AuthModule, DeliveryModule, AiImageModule],
   controllers: [CampaignsController],
   providers: [
     CampaignsService,
@@ -29,6 +31,7 @@ import { CampaignVersionRepository } from './repositories/campaign-version.repos
     CampaignScheduleRepository,
     AudienceGroupRepository,
     AudienceMemberRepository,
+    PersonRepository,
   ],
   exports: [CampaignsService],
 })

@@ -9,7 +9,9 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AudienceGroupRepository } from '../audiences/repositories/audience-group.repository.js';
 import { AudienceMemberRepository } from '../audiences/repositories/audience-member.repository.js';
+import { SimulatedImageGenerationAdapter } from '../ai/simulated-image-generation.adapter.js';
 import { ContactMethodRepository } from '../directory/repositories/contact-method.repository.js';
+import { PersonRepository } from '../directory/repositories/person.repository.js';
 import { DeliveryService } from '../delivery/delivery.service.js';
 import { DeliveryBatchRepository } from '../delivery/repositories/delivery-batch.repository.js';
 import { DeliveryRecipientRepository } from '../delivery/repositories/delivery-recipient.repository.js';
@@ -69,6 +71,9 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     audit,
   );
 
+  const people = new PersonRepository(prisma);
+  const imageGeneration = new SimulatedImageGenerationAdapter();
+
   const service = new CampaignsService(
     campaigns,
     versions,
@@ -80,8 +85,10 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     schedules,
     audienceGroups,
     audienceMembers,
+    people,
     delivery,
     audit,
+    imageGeneration,
   );
 
   let wardId: string;
@@ -292,5 +299,27 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     await service.sendNow(wardId, created.id, ctx());
 
     await expect(service.updateVersionContent(wardId, created.id, { baseMessage: 'Too late' }, ctx())).rejects.toThrow();
+  });
+
+  it('requires AI-generated assets to be confirmed before attaching to campaign content', async () => {
+    await setupWard();
+    const created = await service.create(wardId, { name: 'AI Asset Campaign', baseMessage: 'Body text' }, ctx());
+    const draft = await service.generateImageDraft(
+      wardId,
+      created.id,
+      { prompt: 'A fictional ward newsletter banner', altText: 'Newsletter banner illustration' },
+      ctx(),
+    );
+    expect(draft.confirmationStatus).toBe('Pending');
+
+    await expect(
+      service.updateVersionContent(wardId, created.id, { baseImageAssetId: draft.id }, ctx()),
+    ).rejects.toThrow(/confirmed/i);
+
+    const confirmed = await service.confirmGeneratedAsset(wardId, created.id, draft.id, ctx());
+    expect(confirmed.confirmationStatus).toBe('Confirmed');
+
+    const updated = await service.updateVersionContent(wardId, created.id, { baseImageAssetId: draft.id }, ctx());
+    expect(updated.currentVersion.baseImageAssetId).toBe(draft.id);
   });
 });
