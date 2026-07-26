@@ -12,6 +12,7 @@ apps/
   worker/     Background job processor (BullMQ + Redis)
   web/        Nuxt 4 / Vue 3 web application
   mobile/     Ionic Vue + Capacitor mobile shell
+  web-e2e/    Playwright end-to-end tests for the web app
 packages/
   database/   Prisma schema, generated client, migrations
   domain/     Framework independent business rules
@@ -48,12 +49,18 @@ packages/
    docker compose up -d
    ```
 
-4. Generate the Prisma client and apply migrations:
+4. Generate the Prisma client, apply migrations, and seed local data:
 
    ```bash
    pnpm --filter @ward-comms/database db:generate
    pnpm --filter @ward-comms/database db:migrate
+   pnpm --filter @ward-comms/database db:seed
+   pnpm db:seed:dev
    ```
+
+   `db:seed` loads the Role/Permission catalog. `db:seed:dev` creates a
+   fictional dev ward, ward admin (`admin` / `ChangeMeNow!23`), and ward
+   code (`WARD-DEV-CODE`) — credentials are printed to the console.
 
 5. Run every app in development mode:
 
@@ -71,24 +78,24 @@ Once running:
 
 - API health check: `http://localhost:3001/health`
 - Web health page: `http://localhost:3000`
-- Web sign-in: `http://localhost:3000/login`
+- Web sign-in: `http://localhost:3000/login` (after `db:seed:dev`, use `admin` / `ChangeMeNow!23`, ward code `WARD-DEV-CODE`)
+
+### One-command bootstrap (after `pnpm install` and `.env` setup)
+
+```bash
+docker compose up -d
+pnpm --filter @ward-comms/database db:generate
+pnpm --filter @ward-comms/database db:migrate
+pnpm --filter @ward-comms/database db:seed
+pnpm db:seed:dev
+pnpm dev
+```
 
 ### Creating a user to sign in with
 
-Phase 4 ships the authentication system but no user-management UI yet.
-Create a ward, a ward code, and a user directly against the database to try
-the login flow locally:
-
-```bash
-pnpm --filter @ward-comms/database db:seed   # seeds Role/Permission catalog only
-```
-
-Then use `pnpm --filter @ward-comms/database exec prisma studio` (or a short
-script using `@node-rs/argon2` to hash a password/ward code) to create a
-`Ward`, an `ApplicationUser` with an Argon2id `passwordHash`, and a
-`WardCodeVersion` with a peppered Argon2id `codeHash`. See
-`docs/threat-model-auth.md` and `apps/api/src/auth/auth.service.integration.spec.ts`
-for exact hashing calls.
+Use `pnpm db:seed:dev` after migrations and the role catalog seed — it prints
+fictional dev credentials to the console. For custom users, use the
+**Admin → Users** screen (`/admin/users`) or the `POST /users` API.
 
 ### Authentication overview
 
@@ -129,6 +136,7 @@ endpoints (all require an authenticated session plus `audiences.read` /
 - `POST /audiences`, `PATCH /audiences/:id` (rename/edit description)
 - `POST /audiences/:id/archive` / `.../restore`, `DELETE /audiences/:id` (only succeeds when the audience has no members and no destinations)
 - `POST /audiences/:id/members`, `DELETE /audiences/:id/members/:personId`
+- `PUT /audiences/:id/rules`, `GET /audiences/:id/rules/preview`, `POST /audiences/:id/rules/apply` (rule-based membership; manual adds are kept on apply)
 - `POST /audiences/:id/destinations`, `DELETE /audiences/:id/destinations/:destinationId`
 - `POST /audiences/preview` → `{ audienceGroupIds: string[] }`, returns deduplicated membership across the given audiences
 - `GET /communication-destinations?includeArchived=`, `POST /communication-destinations`, `POST /communication-destinations/:id/archive`
@@ -145,9 +153,11 @@ endpoints (all require an authenticated session plus `campaigns.create` /
 - `GET /campaigns?query=&status=&includeArchived=`, `GET /campaigns/:id`
 - `POST /campaigns`, `PATCH /campaigns/:id` (rename), `POST /campaigns/:id/archive`
 - `PATCH /campaigns/:id/content` (base message/image; only while `Draft`), `POST /campaigns/:id/assets`
+- `POST /campaigns/:id/assets/generate`, `POST .../assets/:assetId/confirm`, `POST .../assets/:assetId/reject` (AI image drafts require explicit confirm before use)
+- `PATCH /campaigns/:id/overlap-resolution` — choose how overlapping audience content is resolved
 - `POST /campaigns/:id/audiences`, `PATCH .../audiences/:audienceGroupId`, `DELETE .../audiences/:audienceGroupId`
 - `POST /campaigns/:id/channel-text`, `DELETE /campaigns/:id/channel-text/:channel`
-- `GET /campaigns/:id/preview` — deduplicated recipient count and per-audience/per-channel resolved text
+- `GET /campaigns/:id/preview` — deduplicated recipient count, overlap conflicts with winning audience, and per-audience/per-channel resolved text
 - `GET /campaigns/:id/validation` — the same readiness check `submit` enforces
 - `POST /campaigns/:id/submit`, `POST /campaigns/:id/approve`, `POST /campaigns/:id/reject`, `POST /campaigns/:id/revise`
 - `POST /campaigns/:id/schedule`, `POST /campaigns/:id/send-now` (starts the Phase 8 delivery engine), `POST /campaigns/:id/cancel`
@@ -165,9 +175,31 @@ running (`docker compose up -d`).
 ### Providers overview (Phase 9)
 
 Provider credentials are stored encrypted (`POST /provider-credentials`).
-Set `PROVIDER_MODE=credentialed` to require them before simulated/real
-sends. See `docs/providers.md`. Facebook Page publishing only — Groups
+Set `PROVIDER_MODE=credentialed` to require them before simulated sends, or
+`PROVIDER_MODE=live` for real SendGrid/SMTP, Twilio, and Facebook Graph
+calls. See `docs/providers.md`. Manage credentials at
+`/admin/provider-credentials`. Facebook Page publishing only — Groups
 are not supported.
+
+### Admin overview (post-phase)
+
+- `/admin/users` — list/create users, assign roles, enable/disable
+- `/admin/ward-code` — view active version, rotate ward code
+- `/admin/provider-credentials` — upsert/revoke encrypted provider secrets
+- `/admin/audit` — audit log viewer (`GET /audit`)
+
+### AI image generation
+
+Optional env: `OPENAI_API_KEY`, `AI_IMAGE_MODE=simulated|live`. When the key
+is absent or mode is `simulated`, generated images use deterministic placeholder
+URLs. Confirmed assets are required before attaching to campaign content
+(AGENTS.md #13). Ward **ContactConsent** is separate from
+[Church Account subscription preferences](https://account.churchofjesuschrist.org/subscriptions).
+
+### Mobile app
+
+The Ionic shell (`apps/mobile`) includes audiences list/detail, campaigns
+list/detail, and approve/reject/revise/send-now actions when permissions allow.
 
 ## Common scripts
 
@@ -179,6 +211,7 @@ pnpm dev         # Run all apps in watch/dev mode
 pnpm lint        # Lint all apps and packages
 pnpm typecheck   # Type-check all apps and packages
 pnpm test        # Run unit and integration tests
+pnpm test:e2e    # Run Playwright smoke tests (starts Nuxt; no API/DB required for current suite)
 pnpm format      # Format the repository with Prettier
 ```
 
