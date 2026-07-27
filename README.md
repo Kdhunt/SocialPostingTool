@@ -209,12 +209,12 @@ separate host (they are not Nuxt).
 In the Vercel project settings:
 
 1. **Framework Preset:** Nuxt
-2. **Root Directory:** `apps/web` (include files outside the root directory)
-3. **Output Directory:** Override → `.vercel/output` (never `dist`)
-4. Do **not** set Root Directory to the repo root or `apps/api`
+2. **Root Directory:** Prefer `apps/web`. If the project is still linked to `apps/api`,
+   `apps/api/vercel.json` will build the Nuxt app and copy `.vercel/output` into place.
+3. **Output Directory:** `.vercel/output` (never `dist`)
+4. **Build Command:** leave Override **off** (do not set `cd apps/web && …`)
 
-Config lives only in `apps/web/vercel.json` (there is no root `vercel.json`).
-Build runs `nuxt build` from `apps/web`. Set `NUXT_PUBLIC_API_BASE_URL` to your API origin.
+Set `NUXT_PUBLIC_API_BASE_URL` to your API origin. NestJS itself is not hosted on Vercel.
 
 ## Common scripts
 
