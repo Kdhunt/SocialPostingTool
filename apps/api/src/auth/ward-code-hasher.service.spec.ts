@@ -16,6 +16,8 @@ function fakeConfig(pepper: string): AppConfig {
     wardCodePepper: pepper,
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    openAiApiKey: undefined,
+    aiImageMode: 'simulated',
     corsAllowedOrigins: ['http://localhost:3000'],
   };
 }

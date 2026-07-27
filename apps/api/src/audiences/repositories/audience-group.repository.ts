@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { AudienceGroup } from '@prisma/client';
+import { Prisma, type AudienceGroup } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 export type AudienceGroupWithCounts = AudienceGroup & {
@@ -97,10 +97,23 @@ export class AudienceGroupRepository {
       name?: string;
       description?: string | null;
       membershipMode?: 'Manual' | 'Rules';
-      membershipRules?: unknown;
+      membershipRules?: Prisma.InputJsonValue | typeof Prisma.JsonNull | null;
     },
   ): Promise<AudienceGroup> {
-    return this.prisma.client.audienceGroup.update({ where: { id }, data: input });
+    const data: Prisma.AudienceGroupUpdateInput = {};
+    if (input.name !== undefined) {
+      data.name = input.name;
+    }
+    if (input.description !== undefined) {
+      data.description = input.description;
+    }
+    if (input.membershipMode !== undefined) {
+      data.membershipMode = input.membershipMode;
+    }
+    if (input.membershipRules !== undefined) {
+      data.membershipRules = input.membershipRules === null ? Prisma.JsonNull : input.membershipRules;
+    }
+    return this.prisma.client.audienceGroup.update({ where: { id }, data });
   }
 
   async archive(id: string): Promise<void> {
