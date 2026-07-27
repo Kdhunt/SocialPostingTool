@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nuxtjs",
   "installCommand": "pnpm install && pnpm exec turbo run build --filter=@ward-comms/web^...",
-  "buildCommand": "cd apps/web && pnpm exec nuxt build"
+  "buildCommand": "cd apps/web && pnpm exec nuxt build",
+  "outputDirectory": "apps/web/.vercel/output"
 }
