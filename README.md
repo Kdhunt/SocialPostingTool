@@ -210,12 +210,11 @@ In the Vercel project settings:
 
 1. **Framework Preset:** Nuxt
 2. **Root Directory:** `apps/web` (include files outside the root directory)
-3. **Output Directory:** click Override and set it to `.vercel/output`
-   (or clear the override entirely — do **not** leave it as `dist`)
-4. Do **not** set Root Directory to `apps/api` — that builds NestJS and is wrong for this project
+3. **Output Directory:** Override → `.vercel/output` (never `dist`)
+4. Do **not** set Root Directory to the repo root or `apps/api`
 
-`apps/web/vercel.json` runs workspace package builds, then `nuxt build`.
-Set `NUXT_PUBLIC_API_BASE_URL` to your deployed API origin.
+Config lives only in `apps/web/vercel.json` (there is no root `vercel.json`).
+Build runs `nuxt build` from `apps/web`. Set `NUXT_PUBLIC_API_BASE_URL` to your API origin.
 
 ## Common scripts
 
