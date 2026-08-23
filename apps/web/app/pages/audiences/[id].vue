@@ -180,22 +180,34 @@ async function applyRules(): Promise<void> {
     actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to apply rules.';
   }
 }
+
+function onMemberSelected(personId: string): void {
+  newMemberPersonId.value = personId;
+}
+
+const breadcrumbs = computed(() => {
+  if (pageState.value.kind !== 'loaded') {
+    return [{ label: 'Audiences', to: '/audiences' }, { label: 'Audience' }];
+  }
+  return [{ label: 'Audiences', to: '/audiences' }, { label: pageState.value.audience.name }];
+});
 </script>
 
 <template>
-  <main class="audience-page">
-    <p><NuxtLink to="/audiences">&larr; Back to audiences</NuxtLink></p>
+  <div class="audience-detail">
+    <LayoutBreadcrumbs :items="breadcrumbs" />
 
-    <p v-if="pageState.kind === 'loading'">Loading…</p>
-    <p v-else-if="pageState.kind === 'error'" role="alert" class="audience-page__error">{{ pageState.message }}</p>
+    <UiLoadingState v-if="pageState.kind === 'loading'" />
+    <UiAlertBanner v-else-if="pageState.kind === 'error'">{{ pageState.message }}</UiAlertBanner>
 
     <template v-else-if="pageState.kind === 'loaded'">
-      <header class="audience-page__header">
-        <h1>{{ pageState.audience.name }}</h1>
-        <span v-if="!pageState.audience.isActive" class="audience-page__tag">Archived</span>
-      </header>
+      <LayoutPageHeader :title="pageState.audience.name">
+        <template #actions>
+          <span v-if="!pageState.audience.isActive" class="status-pill status-pill--muted">Archived</span>
+        </template>
+      </LayoutPageHeader>
 
-      <p v-if="actionError" role="alert" class="audience-page__error">{{ actionError }}</p>
+      <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>
 
       <section aria-labelledby="audience-info-heading">
         <h2 id="audience-info-heading">Audience info</h2>
@@ -283,13 +295,9 @@ async function applyRules(): Promise<void> {
         </ul>
 
         <form class="audience-page__inline-form" novalidate @submit.prevent="addMember">
-          <label for="new-member-person-id">Person ID</label>
-          <input id="new-member-person-id" v-model="newMemberPersonId" type="text" required />
-          <button type="submit">Add member</button>
+          <UiPersonSearchPicker input-id="new-member-picker" label="Search for a member to add" @select="onMemberSelected" />
+          <UiAppButton type="submit" :disabled="!newMemberPersonId">Add member</UiAppButton>
         </form>
-        <p class="audience-page__hint">
-          Find a person's ID from the <NuxtLink to="/directory">directory search</NuxtLink>.
-        </p>
       </section>
 
       <section aria-labelledby="destinations-heading">
@@ -314,23 +322,23 @@ async function applyRules(): Promise<void> {
         </form>
       </section>
     </template>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.audience-page {
-  max-width: 40rem;
-  margin: 2rem auto;
-  padding: 0 1rem 3rem;
+.audience-detail {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--space-6);
 }
 
-.audience-page__header {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+.status-pill {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
 }
 
 .audience-page__form {

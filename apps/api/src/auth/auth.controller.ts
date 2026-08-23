@@ -16,11 +16,17 @@ import type { Request, Response } from 'express';
 import {
   loginRequestSchema,
   refreshRequestSchema,
+  totpConfirmEnrollmentRequestSchema,
+  totpDisableRequestSchema,
+  totpVerifyRequestSchema,
   wardCodeVerifyRequestSchema,
   type LoginResponse,
   type MobileTokenPair,
   type SessionResponse,
   type SessionSummary,
+  type TotpEnrollmentResponse,
+  type TotpStatusResponse,
+  type TotpVerifyResponse,
   type WardCodeVerifyResponse,
 } from '@ward-comms/validation';
 import { parseBody } from '../common/parse-body.util.js';
@@ -93,8 +99,16 @@ export class AuthController {
     const context = this.buildContext(req, res, dto.clientType);
     const outcome = await this.authService.login(dto.username, dto.password, context);
 
+    if (outcome.status === 'totp_required') {
+      return { status: 'totp_required', loginTicket: outcome.loginTicket };
+    }
+
     if (outcome.status === 'ward_code_required') {
       return { status: 'ward_code_required', loginTicket: outcome.loginTicket };
+    }
+
+    if (outcome.status !== 'ok') {
+      throw new ForbiddenException('Unexpected sign-in state.');
     }
 
     this.rateLimiter.reset(rateLimitKey);
@@ -102,6 +116,80 @@ export class AuthController {
       this.setSessionCookie(res, outcome.sessionToken, outcome.sessionExpiresAt);
     }
     return { status: 'ok', user: outcome.user, tokens: outcome.tokens };
+  }
+
+  @Post('totp')
+  @HttpCode(200)
+  async verifyTotp(
+    @Body() body: unknown,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<TotpVerifyResponse> {
+    const dto = parseBody(totpVerifyRequestSchema, body);
+    const rateLimitKey = `${req.ip}:totp`;
+    if (!this.rateLimiter.consume(rateLimitKey)) {
+      throw new ForbiddenException('Too many attempts. Please wait and try again.');
+    }
+
+    const context = this.buildContext(req, res, dto.clientType);
+    const outcome = await this.authService.verifyTotp(dto.loginTicket, dto.code, context);
+
+    if (outcome.status === 'ward_code_required') {
+      return { status: 'ward_code_required', loginTicket: outcome.loginTicket };
+    }
+
+    if (outcome.status !== 'ok') {
+      throw new ForbiddenException('Unexpected sign-in state.');
+    }
+
+    this.rateLimiter.reset(rateLimitKey);
+    if (outcome.sessionToken) {
+      this.setSessionCookie(res, outcome.sessionToken, outcome.sessionExpiresAt);
+    }
+    return { status: 'ok', user: outcome.user, tokens: outcome.tokens };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Get('totp/status')
+  async getTotpStatus(@CurrentUser() user: AuthContext['user']): Promise<TotpStatusResponse> {
+    return this.authService.getTotpStatus(user.id);
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('totp/enroll')
+  @HttpCode(200)
+  async beginTotpEnrollment(@CurrentUser() user: AuthContext['user']): Promise<TotpEnrollmentResponse> {
+    return this.authService.beginTotpEnrollment(user.id);
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('totp/confirm')
+  @HttpCode(204)
+  async confirmTotpEnrollment(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const dto = parseBody(totpConfirmEnrollmentRequestSchema, body);
+    const context = this.buildContext(req, res, 'web');
+    await this.authService.confirmTotpEnrollment(user.id, dto.code, context);
+    res.clearCookie(SESSION_COOKIE_NAME);
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('totp/disable')
+  @HttpCode(204)
+  async disableTotp(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const dto = parseBody(totpDisableRequestSchema, body);
+    const context = this.buildContext(req, res, 'web');
+    await this.authService.disableTotp(user.id, dto.password, dto.code, context);
+    res.clearCookie(SESSION_COOKIE_NAME);
   }
 
   @Post('ward-code')

@@ -146,4 +146,49 @@ export class UserRepository {
     });
     return existing !== null;
   }
+
+  async setTotpSecretEncrypted(userId: string, totpSecretEncrypted: string): Promise<void> {
+    await this.prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: {
+        totpSecretEncrypted,
+        totpEnabledAt: null,
+        totpFailedAttempts: 0,
+        totpLockedUntil: null,
+      },
+    });
+  }
+
+  async confirmTotpEnabled(userId: string): Promise<void> {
+    await this.prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: { totpEnabledAt: new Date(), totpFailedAttempts: 0, totpLockedUntil: null },
+    });
+  }
+
+  async clearTotp(userId: string): Promise<void> {
+    await this.prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: {
+        totpSecretEncrypted: null,
+        totpEnabledAt: null,
+        totpFailedAttempts: 0,
+        totpLockedUntil: null,
+      },
+    });
+  }
+
+  async recordTotpFailure(userId: string, failedAttempts: number, lockedUntil: Date | null): Promise<void> {
+    await this.prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: { totpFailedAttempts: failedAttempts, totpLockedUntil: lockedUntil },
+    });
+  }
+
+  async clearTotpFailures(userId: string): Promise<void> {
+    await this.prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: { totpFailedAttempts: 0, totpLockedUntil: null },
+    });
+  }
 }

@@ -1,11 +1,9 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'authenticated' });
-import { onMounted, ref } from 'vue';
-import { navigateTo } from '#imports';
+
 import { ApiRequestError } from '@ward-comms/api-client';
 import type { CampaignSummaryDto, CampaignStatusDto } from '@ward-comms/validation';
-import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
+import { campaignStatusLabel } from '~/utils/display-labels';
 
 type ListState =
   | { kind: 'loading' }
@@ -64,146 +62,128 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="campaigns-page">
-    <header class="campaigns-page__header">
-      <h1>Campaigns</h1>
-      <div class="campaigns-page__actions">
-        <NuxtLink to="/audiences">Audiences</NuxtLink>
-        <NuxtLink v-if="canCreate()" to="/campaigns/new">Create campaign</NuxtLink>
-      </div>
-    </header>
+  <LayoutPageContainer>
+    <LayoutPageHeader
+      title="Campaigns"
+      description="Draft content, resolve audience overlap, request approval, and track delivery status."
+    >
+      <template #actions>
+        <UiAppButton v-if="canCreate()" to="/campaigns/new">Create campaign</UiAppButton>
+      </template>
+    </LayoutPageHeader>
 
-    <p class="campaigns-page__hint">
-      Campaigns are drafted, previewed, and approved here. No message is ever sent to a real provider — sending is
-      simulated for local development (see the provider simulator).
-    </p>
+    <UiAlertBanner tone="info">
+      Local development uses the provider simulator — no messages are sent to real email, SMS, or social accounts.
+    </UiAlertBanner>
 
-    <form class="campaigns-page__search" novalidate @submit.prevent="search">
-      <label for="campaign-query">Search by name</label>
-      <input id="campaign-query" v-model="query" type="search" placeholder="e.g. ward conference" />
+    <form class="toolbar card" novalidate @submit.prevent="search">
+      <UiFormField label="Search by name" input-id="campaign-query">
+        <input id="campaign-query" v-model="query" class="form-control" type="search" placeholder="e.g. ward conference" />
+      </UiFormField>
 
-      <label for="campaign-status">Status</label>
-      <select id="campaign-status" v-model="status">
-        <option value="">Any</option>
-        <option v-for="option in STATUS_OPTIONS" :key="option" :value="option">{{ option }}</option>
-      </select>
+      <UiFormField label="Status" input-id="campaign-status">
+        <select id="campaign-status" v-model="status" class="form-control">
+          <option value="">Any status</option>
+          <option v-for="option in STATUS_OPTIONS" :key="option" :value="option">{{ campaignStatusLabel(option) }}</option>
+        </select>
+      </UiFormField>
 
-      <label class="campaigns-page__checkbox">
+      <label class="toolbar__checkbox">
         <input v-model="includeArchived" type="checkbox" />
         Include archived
       </label>
 
-      <button type="submit">Search</button>
+      <UiAppButton type="submit">Search</UiAppButton>
     </form>
 
-    <p v-if="listState.kind === 'loading'">Loading…</p>
-    <p v-else-if="listState.kind === 'error'" role="alert" class="campaigns-page__error">{{ listState.message }}</p>
-    <p v-else-if="listState.kind === 'empty'">No campaigns found.</p>
+    <UiLoadingState v-if="listState.kind === 'loading'" />
+    <UiAlertBanner v-else-if="listState.kind === 'error'">{{ listState.message }}</UiAlertBanner>
+    <UiEmptyState
+      v-else-if="listState.kind === 'empty'"
+      title="No campaigns found"
+      description="Create a campaign to compose a message and choose who should receive it."
+    >
+      <template v-if="canCreate()" #actions>
+        <UiAppButton to="/campaigns/new">Create campaign</UiAppButton>
+      </template>
+    </UiEmptyState>
 
-    <ul v-else-if="listState.kind === 'loaded'" class="campaigns-page__list">
+    <ul v-else class="results">
       <li v-for="campaign in listState.campaigns" :key="campaign.id">
-        <NuxtLink :to="`/campaigns/${campaign.id}`">{{ campaign.name }}</NuxtLink>
-        <span class="campaigns-page__tag">{{ campaign.status }}</span>
-        <span v-if="!campaign.isActive" class="campaigns-page__tag">Archived</span>
-        <span class="campaigns-page__count">v{{ campaign.currentVersionNumber }}</span>
-        <span class="campaigns-page__count">{{ campaign.audienceCount }} audience(s)</span>
+        <UiListCard>
+          <template #title>
+            <NuxtLink :to="`/campaigns/${campaign.id}`" class="results__link">{{ campaign.name }}</NuxtLink>
+          </template>
+          <template #meta>
+            <span class="tag">{{ campaignStatusLabel(campaign.status) }}</span>
+            <span v-if="!campaign.isActive" class="tag">Archived</span>
+          </template>
+          <template #aside>
+            <span>Version {{ campaign.currentVersionNumber }}</span>
+            <span>{{ campaign.audienceCount }} audiences</span>
+          </template>
+        </UiListCard>
       </li>
     </ul>
-  </main>
+  </LayoutPageContainer>
 </template>
 
 <style scoped>
-.campaigns-page {
-  max-width: 52rem;
-  margin: 2rem auto;
-  padding: 0 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(10rem, 1fr)) auto auto;
+  gap: var(--space-4);
+  align-items: end;
+  padding: var(--space-5);
 }
 
-.campaigns-page__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.campaigns-page__actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.campaigns-page__hint {
-  color: #57606a;
-}
-
-.campaigns-page__search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.campaigns-page__search input[type='search'],
-.campaigns-page__search select {
-  padding: 0.5rem;
-  border: 1px solid #57606a;
-  border-radius: 0.375rem;
-}
-
-.campaigns-page__checkbox {
+.toolbar__checkbox {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: var(--space-2);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  padding-bottom: 0.625rem;
 }
 
-.campaigns-page__list {
+.results {
   list-style: none;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-3);
 }
 
-.campaigns-page__list li {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem;
-  border: 1px solid #d0d7de;
-  border-radius: 0.375rem;
+.results__link {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-decoration: none;
 }
 
-.campaigns-page__tag {
+.results__link:hover {
+  color: var(--color-brand);
+  text-decoration: none;
+}
+
+.tag {
   font-size: 0.75rem;
+  font-weight: 700;
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
-  background: #eaeef2;
-  border: 1px solid #57606a;
+  background: var(--color-brand-soft);
+  border: 1px solid rgb(30 77 140 / 0.2);
+  color: var(--color-brand);
 }
 
-.campaigns-page__count {
-  margin-left: auto;
-  color: #57606a;
-  font-size: 0.875rem;
-}
+@media (max-width: 900px) {
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
 
-.campaigns-page__count + .campaigns-page__count {
-  margin-left: 0;
-}
-
-.campaigns-page__error {
-  color: #cf222e;
-  font-weight: 600;
-}
-
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 2px solid #0969da;
-  outline-offset: 2px;
+  .toolbar__checkbox {
+    padding-bottom: 0;
+  }
 }
 </style>

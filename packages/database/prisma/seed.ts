@@ -29,6 +29,10 @@ interface RoleSeed {
  * key for a different capability.
  */
 const permissions: PermissionSeed[] = [
+  {
+    key: 'platform.wards.manage',
+    description: 'Create and list ward tenants. Restricted to platform operators.',
+  },
   { key: 'ward.manage', description: 'Manage ward settings and configuration.' },
   { key: 'users.manage', description: 'Create, disable, and manage user accounts.' },
   { key: 'roles.manage', description: 'Assign roles and permissions to users.' },
@@ -56,6 +60,11 @@ const allPermissionKeys: string[] = permissions.map((permission) => permission.k
  * granted only to WardAdmin by default (see AGENTS.md #14).
  */
 const roles: RoleSeed[] = [
+  {
+    name: 'PlatformAdmin',
+    description: 'Platform operator — can provision new ward tenants.',
+    permissionKeys: ['platform.wards.manage'],
+  },
   {
     name: 'WardAdmin',
     description: 'Full administrative access, including user and role management.',

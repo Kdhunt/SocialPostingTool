@@ -1,11 +1,8 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'authenticated' });
-import { onMounted, ref } from 'vue';
-import { navigateTo } from '#imports';
+
 import { ApiRequestError } from '@ward-comms/api-client';
 import type { AudienceGroupSummaryDto } from '@ward-comms/validation';
-import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
 
 type ListState =
   | { kind: 'loading' }
@@ -47,129 +44,123 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="audiences-page">
-    <header class="audiences-page__header">
-      <h1>Audiences</h1>
-      <div class="audiences-page__actions">
-        <NuxtLink to="/directory">Directory</NuxtLink>
-        <NuxtLink to="/audiences/destinations">Destinations</NuxtLink>
-        <NuxtLink to="/audiences/new">Create audience</NuxtLink>
-      </div>
-    </header>
+  <div class="audiences-index">
+    <LayoutPageHeader
+      title="Audiences"
+      description="Organize members into groups, attach destinations, and preview who will receive a campaign."
+    >
+      <template #actions>
+        <UiAppButton variant="secondary" to="/audiences/destinations">Destinations</UiAppButton>
+        <UiAppButton to="/audiences/new">Create audience</UiAppButton>
+      </template>
+    </LayoutPageHeader>
 
-    <form class="audiences-page__search" novalidate @submit.prevent="search">
-      <label for="audience-query">Search by name</label>
-      <input id="audience-query" v-model="query" type="search" placeholder="e.g. announcements" />
+    <form class="toolbar card" novalidate @submit.prevent="search">
+      <UiFormField label="Search by name" input-id="audience-query">
+        <input id="audience-query" v-model="query" class="form-control" type="search" placeholder="e.g. announcements" />
+      </UiFormField>
 
-      <label class="audiences-page__checkbox">
+      <label class="toolbar__checkbox">
         <input v-model="includeArchived" type="checkbox" />
         Include archived
       </label>
 
-      <button type="submit">Search</button>
+      <UiAppButton type="submit">Search</UiAppButton>
     </form>
 
-    <p v-if="listState.kind === 'loading'">Loading…</p>
-    <p v-else-if="listState.kind === 'error'" role="alert" class="audiences-page__error">{{ listState.message }}</p>
-    <p v-else-if="listState.kind === 'empty'">No audiences found. Create one to get started.</p>
+    <UiLoadingState v-if="listState.kind === 'loading'" />
+    <UiAlertBanner v-else-if="listState.kind === 'error'">{{ listState.message }}</UiAlertBanner>
+    <UiEmptyState
+      v-else-if="listState.kind === 'empty'"
+      title="No audiences yet"
+      description="Create an audience group to target members for email, SMS, or social posts."
+    >
+      <template #actions>
+        <UiAppButton to="/audiences/new">Create audience</UiAppButton>
+      </template>
+    </UiEmptyState>
 
-    <ul v-else-if="listState.kind === 'loaded'" class="audiences-page__list">
+    <ul v-else class="results">
       <li v-for="audience in listState.audiences" :key="audience.id">
-        <NuxtLink :to="`/audiences/${audience.id}`">{{ audience.name }}</NuxtLink>
-        <span v-if="!audience.isActive" class="audiences-page__tag">Archived</span>
-        <span class="audiences-page__count">{{ audience.memberCount }} member(s)</span>
-        <span class="audiences-page__count">{{ audience.destinationCount }} destination(s)</span>
+        <UiListCard>
+          <template #title>
+            <NuxtLink :to="`/audiences/${audience.id}`" class="results__link">{{ audience.name }}</NuxtLink>
+          </template>
+          <template #meta>
+            <span v-if="!audience.isActive" class="tag">Archived</span>
+          </template>
+          <template #aside>
+            <span>{{ audience.memberCount }} members</span>
+            <span>{{ audience.destinationCount }} destinations</span>
+          </template>
+        </UiListCard>
       </li>
     </ul>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.audiences-page {
-  max-width: 48rem;
-  margin: 2rem auto;
-  padding: 0 1rem;
+.audiences-index {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-6);
 }
 
-.audiences-page__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto auto;
+  gap: var(--space-4);
+  align-items: end;
+  padding: var(--space-5);
 }
 
-.audiences-page__actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.audiences-page__search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.audiences-page__search input[type='search'] {
-  padding: 0.5rem;
-  border: 1px solid #57606a;
-  border-radius: 0.375rem;
-}
-
-.audiences-page__checkbox {
+.toolbar__checkbox {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: var(--space-2);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  padding-bottom: 0.625rem;
 }
 
-.audiences-page__list {
+.results {
   list-style: none;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-3);
 }
 
-.audiences-page__list li {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem;
-  border: 1px solid #d0d7de;
-  border-radius: 0.375rem;
+.results__link {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-decoration: none;
 }
 
-.audiences-page__tag {
+.results__link:hover {
+  color: var(--color-brand);
+  text-decoration: none;
+}
+
+.tag {
   font-size: 0.75rem;
+  font-weight: 700;
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
-  background: #eaeef2;
-  border: 1px solid #57606a;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
 }
 
-.audiences-page__count {
-  margin-left: auto;
-  color: #57606a;
-  font-size: 0.875rem;
-}
+@media (max-width: 768px) {
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
 
-.audiences-page__count + .audiences-page__count {
-  margin-left: 0;
-}
-
-.audiences-page__error {
-  color: #cf222e;
-  font-weight: 600;
-}
-
-a:focus-visible,
-button:focus-visible,
-input:focus-visible {
-  outline: 2px solid #0969da;
-  outline-offset: 2px;
+  .toolbar__checkbox {
+    padding-bottom: 0;
+  }
 }
 </style>

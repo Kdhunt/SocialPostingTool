@@ -6,12 +6,14 @@ export type AuthState =
   | { kind: 'unknown' }
   | { kind: 'anonymous' }
   | { kind: 'authenticated'; user: AuthUser }
+  | { kind: 'totp_required'; loginTicket: string }
   | { kind: 'ward_code_required'; loginTicket: string };
 
 export interface UseAuthReturn {
   state: ReturnType<typeof useState<AuthState>>;
   refreshSession: () => Promise<void>;
   login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  submitTotp: (code: string) => Promise<{ ok: boolean; error?: string }>;
   submitWardCode: (wardCode: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
@@ -40,6 +42,10 @@ export function useAuth(): UseAuthReturn {
   async function login(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
     try {
       const result = await client.login(username, password, 'web');
+      if (result.status === 'totp_required') {
+        state.value = { kind: 'totp_required', loginTicket: result.loginTicket };
+        return { ok: true };
+      }
       if (result.status === 'ward_code_required') {
         state.value = { kind: 'ward_code_required', loginTicket: result.loginTicket };
         return { ok: true };
@@ -48,6 +54,23 @@ export function useAuth(): UseAuthReturn {
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof ApiRequestError ? error.message : 'Unable to sign in.' };
+    }
+  }
+
+  async function submitTotp(code: string): Promise<{ ok: boolean; error?: string }> {
+    if (state.value.kind !== 'totp_required') {
+      return { ok: false, error: 'No sign-in attempt is in progress.' };
+    }
+    try {
+      const result = await client.verifyTotp(state.value.loginTicket, code, 'web');
+      if (result.status === 'ward_code_required') {
+        state.value = { kind: 'ward_code_required', loginTicket: result.loginTicket };
+        return { ok: true };
+      }
+      state.value = { kind: 'authenticated', user: result.user };
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof ApiRequestError ? error.message : 'Unable to verify authenticator code.' };
     }
   }
 
@@ -69,5 +92,5 @@ export function useAuth(): UseAuthReturn {
     state.value = { kind: 'anonymous' };
   }
 
-  return { state, refreshSession, login, submitWardCode, logout };
+  return { state, refreshSession, login, submitTotp, submitWardCode, logout };
 }

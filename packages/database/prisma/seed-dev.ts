@@ -41,6 +41,11 @@ async function main(): Promise<void> {
     throw new Error('WardAdmin role not found — run `pnpm db:seed` first.');
   }
 
+  const platformAdminRole = await prisma.role.findUnique({ where: { name: 'PlatformAdmin' } });
+  if (!platformAdminRole) {
+    throw new Error('PlatformAdmin role not found — run `pnpm db:seed` first.');
+  }
+
   const passwordHash = await hash(DEV_PASSWORD);
   let user = await prisma.applicationUser.findFirst({
     where: { wardId: ward.id, username: DEV_USERNAME, archivedAt: null },
@@ -66,6 +71,12 @@ async function main(): Promise<void> {
     where: { userId_roleId: { userId: user.id, roleId: wardAdminRole.id } },
     update: {},
     create: { userId: user.id, roleId: wardAdminRole.id },
+  });
+
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: user.id, roleId: platformAdminRole.id } },
+    update: {},
+    create: { userId: user.id, roleId: platformAdminRole.id },
   });
 
   const activeCode = await prisma.wardCodeVersion.findFirst({

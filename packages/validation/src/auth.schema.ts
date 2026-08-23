@@ -33,6 +33,7 @@ export const authUserSchema = z.object({
   username: z.string(),
   displayName: z.string(),
   permissions: z.array(z.string()),
+  totpEnabled: z.boolean().optional(),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
 
@@ -44,12 +45,49 @@ export const mobileTokenPairSchema = z.object({
 });
 export type MobileTokenPair = z.infer<typeof mobileTokenPairSchema>;
 
-/** Returned by /auth/login. Either ward code verification is required next, or login is complete. */
+/** Returned by /auth/login. Multi-step sign-in may require TOTP and/or ward code next. */
 export const loginResponseSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('totp_required'), loginTicket: z.string() }),
   z.object({ status: z.literal('ward_code_required'), loginTicket: z.string() }),
   z.object({ status: z.literal('ok'), user: authUserSchema, tokens: mobileTokenPairSchema.optional() }),
 ]);
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+export const totpVerifyRequestSchema = z.object({
+  loginTicket: z.string().min(1),
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app.'),
+  clientType: clientTypeSchema.optional(),
+});
+export type TotpVerifyRequest = z.infer<typeof totpVerifyRequestSchema>;
+
+export const totpVerifyResponseSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ward_code_required'), loginTicket: z.string() }),
+  z.object({ status: z.literal('ok'), user: authUserSchema, tokens: mobileTokenPairSchema.optional() }),
+]);
+export type TotpVerifyResponse = z.infer<typeof totpVerifyResponseSchema>;
+
+export const totpConfirmEnrollmentRequestSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app.'),
+});
+export type TotpConfirmEnrollmentRequest = z.infer<typeof totpConfirmEnrollmentRequestSchema>;
+
+export const totpDisableRequestSchema = z.object({
+  password: z.string().min(1).max(512),
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app.'),
+});
+export type TotpDisableRequest = z.infer<typeof totpDisableRequestSchema>;
+
+export const totpEnrollmentResponseSchema = z.object({
+  otpauthUrl: z.string().url(),
+  secret: z.string().min(1),
+});
+export type TotpEnrollmentResponse = z.infer<typeof totpEnrollmentResponseSchema>;
+
+export const totpStatusResponseSchema = z.object({
+  enabled: z.boolean(),
+  pendingEnrollment: z.boolean(),
+});
+export type TotpStatusResponse = z.infer<typeof totpStatusResponseSchema>;
 
 export const wardCodeVerifyResponseSchema = z.object({
   status: z.literal('ok'),

@@ -97,6 +97,21 @@ Use `pnpm db:seed:dev` after migrations and the role catalog seed — it prints
 fictional dev credentials to the console. For custom users, use the
 **Admin → Users** screen (`/admin/users`) or the `POST /users` API.
 
+### Provisioning additional wards
+
+Platform operators with the `platform.wards.manage` permission can create new
+ward tenants from **Admin → Wards** (`/admin/wards`) or `POST /platform/wards`.
+Each provisioned ward receives:
+
+- A ward record (name and time zone)
+- An initial **WardAdmin** account
+- Version 1 of the shared ward code (stored as a hash only)
+
+The dev seed assigns `PlatformAdmin` to the local `admin` user. In production,
+assign the `PlatformAdmin` role only to trusted operators (re-run
+`pnpm --filter @ward-comms/database db:seed` after upgrading to pick up the
+new permission, then assign the role via the database or user management).
+
 ### Authentication overview
 
 - `POST /auth/login` → `{ username, password, clientType?: 'web'|'mobile' }`

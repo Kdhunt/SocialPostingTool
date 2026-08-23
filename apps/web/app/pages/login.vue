@@ -1,20 +1,45 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { navigateTo } from '#imports';
-import { useAuth } from '~/composables/useAuth';
+definePageMeta({ layout: 'guest' });
 
-const { state, login, submitWardCode } = useAuth();
+const { state, login, submitTotp, submitWardCode } = useAuth();
 
 const username = ref('');
 const password = ref('');
+const totpCode = ref('');
 const wardCode = ref('');
 const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
+const needsTotp = computed(() => state.value.kind === 'totp_required');
+
+async function finishWithWardCodeIfNeeded(): Promise<{ ok: boolean; error?: string }> {
+  if (state.value.kind !== 'ward_code_required') {
+    return { ok: true };
+  }
+
+  const code = wardCode.value.trim();
+  if (!code) {
+    return { ok: false, error: 'Enter the ward code to finish signing in.' };
+  }
+
+  return submitWardCode(code);
+}
+
 async function onLoginSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-  const result = await login(username.value, password.value);
+
+  let result: { ok: boolean; error?: string };
+
+  if (state.value.kind === 'ward_code_required') {
+    result = await finishWithWardCodeIfNeeded();
+  } else {
+    result = await login(username.value, password.value);
+    if (result.ok) {
+      result = await finishWithWardCodeIfNeeded();
+    }
+  }
+
   submitting.value = false;
 
   if (!result.ok) {
@@ -27,104 +52,109 @@ async function onLoginSubmit(): Promise<void> {
   }
 }
 
-async function onWardCodeSubmit(): Promise<void> {
+async function onTotpSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-  const result = await submitWardCode(wardCode.value);
+
+  let result = await submitTotp(totpCode.value);
+  if (result.ok) {
+    result = await finishWithWardCodeIfNeeded();
+  }
+
   submitting.value = false;
 
   if (!result.ok) {
-    errorMessage.value = result.error ?? 'Unable to verify ward code.';
+    errorMessage.value = result.error ?? 'Unable to verify authenticator code.';
     return;
   }
 
-  await navigateTo('/');
+  if (state.value.kind === 'authenticated') {
+    await navigateTo('/');
+  }
 }
 </script>
 
 <template>
-  <main class="login-page">
-    <h1>Sign in</h1>
+  <div class="login">
+    <h1 class="login__title">Sign in</h1>
+    <p class="login__lead">Use your ward account credentials to continue.</p>
 
     <form
-      v-if="state.kind !== 'ward_code_required'"
-      class="login-page__form"
+      v-if="!needsTotp"
+      class="login__form"
       novalidate
       @submit.prevent="onLoginSubmit"
     >
-      <label for="username">Username</label>
-      <input id="username" v-model="username" type="text" autocomplete="username" required />
+      <UiFormField label="Username" input-id="username">
+        <input id="username" v-model="username" class="form-control" type="text" autocomplete="username" required />
+      </UiFormField>
 
-      <label for="password">Password</label>
-      <input id="password" v-model="password" type="password" autocomplete="current-password" required />
+      <UiFormField label="Password" input-id="password">
+        <input id="password" v-model="password" class="form-control" type="password" autocomplete="current-password" required />
+      </UiFormField>
 
-      <p v-if="errorMessage" class="login-page__error" role="alert">{{ errorMessage }}</p>
+      <UiFormField
+        label="Ward code"
+        input-id="ward-code"
+        hint="Required on this device until the current ward code has been verified."
+      >
+        <input id="ward-code" v-model="wardCode" class="form-control" type="password" autocomplete="off" />
+      </UiFormField>
 
-      <button type="submit" :disabled="submitting">{{ submitting ? 'Signing in…' : 'Sign in' }}</button>
+      <UiAlertBanner v-if="errorMessage">{{ errorMessage }}</UiAlertBanner>
+
+      <UiAppButton type="submit" :disabled="submitting" class="login__submit">
+        {{ submitting ? 'Signing in…' : 'Sign in' }}
+      </UiAppButton>
     </form>
 
-    <form v-else class="login-page__form" novalidate @submit.prevent="onWardCodeSubmit">
-      <p>This device needs the current ward code to finish signing in.</p>
+    <form v-else class="login__form" novalidate @submit.prevent="onTotpSubmit">
+      <UiAlertBanner tone="info">
+        Enter the 6-digit code from your authenticator app.
+      </UiAlertBanner>
 
-      <label for="ward-code">Ward code</label>
-      <input id="ward-code" v-model="wardCode" type="password" autocomplete="off" required />
+      <UiFormField label="Authenticator code" input-id="totp-code" hint="Codes refresh every 30 seconds.">
+        <input
+          id="totp-code"
+          v-model="totpCode"
+          class="form-control"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          pattern="\d{6}"
+          maxlength="6"
+          required
+        />
+      </UiFormField>
 
-      <p v-if="errorMessage" class="login-page__error" role="alert">{{ errorMessage }}</p>
+      <UiAlertBanner v-if="errorMessage">{{ errorMessage }}</UiAlertBanner>
 
-      <button type="submit" :disabled="submitting">{{ submitting ? 'Verifying…' : 'Verify ward code' }}</button>
+      <UiAppButton type="submit" :disabled="submitting" class="login__submit">
+        {{ submitting ? 'Verifying…' : 'Verify code' }}
+      </UiAppButton>
     </form>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.login-page {
-  max-width: 24rem;
-  margin: 3rem auto;
-  padding: 0 1rem;
+.login__title {
+  font-size: 1.375rem;
+  font-weight: 700;
 }
 
-.login-page__form {
+.login__lead {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.login__form {
+  margin-top: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  gap: var(--space-4);
 }
 
-.login-page__form label {
-  font-weight: 600;
-}
-
-.login-page__form input {
-  padding: 0.5rem;
-  border: 1px solid #57606a;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-}
-
-.login-page__form input:focus-visible,
-.login-page__form button:focus-visible {
-  outline: 2px solid #0969da;
-  outline-offset: 2px;
-}
-
-.login-page__form button {
-  margin-top: 0.5rem;
-  padding: 0.625rem;
-  border-radius: 0.375rem;
-  border: none;
-  background-color: #0969da;
-  color: white;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.login-page__form button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.login-page__error {
-  color: #cf222e;
-  font-weight: 600;
+.login__submit {
+  width: 100%;
 }
 </style>

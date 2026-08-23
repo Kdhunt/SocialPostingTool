@@ -5,6 +5,7 @@ import type { AuthUser } from '@ward-comms/validation';
 export type MobileAuthState =
   | { kind: 'anonymous' }
   | { kind: 'authenticated'; user: AuthUser }
+  | { kind: 'totp_required'; loginTicket: string }
   | { kind: 'ward_code_required'; loginTicket: string };
 
 /**
@@ -34,6 +35,10 @@ class MobileAuthStore {
   async login(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
     try {
       const result = await this.client.login(username, password, 'mobile');
+      if (result.status === 'totp_required') {
+        this.state.value = { kind: 'totp_required', loginTicket: result.loginTicket };
+        return { ok: true };
+      }
       if (result.status === 'ward_code_required') {
         this.state.value = { kind: 'ward_code_required', loginTicket: result.loginTicket };
         return { ok: true };
@@ -43,6 +48,24 @@ class MobileAuthStore {
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof ApiRequestError ? error.message : 'Unable to sign in.' };
+    }
+  }
+
+  async submitTotp(code: string): Promise<{ ok: boolean; error?: string }> {
+    if (this.state.value.kind !== 'totp_required') {
+      return { ok: false, error: 'No sign-in attempt is in progress.' };
+    }
+    try {
+      const result = await this.client.verifyTotp(this.state.value.loginTicket, code, 'mobile');
+      if (result.status === 'ward_code_required') {
+        this.state.value = { kind: 'ward_code_required', loginTicket: result.loginTicket };
+        return { ok: true };
+      }
+      this.applyTokens(result.tokens ?? null);
+      this.state.value = { kind: 'authenticated', user: result.user };
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof ApiRequestError ? error.message : 'Unable to verify authenticator code.' };
     }
   }
 

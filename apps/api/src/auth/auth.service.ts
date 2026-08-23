@@ -3,12 +3,16 @@ import type { ApplicationUser, UserSession } from '@prisma/client';
 import type { AppConfig } from '@ward-comms/config';
 import {
   computeLockedUntil,
+  computeTotpLockedUntil,
   isAccountLocked,
   isSessionValid,
+  isTotpEnabled,
+  isTotpLocked,
   LOGIN_TICKET_TTL_MS,
   MOBILE_ACCESS_TOKEN_TTL_MS,
   MOBILE_REFRESH_TOKEN_TTL_MS,
   requiresWardCodeVerification,
+  validateTotpCodeFormat,
   WEB_SESSION_TTL_MS,
 } from '@ward-comms/domain';
 import type { AuthUser, ClientType, MobileTokenPair } from '@ward-comms/validation';
@@ -21,6 +25,8 @@ import { WardCodeHasherService } from './ward-code-hasher.service.js';
 import { SessionRepository } from './repositories/session.repository.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { WardCodeRepository } from './repositories/ward-code.repository.js';
+import { decryptProviderSecret, encryptProviderSecret } from '../providers/provider-credential-cipher.js';
+import { buildOtpAuthUri, generateTotpSecret, verifyTotpCode } from './totp-verifier.service.js';
 
 export interface RequestContext {
   ipAddress: string | null;
@@ -31,8 +37,15 @@ export interface RequestContext {
 }
 
 export type LoginOutcome =
+  | { status: 'totp_required'; loginTicket: string }
   | { status: 'ward_code_required'; loginTicket: string }
   | { status: 'ok'; user: AuthUser; tokens?: MobileTokenPair; sessionToken?: string; sessionExpiresAt: Date };
+
+interface TotpTicketPayload extends Record<string, unknown> {
+  purpose: 'totp';
+  userId: string;
+  deviceId: string;
+}
 
 interface LoginTicketPayload extends Record<string, unknown> {
   purpose: 'ward_code';
@@ -152,6 +165,92 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
+    return this.continueAfterPasswordVerified(user, context);
+  }
+
+  async verifyTotp(loginTicket: string, code: string, context: RequestContext): Promise<LoginOutcome> {
+    if (!validateTotpCodeFormat(code)) {
+      throw new UnauthorizedException('Enter the 6-digit code from your authenticator app.');
+    }
+
+    let payload: TotpTicketPayload;
+    try {
+      payload = verifyToken<TotpTicketPayload>(loginTicket, this.config.session.secret);
+    } catch (error) {
+      if (error instanceof InvalidSignedTokenError) {
+        throw new UnauthorizedException('This sign-in attempt has expired. Please sign in again.');
+      }
+      throw error;
+    }
+
+    if (payload.purpose !== 'totp' || payload.deviceId !== context.deviceId) {
+      throw new UnauthorizedException('This sign-in attempt is no longer valid. Please sign in again.');
+    }
+
+    const user = await this.users.findById(payload.userId);
+    if (!user || user.disabledAt || !isTotpEnabled(user)) {
+      throw new InvalidCredentialsError();
+    }
+
+    if (isTotpLocked(user.totpLockedUntil)) {
+      throw new UnauthorizedException('Too many incorrect authenticator codes. Try again later.');
+    }
+
+    const secret = this.decryptTotpSecret(user.totpSecretEncrypted);
+    if (!verifyTotpCode(secret, code)) {
+      const failedAttempts = user.totpFailedAttempts + 1;
+      const lockedUntil = computeTotpLockedUntil(failedAttempts);
+      await this.users.recordTotpFailure(user.id, failedAttempts, lockedUntil);
+      await this.audit.record({
+        wardId: user.wardId,
+        actorUserId: user.id,
+        action: 'auth.totp.failure',
+        entityType: 'ApplicationUser',
+        entityId: user.id,
+        metadata: { failedAttempts, locked: lockedUntil !== null },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      });
+      throw new UnauthorizedException('Incorrect authenticator code.');
+    }
+
+    await this.users.clearTotpFailures(user.id);
+    await this.audit.record({
+      wardId: user.wardId,
+      actorUserId: user.id,
+      action: 'auth.totp.verified',
+      entityType: 'ApplicationUser',
+      entityId: user.id,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+
+    return this.continueAfterTotpVerified(user, context);
+  }
+
+  private async continueAfterPasswordVerified(user: ApplicationUser, context: RequestContext): Promise<LoginOutcome> {
+    if (isTotpEnabled(user)) {
+      const loginTicket = signToken<TotpTicketPayload>(
+        { purpose: 'totp', userId: user.id, deviceId: context.deviceId },
+        this.config.session.secret,
+        LOGIN_TICKET_TTL_MS,
+      );
+      await this.audit.record({
+        wardId: user.wardId,
+        actorUserId: user.id,
+        action: 'auth.login.totp_required',
+        entityType: 'ApplicationUser',
+        entityId: user.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      });
+      return { status: 'totp_required', loginTicket };
+    }
+
+    return this.continueAfterTotpVerified(user, context);
+  }
+
+  private async continueAfterTotpVerified(user: ApplicationUser, context: RequestContext): Promise<LoginOutcome> {
     const activeWardCodeVersion = await this.wardCodes.findActiveVersion(user.wardId);
     if (activeWardCodeVersion) {
       const lastVerifiedSession = await this.sessions.findLatestVerifiedForDevice(user.id, context.deviceId);
@@ -181,7 +280,6 @@ export class AuthService {
       return this.completeLogin(user, activeWardCodeVersion.id, context);
     }
 
-    // No ward code has been configured for this ward yet — nothing to verify against.
     return this.completeLogin(user, null, context);
   }
 
@@ -251,6 +349,7 @@ export class AuthService {
       username: user.username,
       displayName: user.displayName,
       permissions: permissionKeys,
+      totpEnabled: isTotpEnabled(user),
     };
 
     if (context.clientType === 'mobile') {
@@ -403,9 +502,127 @@ export class AuthService {
         username: user.username,
         displayName: user.displayName,
         permissions: permissionKeys,
+        totpEnabled: isTotpEnabled(user),
       },
       session,
     };
+  }
+
+  private decryptTotpSecret(encrypted: string | null): string {
+    if (!encrypted) {
+      throw new UnauthorizedException('Two-factor authentication is not configured for this account.');
+    }
+    return decryptProviderSecret(encrypted, this.config.providerCredentialsEncryptionKey);
+  }
+
+  private encryptTotpSecret(secret: string): string {
+    return encryptProviderSecret(secret, this.config.providerCredentialsEncryptionKey);
+  }
+
+  async getTotpStatus(userId: string): Promise<{ enabled: boolean; pendingEnrollment: boolean }> {
+    const user = await this.users.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+    return {
+      enabled: isTotpEnabled(user),
+      pendingEnrollment: user.totpSecretEncrypted !== null && user.totpEnabledAt === null,
+    };
+  }
+
+  async beginTotpEnrollment(userId: string): Promise<{ otpauthUrl: string; secret: string }> {
+    const user = await this.requireActiveUser(userId);
+    if (isTotpEnabled(user)) {
+      throw new ForbiddenException('Two-factor authentication is already enabled.');
+    }
+
+    const secret = generateTotpSecret();
+    await this.users.setTotpSecretEncrypted(user.id, this.encryptTotpSecret(secret));
+
+    await this.audit.record({
+      wardId: user.wardId,
+      actorUserId: user.id,
+      action: 'auth.totp.enrollment_started',
+      entityType: 'ApplicationUser',
+      entityId: user.id,
+    });
+
+    return {
+      otpauthUrl: buildOtpAuthUri({
+        issuer: this.config.appName,
+        accountName: user.username,
+        secret,
+      }),
+      secret,
+    };
+  }
+
+  async confirmTotpEnrollment(userId: string, code: string, context: RequestContext): Promise<void> {
+    const user = await this.requireActiveUser(userId);
+    if (!validateTotpCodeFormat(code)) {
+      throw new UnauthorizedException('Enter the 6-digit code from your authenticator app.');
+    }
+
+    const freshUser = await this.users.findById(user.id);
+    if (!freshUser?.totpSecretEncrypted) {
+      throw new UnauthorizedException('Start two-factor setup before confirming.');
+    }
+
+    const secret = this.decryptTotpSecret(freshUser.totpSecretEncrypted);
+    if (!verifyTotpCode(secret, code)) {
+      throw new UnauthorizedException('Incorrect authenticator code.');
+    }
+
+    await this.users.confirmTotpEnabled(user.id);
+    await this.sessions.revokeAllForUser(user.id);
+
+    await this.audit.record({
+      wardId: user.wardId,
+      actorUserId: user.id,
+      action: 'auth.totp.enrolled',
+      entityType: 'ApplicationUser',
+      entityId: user.id,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+  }
+
+  async disableTotp(userId: string, password: string, code: string, context: RequestContext): Promise<void> {
+    const user = await this.requireActiveUser(userId);
+    if (!isTotpEnabled(user)) {
+      throw new ForbiddenException('Two-factor authentication is not enabled.');
+    }
+
+    const passwordValid = await this.passwordHasher.verify(user.passwordHash, password);
+    if (!passwordValid) {
+      throw new UnauthorizedException('Incorrect password.');
+    }
+
+    const secret = this.decryptTotpSecret(user.totpSecretEncrypted);
+    if (!verifyTotpCode(secret, code)) {
+      throw new UnauthorizedException('Incorrect authenticator code.');
+    }
+
+    await this.users.clearTotp(user.id);
+    await this.sessions.revokeAllForUser(user.id);
+
+    await this.audit.record({
+      wardId: user.wardId,
+      actorUserId: user.id,
+      action: 'auth.totp.disabled',
+      entityType: 'ApplicationUser',
+      entityId: user.id,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+  }
+
+  private async requireActiveUser(userId: string): Promise<ApplicationUser> {
+    const user = await this.users.findById(userId);
+    if (!user || user.disabledAt || user.archivedAt) {
+      throw new UnauthorizedException('User not found.');
+    }
+    return user;
   }
 
   async logout(sessionId: string, actorUserId: string, context: RequestContext): Promise<void> {

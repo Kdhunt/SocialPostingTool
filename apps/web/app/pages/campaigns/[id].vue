@@ -15,6 +15,12 @@ import type {
 } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
+import {
+  approvalDecisionLabel,
+  campaignStatusLabel,
+  channelLabel,
+  overlapStrategyLabel,
+} from '~/utils/display-labels';
 
 definePageMeta({ layout: 'authenticated' });
 
@@ -70,6 +76,29 @@ const deliveryBatches = ref<DeliveryBatchSummaryDto[]>([]);
 const selectedBatch = ref<DeliveryBatchDetailDto | null>(null);
 const deliveryLoading = ref(false);
 const deliveryError = ref<string | null>(null);
+
+const activeTab = ref('setup');
+
+const CAMPAIGN_TABS = [
+  { id: 'setup', label: 'Setup', description: 'Name your campaign and choose who should receive it.' },
+  { id: 'content', label: 'Content', description: 'Write your message, add images, and configure channels.' },
+  { id: 'review', label: 'Review', description: 'Preview recipients, resolve overlap, and validate readiness.' },
+  { id: 'publish', label: 'Approve & send', description: 'Submit for approval, schedule, or send.' },
+] as const;
+
+const assetOptions = computed(() =>
+  createdAssetIds.value.map((id) => ({
+    id,
+    label: `Registered image (${id.slice(0, 8)}…)`,
+  })),
+);
+
+const breadcrumbs = computed(() => {
+  if (pageState.value.kind !== 'loaded') {
+    return [{ label: 'Campaigns', to: '/campaigns' }, { label: 'Campaign' }];
+  }
+  return [{ label: 'Campaigns', to: '/campaigns' }, { label: pageState.value.campaign.name }];
+});
 
 function permissions(): string[] {
   return authState.value.kind === 'authenticated' ? authState.value.user.permissions : [];
@@ -285,7 +314,10 @@ async function loadDeliveryBatches(): Promise<void> {
     const { batches } = await client.listDeliveryBatches(campaignId);
     deliveryBatches.value = batches;
     if (batches.length > 0 && !selectedBatch.value) {
-      selectedBatch.value = await client.getDeliveryBatch(campaignId, batches[0].id);
+      const firstBatch = batches[0];
+      if (firstBatch) {
+        selectedBatch.value = await client.getDeliveryBatch(campaignId, firstBatch.id);
+      }
     }
   } catch (error) {
     deliveryError.value = error instanceof ApiRequestError ? error.message : 'Unable to load delivery results.';
@@ -328,510 +360,410 @@ async function archiveCampaign(): Promise<void> {
 </script>
 
 <template>
-  <main class="campaign-page">
-    <p><NuxtLink to="/campaigns">&larr; Back to campaigns</NuxtLink></p>
+  <LayoutPageContainer>
+    <LayoutBreadcrumbs :items="breadcrumbs" />
 
-    <p v-if="pageState.kind === 'loading'">Loading…</p>
-    <p v-else-if="pageState.kind === 'error'" role="alert" class="campaign-page__error">{{ pageState.message }}</p>
+    <UiLoadingState v-if="pageState.kind === 'loading'" />
+    <UiAlertBanner v-else-if="pageState.kind === 'error'">{{ pageState.message }}</UiAlertBanner>
 
     <template v-else-if="pageState.kind === 'loaded'">
-      <header class="campaign-page__header">
-        <h1>{{ pageState.campaign.name }}</h1>
-        <span class="campaign-page__tag">{{ pageState.campaign.status }}</span>
-        <span v-if="!pageState.campaign.isActive" class="campaign-page__tag">Archived</span>
-      </header>
-
-      <p v-if="actionError" role="alert" class="campaign-page__error">{{ actionError }}</p>
-
-      <section aria-labelledby="status-heading" class="campaign-page__status-actions">
-        <h2 id="status-heading">Status actions</h2>
-        <div class="campaign-page__button-row">
-          <button v-if="canDraft() && pageState.campaign.status === 'Draft'" type="button" @click="submitForApproval">
-            Submit for approval
-          </button>
-          <button v-if="canDraft() && pageState.campaign.status === 'Rejected'" type="button" @click="revise">
-            Revise (reopen as draft)
-          </button>
-          <button
-            v-if="canSend() && ['Approved', 'Scheduled'].includes(pageState.campaign.status)"
-            type="button"
-            @click="sendNowAndRefresh"
-          >
-            Send now
-          </button>
-          <button
-            v-if="(canDraft() || canApprove() || canSend()) && !['Sent', 'Cancelled'].includes(pageState.campaign.status)"
-            type="button"
-            class="campaign-page__danger"
-            @click="cancel"
-          >
-            Cancel campaign
-          </button>
-          <button v-if="canDraft() && pageState.campaign.status !== 'Sending'" type="button" @click="archiveCampaign">
-            Archive
-          </button>
-        </div>
-
-        <div v-if="canApprove() && pageState.campaign.status === 'PendingApproval'" class="campaign-page__approval-form">
-          <label for="approval-comment">Approval comment (optional)</label>
-          <textarea id="approval-comment" v-model="approvalComment" rows="2"></textarea>
-          <div class="campaign-page__button-row">
-            <button type="button" @click="approve">Approve</button>
-            <button type="button" class="campaign-page__danger" @click="reject">Reject</button>
-          </div>
-        </div>
-
-        <div v-if="canSend() && pageState.campaign.status === 'Approved'" class="campaign-page__approval-form">
-          <label for="schedule-at">Schedule for later (optional)</label>
-          <input id="schedule-at" v-model="scheduleAt" type="datetime-local" />
-          <button type="button" @click="schedule">Schedule</button>
-        </div>
-      </section>
-
-      <section aria-labelledby="info-heading">
-        <h2 id="info-heading">Campaign info</h2>
-        <form class="campaign-page__form" novalidate @submit.prevent="saveName">
-          <label for="edit-name">Name</label>
-          <input id="edit-name" v-model="editName" type="text" required />
-          <button type="submit">Save name</button>
-        </form>
-      </section>
-
-      <section aria-labelledby="content-heading">
-        <h2 id="content-heading">Base content (version {{ pageState.campaign.currentVersion.versionNumber }})</h2>
-        <p v-if="!isEditable" class="campaign-page__hint">
-          This version can only be edited while the campaign is a Draft.
-        </p>
-        <form class="campaign-page__form" novalidate @submit.prevent="saveContent">
-          <label for="base-message">Base message</label>
-          <textarea id="base-message" v-model="editBaseMessage" rows="4" :disabled="!isEditable"></textarea>
-
-          <label for="base-image-asset-id">Base image asset ID (optional)</label>
-          <input id="base-image-asset-id" v-model="editBaseImageAssetId" type="text" :disabled="!isEditable" />
-
-          <button type="submit" :disabled="!isEditable">Save content</button>
-        </form>
-
-        <details class="campaign-page__assets">
-          <summary>Register an image asset</summary>
-          <form class="campaign-page__form" novalidate @submit.prevent="createAsset">
-            <label for="asset-storage-reference">Storage reference</label>
-            <input id="asset-storage-reference" v-model="assetStorageReference" type="text" required :disabled="!isEditable" />
-
-            <label for="asset-content-type">Content type</label>
-            <input id="asset-content-type" v-model="assetContentType" type="text" required :disabled="!isEditable" />
-
-            <label for="asset-alt-text">Alt text</label>
-            <input id="asset-alt-text" v-model="assetAltText" type="text" required :disabled="!isEditable" />
-
-            <button type="submit" :disabled="!isEditable">Register image</button>
-          </form>
-          <ul v-if="createdAssetIds.length > 0" class="campaign-page__list">
-            <li v-for="id in createdAssetIds" :key="id">{{ id }}</li>
-          </ul>
-        </details>
-
-        <details class="campaign-page__assets" open>
-          <summary>Generate image with AI (requires confirmation before use)</summary>
-          <p class="campaign-page__hint">
-            Generated images are saved as drafts. Confirm before attaching as base or audience override.
-            Ward ContactConsent is separate from
-            <a href="https://account.churchofjesuschrist.org/subscriptions" rel="noopener noreferrer" target="_blank">
-              Church Account subscription preferences
-            </a>.
-          </p>
-          <form class="campaign-page__form" novalidate @submit.prevent="generateAiImage">
-            <label for="ai-prompt">Image prompt</label>
-            <textarea id="ai-prompt" v-model="aiPrompt" rows="2" required :disabled="!isEditable"></textarea>
-            <label for="ai-alt-text">Alt text for generated image</label>
-            <input id="ai-alt-text" v-model="aiAltText" type="text" required :disabled="!isEditable" />
-            <button type="submit" :disabled="!isEditable">Generate draft</button>
-          </form>
-          <div v-if="pendingAsset" class="campaign-page__ai-preview">
-            <p>
-              <strong>Pending draft:</strong> {{ pendingAsset.storageReference }}
-              ({{ pendingAsset.confirmationStatus }})
-            </p>
-            <img
-              v-if="pendingAsset.storageReference.startsWith('http')"
-              :src="pendingAsset.storageReference"
-              :alt="pendingAsset.altText"
-              class="campaign-page__ai-preview-image"
-            />
-            <div class="campaign-page__button-row">
-              <button type="button" :disabled="!isEditable" @click="confirmPendingAsset">Confirm</button>
-              <button type="button" class="campaign-page__danger" :disabled="!isEditable" @click="rejectPendingAsset">
-                Discard
-              </button>
-            </div>
-            <p class="campaign-page__hint">Confirming does not auto-attach — paste the asset ID into base content manually.</p>
-          </div>
-        </details>
-      </section>
-
-      <section aria-labelledby="overlap-heading">
-        <h2 id="overlap-heading">Overlap content resolution</h2>
-        <p class="campaign-page__hint">
-          When someone belongs to multiple selected audiences, choose which override content applies.
-        </p>
-        <form class="campaign-page__form" novalidate @submit.prevent="saveOverlapResolution">
-          <label for="overlap-strategy">Strategy</label>
-          <select id="overlap-strategy" v-model="overlapStrategy" :disabled="!isEditable">
-            <option value="FirstAudienceWins">First audience in list wins</option>
-            <option value="PreferBase">Prefer base campaign content</option>
-            <option value="PreferSpecificAudience">Prefer a specific audience</option>
-          </select>
-          <template v-if="overlapStrategy === 'PreferSpecificAudience'">
-            <label for="prefer-audience">Preferred audience</label>
-            <select id="prefer-audience" v-model="preferAudienceGroupId" :disabled="!isEditable">
-              <option value="" disabled>Choose audience</option>
-              <option
-                v-for="audience in pageState.kind === 'loaded' ? pageState.campaign.currentVersion.audiences : []"
-                :key="audience.audienceGroupId"
-                :value="audience.audienceGroupId"
-              >
-                {{ audience.audienceGroupName }}
-              </option>
-            </select>
-          </template>
-          <button type="submit" :disabled="!isEditable">Save strategy</button>
-        </form>
-      </section>
-
-      <section aria-labelledby="channels-heading">
-        <h2 id="channels-heading">Channel-specific text</h2>
-        <div v-for="channel in CHANNELS" :key="channel" class="campaign-page__channel">
-          <label :for="`channel-${channel}`">{{ channel }} (optional override; falls back to the base message)</label>
-          <textarea :id="`channel-${channel}`" v-model="channelDrafts[channel]" rows="2" :disabled="!isEditable"></textarea>
-          <div class="campaign-page__button-row">
-            <button type="button" :disabled="!isEditable" @click="saveChannelText(channel)">Save</button>
-            <button type="button" :disabled="!isEditable" @click="removeChannelText(channel)">Clear</button>
-          </div>
-        </div>
-      </section>
-
-      <section aria-labelledby="audiences-heading">
-        <h2 id="audiences-heading">Audiences ({{ pageState.campaign.currentVersion.audiences.length }})</h2>
-        <ul class="campaign-page__list">
-          <li v-for="audience in pageState.campaign.currentVersion.audiences" :key="audience.audienceGroupId">
-            <div class="campaign-page__audience-info">
-              <strong>{{ audience.audienceGroupName }}</strong>
-              <span v-if="audience.overrideText" class="campaign-page__hint">Override: {{ audience.overrideText }}</span>
-            </div>
-            <button type="button" :disabled="!isEditable" @click="removeAudience(audience.audienceGroupId)">Remove</button>
-          </li>
-          <li v-if="pageState.campaign.currentVersion.audiences.length === 0">No audiences selected yet.</li>
-        </ul>
-
-        <form class="campaign-page__form" novalidate @submit.prevent="addAudience">
-          <label for="audience-select">Add audience</label>
-          <select id="audience-select" v-model="newAudienceGroupId" required :disabled="!isEditable">
-            <option value="" disabled>Choose an audience</option>
-            <option v-for="audience in availableAudiences" :key="audience.id" :value="audience.id">
-              {{ audience.name }}
-            </option>
-          </select>
-
-          <label for="audience-override-text">Override text for this audience (optional)</label>
-          <textarea id="audience-override-text" v-model="newAudienceOverrideText" rows="2" :disabled="!isEditable"></textarea>
-
-          <label for="audience-override-image">Override image asset ID (optional)</label>
-          <input id="audience-override-image" v-model="newAudienceOverrideImageAssetId" type="text" :disabled="!isEditable" />
-
-          <button type="submit" :disabled="!isEditable">Add audience</button>
-        </form>
-      </section>
-
-      <section aria-labelledby="destinations-heading">
-        <h2 id="destinations-heading">Destinations (auto-computed from selected audiences)</h2>
-        <ul class="campaign-page__list">
-          <li v-for="destination in pageState.campaign.currentVersion.destinations" :key="destination.destinationId">
-            {{ destination.name }} ({{ destination.channel }})
-            <span v-if="!destination.isActive" class="campaign-page__tag">Archived</span>
-          </li>
-          <li v-if="pageState.campaign.currentVersion.destinations.length === 0">No destinations yet.</li>
-        </ul>
-      </section>
-
-      <section aria-labelledby="preview-heading">
-        <h2 id="preview-heading">Preview</h2>
-        <button type="button" @click="runPreview">Load preview</button>
-        <p v-if="previewState.kind === 'loading'">Loading preview…</p>
-        <p v-else-if="previewState.kind === 'error'" role="alert" class="campaign-page__error">{{ previewState.message }}</p>
-        <template v-else-if="previewState.kind === 'loaded'">
-          <p>
-            {{ previewState.preview.totalUniqueRecipients }} unique recipient(s) across selected audiences
-            ({{ previewState.preview.overlapCount }} overlapping).
-            <span v-if="previewState.preview.overlapResolutionStrategy">
-              Strategy: {{ previewState.preview.overlapResolutionStrategy }}
-            </span>
-          </p>
-          <div v-if="previewState.preview.overlapConflicts?.length" class="campaign-page__overlap-conflicts">
-            <h3>Overlap conflicts</h3>
-            <ul class="campaign-page__list">
-              <li v-for="conflict in previewState.preview.overlapConflicts" :key="conflict.personId">
-                {{ conflict.displayName }} —
-                <span v-if="conflict.usesBaseContent">uses base content</span>
-                <span v-else>won by {{ conflict.winningAudienceGroupName ?? conflict.winningAudienceGroupId }}</span>
-                (in {{ conflict.audienceGroupIds.length }} audiences)
-              </li>
-            </ul>
-          </div>
-          <div v-for="audience in previewState.preview.audiences" :key="audience.audienceGroupId" class="campaign-page__preview-audience">
-            <h3>{{ audience.audienceGroupName }} — {{ audience.recipientCount }} recipient(s)</h3>
-            <ul class="campaign-page__list">
-              <li v-for="channel in audience.channels" :key="channel.channel">
-                <strong>{{ channel.channel }}:</strong>
-                <span v-if="channel.text">{{ channel.text }} ({{ channel.length }} chars)</span>
-                <span v-else class="campaign-page__hint">No text resolved for this channel.</span>
-                <span v-if="channel.exceedsLimit" class="campaign-page__tag campaign-page__tag--warning">Exceeds limit</span>
-              </li>
-            </ul>
-          </div>
+      <LayoutPageHeader :title="pageState.campaign.name">
+        <template #actions>
+          <span class="status-pill">{{ campaignStatusLabel(pageState.campaign.status) }}</span>
+          <span v-if="!pageState.campaign.isActive" class="status-pill status-pill--muted">Archived</span>
         </template>
-      </section>
+      </LayoutPageHeader>
 
-      <section aria-labelledby="validation-heading">
-        <h2 id="validation-heading">Submission validation</h2>
-        <button type="button" @click="runValidation">Check readiness</button>
-        <p v-if="validationState.kind === 'loading'">Checking…</p>
-        <p v-else-if="validationState.kind === 'error'" role="alert" class="campaign-page__error">{{ validationState.message }}</p>
-        <template v-else-if="validationState.kind === 'loaded'">
-          <p v-if="validationState.result.valid" class="campaign-page__success">Ready to submit for approval.</p>
-          <ul v-else class="campaign-page__list">
-            <li v-for="(err, index) in validationState.result.errors" :key="index" role="alert" class="campaign-page__error">
-              {{ err }}
-            </li>
-          </ul>
+      <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>
+
+      <UiWorkflowTabs v-model="activeTab" :tabs="[...CAMPAIGN_TABS]">
+        <template #setup>
+          <section class="section">
+            <h2 class="section__title">Campaign details</h2>
+            <form class="form-stack" novalidate @submit.prevent="saveName">
+              <UiFormField label="Campaign name" input-id="edit-name">
+                <input id="edit-name" v-model="editName" class="form-control" type="text" required />
+              </UiFormField>
+              <UiAppButton type="submit">Save name</UiAppButton>
+            </form>
+          </section>
+
+          <section class="section">
+            <h2 class="section__title">Audiences ({{ pageState.campaign.currentVersion.audiences.length }})</h2>
+            <p class="section__hint">Choose one or more audience groups. Destinations are added automatically from each group.</p>
+            <ul class="item-list">
+              <li v-for="audience in pageState.campaign.currentVersion.audiences" :key="audience.audienceGroupId" class="item-list__row">
+                <div>
+                  <strong>{{ audience.audienceGroupName }}</strong>
+                  <p v-if="audience.overrideText" class="section__hint">Override: {{ audience.overrideText }}</p>
+                </div>
+                <UiAppButton variant="ghost" type="button" :disabled="!isEditable" @click="removeAudience(audience.audienceGroupId)">
+                  Remove
+                </UiAppButton>
+              </li>
+              <li v-if="pageState.campaign.currentVersion.audiences.length === 0" class="section__hint">No audiences selected yet.</li>
+            </ul>
+            <form class="form-stack" novalidate @submit.prevent="addAudience">
+              <UiFormField label="Add audience" input-id="audience-select">
+                <select id="audience-select" v-model="newAudienceGroupId" class="form-control" required :disabled="!isEditable">
+                  <option value="" disabled>Choose an audience</option>
+                  <option v-for="audience in availableAudiences" :key="audience.id" :value="audience.id">{{ audience.name }}</option>
+                </select>
+              </UiFormField>
+              <UiFormField label="Override message for this audience (optional)" input-id="audience-override-text">
+                <textarea id="audience-override-text" v-model="newAudienceOverrideText" class="form-control" rows="2" :disabled="!isEditable" />
+              </UiFormField>
+              <UiFormField v-if="assetOptions.length > 0" label="Override image (optional)" input-id="audience-override-image">
+                <select id="audience-override-image" v-model="newAudienceOverrideImageAssetId" class="form-control" :disabled="!isEditable">
+                  <option value="">None</option>
+                  <option v-for="asset in assetOptions" :key="asset.id" :value="asset.id">{{ asset.label }}</option>
+                </select>
+              </UiFormField>
+              <UiAppButton type="submit" :disabled="!isEditable">Add audience</UiAppButton>
+            </form>
+          </section>
+
+          <section class="section">
+            <h2 class="section__title">Destinations</h2>
+            <ul class="item-list">
+              <li v-for="destination in pageState.campaign.currentVersion.destinations" :key="destination.destinationId" class="item-list__row">
+                {{ destination.name }} ({{ channelLabel(destination.channel) }})
+                <span v-if="!destination.isActive" class="status-pill status-pill--muted">Archived</span>
+              </li>
+              <li v-if="pageState.campaign.currentVersion.destinations.length === 0" class="section__hint">Add audiences with linked destinations to see them here.</li>
+            </ul>
+          </section>
         </template>
-      </section>
 
-      <section v-if="canSend()" aria-labelledby="delivery-heading">
-        <h2 id="delivery-heading">Delivery results</h2>
-        <p v-if="deliveryLoading">Loading delivery batches…</p>
-        <p v-if="deliveryError" role="alert" class="campaign-page__error">{{ deliveryError }}</p>
-        <template v-else-if="deliveryBatches.length > 0">
-          <ul class="campaign-page__list">
-            <li v-for="batch in deliveryBatches" :key="batch.id">
-              <button type="button" @click="viewBatch(batch.id)">
-                Batch {{ batch.id.slice(0, 8) }}… — {{ batch.status }}
-                ({{ batch.sentCount }}/{{ batch.totalRecipients }} sent)
-              </button>
-            </li>
-          </ul>
-          <div v-if="selectedBatch" class="campaign-page__delivery-detail">
-            <h3>Recipient outcomes</h3>
-            <ul class="campaign-page__list">
-              <li v-for="recipient in selectedBatch.recipients" :key="recipient.id">
-                <span>{{ recipient.channel }}</span>
-                <span class="campaign-page__tag">{{ recipient.status }}</span>
-                <span v-if="recipient.skipReason" class="campaign-page__hint">{{ recipient.skipReason }}</span>
-                <span v-if="recipient.attempts.length > 0" class="campaign-page__hint">
-                  Last: {{ recipient.attempts[recipient.attempts.length - 1].errorCode ?? 'ok' }}
+        <template #content>
+          <p v-if="!isEditable" class="section__hint">Content can only be edited while the campaign is a draft.</p>
+
+          <section class="section">
+            <h2 class="section__title">Base message (version {{ pageState.campaign.currentVersion.versionNumber }})</h2>
+            <form class="form-stack" novalidate @submit.prevent="saveContent">
+              <UiFormField label="Message" input-id="base-message">
+                <textarea id="base-message" v-model="editBaseMessage" class="form-control" rows="5" :disabled="!isEditable" />
+              </UiFormField>
+              <UiFormField v-if="assetOptions.length > 0" label="Base image (optional)" input-id="base-image-asset-id">
+                <select id="base-image-asset-id" v-model="editBaseImageAssetId" class="form-control" :disabled="!isEditable">
+                  <option value="">None</option>
+                  <option v-for="asset in assetOptions" :key="asset.id" :value="asset.id">{{ asset.label }}</option>
+                </select>
+              </UiFormField>
+              <UiAppButton type="submit" :disabled="!isEditable">Save content</UiAppButton>
+            </form>
+          </section>
+
+          <section class="section">
+            <h2 class="section__title">Channel-specific text</h2>
+            <p class="section__hint">Optional overrides per channel. Empty fields fall back to the base message.</p>
+            <div v-for="channel in CHANNELS" :key="channel" class="channel-block">
+              <UiFormField :label="channelLabel(channel)" :input-id="`channel-${channel}`">
+                <textarea :id="`channel-${channel}`" v-model="channelDrafts[channel]" class="form-control" rows="3" :disabled="!isEditable" />
+              </UiFormField>
+              <div class="button-row">
+                <UiAppButton variant="secondary" type="button" :disabled="!isEditable" @click="saveChannelText(channel)">Save</UiAppButton>
+                <UiAppButton variant="ghost" type="button" :disabled="!isEditable" @click="removeChannelText(channel)">Clear</UiAppButton>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h2 class="section__title">Overlap resolution</h2>
+            <p class="section__hint">When someone is in multiple audiences, choose which message they receive.</p>
+            <form class="form-stack" novalidate @submit.prevent="saveOverlapResolution">
+              <UiFormField label="Strategy" input-id="overlap-strategy">
+                <select id="overlap-strategy" v-model="overlapStrategy" class="form-control" :disabled="!isEditable">
+                  <option value="FirstAudienceWins">{{ overlapStrategyLabel('FirstAudienceWins') }}</option>
+                  <option value="PreferBase">{{ overlapStrategyLabel('PreferBase') }}</option>
+                  <option value="PreferSpecificAudience">{{ overlapStrategyLabel('PreferSpecificAudience') }}</option>
+                </select>
+              </UiFormField>
+              <UiFormField v-if="overlapStrategy === 'PreferSpecificAudience'" label="Preferred audience" input-id="prefer-audience">
+                <select id="prefer-audience" v-model="preferAudienceGroupId" class="form-control" :disabled="!isEditable">
+                  <option value="" disabled>Choose audience</option>
+                  <option v-for="audience in pageState.campaign.currentVersion.audiences" :key="audience.audienceGroupId" :value="audience.audienceGroupId">
+                    {{ audience.audienceGroupName }}
+                  </option>
+                </select>
+              </UiFormField>
+              <UiAppButton type="submit" :disabled="!isEditable">Save strategy</UiAppButton>
+            </form>
+          </section>
+
+          <details class="section section--fold">
+            <summary class="section__title">Images &amp; assets</summary>
+            <form class="form-stack" novalidate @submit.prevent="createAsset">
+              <UiFormField label="Image URL or storage reference" input-id="asset-storage-reference">
+                <input id="asset-storage-reference" v-model="assetStorageReference" class="form-control" type="text" required :disabled="!isEditable" />
+              </UiFormField>
+              <UiFormField label="Alt text" input-id="asset-alt-text">
+                <input id="asset-alt-text" v-model="assetAltText" class="form-control" type="text" required :disabled="!isEditable" />
+              </UiFormField>
+              <UiAppButton type="submit" :disabled="!isEditable">Register image</UiAppButton>
+            </form>
+            <details class="section--fold">
+              <summary>Generate image with AI</summary>
+              <form class="form-stack" novalidate @submit.prevent="generateAiImage">
+                <UiFormField label="Prompt" input-id="ai-prompt">
+                  <textarea id="ai-prompt" v-model="aiPrompt" class="form-control" rows="2" required :disabled="!isEditable" />
+                </UiFormField>
+                <UiFormField label="Alt text" input-id="ai-alt-text">
+                  <input id="ai-alt-text" v-model="aiAltText" class="form-control" type="text" required :disabled="!isEditable" />
+                </UiFormField>
+                <UiAppButton type="submit" :disabled="!isEditable">Generate draft</UiAppButton>
+              </form>
+              <div v-if="pendingAsset" class="ai-preview">
+                <p><strong>Pending draft:</strong> {{ pendingAsset.confirmationStatus }}</p>
+                <img v-if="pendingAsset.storageReference.startsWith('http')" :src="pendingAsset.storageReference" :alt="pendingAsset.altText" class="ai-preview__image" />
+                <div class="button-row">
+                  <UiAppButton type="button" :disabled="!isEditable" @click="confirmPendingAsset">Confirm</UiAppButton>
+                  <UiAppButton variant="danger" type="button" :disabled="!isEditable" @click="rejectPendingAsset">Discard</UiAppButton>
+                </div>
+              </div>
+            </details>
+          </details>
+        </template>
+
+        <template #review>
+          <section class="section">
+            <h2 class="section__title">Recipient preview</h2>
+            <UiAppButton type="button" @click="runPreview">Load preview</UiAppButton>
+            <UiLoadingState v-if="previewState.kind === 'loading'" />
+            <UiAlertBanner v-else-if="previewState.kind === 'error'">{{ previewState.message }}</UiAlertBanner>
+            <template v-else-if="previewState.kind === 'loaded'">
+              <p class="section__hint">
+                {{ previewState.preview.totalUniqueRecipients }} unique recipient(s),
+                {{ previewState.preview.overlapCount }} overlapping.
+                <span v-if="previewState.preview.overlapResolutionStrategy">
+                  Strategy: {{ overlapStrategyLabel(previewState.preview.overlapResolutionStrategy) }}
                 </span>
+              </p>
+              <div v-for="audience in previewState.preview.audiences" :key="audience.audienceGroupId" class="preview-block">
+                <h3>{{ audience.audienceGroupName }} — {{ audience.recipientCount }} recipient(s)</h3>
+                <ul class="item-list">
+                  <li v-for="channel in audience.channels" :key="channel.channel" class="item-list__row">
+                    <strong>{{ channelLabel(channel.channel) }}:</strong>
+                    <span v-if="channel.text">{{ channel.text }}</span>
+                    <span v-else class="section__hint">No text for this channel.</span>
+                    <span v-if="channel.exceedsLimit" class="status-pill status-pill--warning">Exceeds limit</span>
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </section>
+
+          <section class="section">
+            <h2 class="section__title">Readiness check</h2>
+            <UiAppButton type="button" @click="runValidation">Check readiness</UiAppButton>
+            <UiLoadingState v-if="validationState.kind === 'loading'" />
+            <UiAlertBanner v-else-if="validationState.kind === 'error'">{{ validationState.message }}</UiAlertBanner>
+            <UiAlertBanner v-else-if="validationState.kind === 'loaded' && validationState.result.valid" tone="success">
+              Ready to submit for approval.
+            </UiAlertBanner>
+            <ul v-else-if="validationState.kind === 'loaded'" class="item-list">
+              <li v-for="(err, index) in validationState.result.errors" :key="index">
+                <UiAlertBanner>{{ err }}</UiAlertBanner>
               </li>
             </ul>
-          </div>
+          </section>
         </template>
-        <p v-else-if="!deliveryLoading">No delivery batches yet.</p>
-      </section>
 
-      <section aria-labelledby="history-heading">
-        <h2 id="history-heading">Approval &amp; schedule history</h2>
-        <ul class="campaign-page__list">
-          <li v-for="approval in pageState.campaign.approvals" :key="approval.id">
-            {{ approval.decision }} at {{ approval.decidedAt }}
-            <span v-if="approval.comment" class="campaign-page__hint">— {{ approval.comment }}</span>
-          </li>
-          <li v-for="scheduleItem in pageState.campaign.schedules" :key="scheduleItem.id">
-            Scheduled for {{ scheduleItem.scheduledFor }}
-            <span v-if="scheduleItem.cancelledAt" class="campaign-page__tag">Cancelled</span>
-          </li>
-          <li v-if="pageState.campaign.approvals.length === 0 && pageState.campaign.schedules.length === 0">
-            No history yet.
-          </li>
-        </ul>
-      </section>
+        <template #publish>
+          <section class="section section--highlight">
+            <h2 class="section__title">Workflow actions</h2>
+            <div class="button-row">
+              <UiAppButton v-if="canDraft() && pageState.campaign.status === 'Draft'" type="button" @click="submitForApproval">
+                Submit for approval
+              </UiAppButton>
+              <UiAppButton v-if="canDraft() && pageState.campaign.status === 'Rejected'" type="button" @click="revise">
+                Reopen as draft
+              </UiAppButton>
+              <UiAppButton v-if="canSend() && ['Approved', 'Scheduled'].includes(pageState.campaign.status)" type="button" @click="sendNowAndRefresh">
+                Send now
+              </UiAppButton>
+              <UiAppButton
+                v-if="(canDraft() || canApprove() || canSend()) && !['Sent', 'Cancelled'].includes(pageState.campaign.status)"
+                variant="danger"
+                type="button"
+                @click="cancel"
+              >
+                Cancel campaign
+              </UiAppButton>
+              <UiAppButton v-if="canDraft() && pageState.campaign.status !== 'Sending'" variant="secondary" type="button" @click="archiveCampaign">
+                Archive
+              </UiAppButton>
+            </div>
+          </section>
+
+          <section v-if="canApprove() && pageState.campaign.status === 'PendingApproval'" class="section">
+            <h2 class="section__title">Approval decision</h2>
+            <form class="form-stack" @submit.prevent="approve">
+              <UiFormField label="Comment (optional)" input-id="approval-comment">
+                <textarea id="approval-comment" v-model="approvalComment" class="form-control" rows="2" />
+              </UiFormField>
+              <div class="button-row">
+                <UiAppButton type="button" @click="approve">Approve</UiAppButton>
+                <UiAppButton variant="danger" type="button" @click="reject">Reject</UiAppButton>
+              </div>
+            </form>
+          </section>
+
+          <section v-if="canSend() && pageState.campaign.status === 'Approved'" class="section">
+            <h2 class="section__title">Schedule</h2>
+            <form class="form-stack" @submit.prevent="schedule">
+              <UiFormField label="Send at" input-id="schedule-at">
+                <input id="schedule-at" v-model="scheduleAt" class="form-control" type="datetime-local" />
+              </UiFormField>
+              <UiAppButton type="submit">Schedule send</UiAppButton>
+            </form>
+          </section>
+
+          <section v-if="canSend()" class="section">
+            <h2 class="section__title">Delivery results</h2>
+            <UiLoadingState v-if="deliveryLoading" />
+            <UiAlertBanner v-else-if="deliveryError">{{ deliveryError }}</UiAlertBanner>
+            <template v-else-if="deliveryBatches.length > 0">
+              <ul class="item-list">
+                <li v-for="batch in deliveryBatches" :key="batch.id">
+                  <UiAppButton variant="ghost" type="button" @click="viewBatch(batch.id)">
+                    Batch {{ batch.id.slice(0, 8) }}… — {{ batch.status }} ({{ batch.sentCount }}/{{ batch.totalRecipients }} sent)
+                  </UiAppButton>
+                </li>
+              </ul>
+            </template>
+            <p v-else class="section__hint">No delivery batches yet.</p>
+          </section>
+
+          <section class="section">
+            <h2 class="section__title">History</h2>
+            <ul class="item-list">
+              <li v-for="approval in pageState.campaign.approvals" :key="approval.id" class="item-list__row">
+                {{ approvalDecisionLabel(approval.decision) }} · {{ approval.decidedAt }}
+                <span v-if="approval.comment" class="section__hint">— {{ approval.comment }}</span>
+              </li>
+              <li v-for="scheduleItem in pageState.campaign.schedules" :key="scheduleItem.id" class="item-list__row">
+                Scheduled for {{ scheduleItem.scheduledFor }}
+                <span v-if="scheduleItem.cancelledAt" class="status-pill status-pill--muted">Cancelled</span>
+              </li>
+              <li v-if="pageState.campaign.approvals.length === 0 && pageState.campaign.schedules.length === 0" class="section__hint">No history yet.</li>
+            </ul>
+          </section>
+        </template>
+      </UiWorkflowTabs>
     </template>
-  </main>
+  </LayoutPageContainer>
 </template>
 
 <style scoped>
-.campaign-page {
-  max-width: 48rem;
-  margin: 2rem auto;
-  padding: 0 1rem 3rem;
+.status-pill {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+  border: 1px solid rgb(30 77 140 / 0.2);
+}
+
+.status-pill--muted {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+
+.status-pill--warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  border-color: rgb(154 103 0 / 0.3);
+}
+
+.section {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--space-4);
 }
 
-.campaign-page__header {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+.section--highlight {
+  padding: var(--space-4);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-md);
 }
 
-.campaign-page__form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  max-width: 28rem;
-  margin-bottom: 0.75rem;
+.section--fold {
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
 }
 
-.campaign-page__form input,
-.campaign-page__form textarea,
-.campaign-page__form select {
-  padding: 0.5rem;
-  border: 1px solid #57606a;
-  border-radius: 0.375rem;
-  font-family: inherit;
+.section__title {
+  font-size: 1.0625rem;
+  font-weight: 700;
 }
 
-.campaign-page__button-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.campaign-page__status-actions {
-  padding: 1rem;
-  border: 1px solid #d0d7de;
-  border-radius: 0.5rem;
-  background: #f6f8fa;
-}
-
-.campaign-page__approval-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  max-width: 28rem;
-  margin-top: 1rem;
-}
-
-.campaign-page__approval-form textarea,
-.campaign-page__approval-form input {
-  padding: 0.5rem;
-  border: 1px solid #57606a;
-  border-radius: 0.375rem;
-}
-
-.campaign-page__channel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  max-width: 28rem;
-  margin-bottom: 1rem;
-}
-
-.campaign-page__channel textarea {
-  padding: 0.5rem;
-  border: 1px solid #57606a;
-  border-radius: 0.375rem;
-  font-family: inherit;
-}
-
-.campaign-page__assets {
-  margin-top: 1rem;
-}
-
-.campaign-page__danger {
-  color: #cf222e;
-  border-color: #cf222e;
-}
-
-.campaign-page__hint {
-  color: #57606a;
+.section__hint {
+  color: var(--color-text-muted);
   font-size: 0.875rem;
 }
 
-.campaign-page__success {
-  color: #1a7f37;
-  font-weight: 600;
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 32rem;
 }
 
-.campaign-page__list {
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.item-list {
   list-style: none;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
-.campaign-page__list li {
+.item-list__row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid #d0d7de;
-  border-radius: 0.375rem;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
   flex-wrap: wrap;
 }
 
-.campaign-page__audience-info {
+.channel-block {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
-  margin-right: auto;
+  gap: var(--space-3);
+  max-width: 32rem;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.campaign-page__preview-audience {
-  margin-top: 0.75rem;
+.preview-block {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
-.campaign-page__ai-preview {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid #d0d7de;
-  border-radius: 0.375rem;
+.ai-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
-.campaign-page__ai-preview-image {
+.ai-preview__image {
   max-width: 100%;
-  height: auto;
-  border-radius: 0.375rem;
-}
-
-.campaign-page__overlap-conflicts {
-  margin: 0.75rem 0;
-}
-
-.campaign-page__tag {
-  font-size: 0.75rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-  background: #eaeef2;
-  border: 1px solid #57606a;
-}
-
-.campaign-page__tag--warning {
-  background: #fff8c5;
-  border-color: #9a6700;
-}
-
-.campaign-page__error {
-  color: #cf222e;
-  font-weight: 600;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid #0969da;
-  outline-offset: 2px;
+  border-radius: var(--radius-md);
 }
 </style>

@@ -53,6 +53,36 @@ export const rotateWardCodeRequestSchema = z.object({
 });
 export type RotateWardCodeRequest = z.infer<typeof rotateWardCodeRequestSchema>;
 
+export const wardSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  timeZone: z.string(),
+  createdAt: z.string().datetime(),
+});
+export type WardSummaryDto = z.infer<typeof wardSummarySchema>;
+
+export const wardListResponseSchema = z.object({
+  wards: z.array(wardSummarySchema),
+});
+export type WardListResponse = z.infer<typeof wardListResponseSchema>;
+
+export const createWardRequestSchema = z.object({
+  name: z.string().min(1).max(255),
+  timeZone: z.string().min(1).max(64).optional(),
+  adminUsername: z.string().min(1).max(255),
+  adminDisplayName: z.string().min(1).max(255),
+  adminPassword: z.string().min(12).max(512),
+  initialWardCode: z.string().min(4).max(255),
+});
+export type CreateWardRequest = z.infer<typeof createWardRequestSchema>;
+
+export const createWardResponseSchema = z.object({
+  ward: wardSummarySchema,
+  adminUserId: z.string(),
+  adminUsername: z.string(),
+});
+export type CreateWardResponse = z.infer<typeof createWardResponseSchema>;
+
 export const auditEventSchema = z.object({
   id: z.string(),
   action: z.string(),

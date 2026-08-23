@@ -3,10 +3,16 @@ import {
   loginResponseSchema,
   mobileTokenPairSchema,
   sessionResponseSchema,
+  totpEnrollmentResponseSchema,
+  totpStatusResponseSchema,
+  totpVerifyResponseSchema,
   wardCodeVerifyResponseSchema,
   type LoginResponse,
   type MobileTokenPair,
   type SessionResponse,
+  type TotpEnrollmentResponse,
+  type TotpStatusResponse,
+  type TotpVerifyResponse,
   type WardCodeVerifyResponse,
 } from '@ward-comms/validation';
 import {
@@ -86,14 +92,20 @@ import {
   userListResponseSchema,
   userSummarySchema,
   wardCodeInfoSchema,
+  wardListResponseSchema,
+  createWardRequestSchema,
+  createWardResponseSchema,
   createUserRequestSchema,
   type AuditListResponse,
   type AuditSearchQuery,
   type CreateUserRequest,
+  type CreateWardRequest,
+  type CreateWardResponse,
   type RoleListResponse,
   type UserListResponse,
   type UserSummaryDto,
   type WardCodeInfoDto,
+  type WardListResponse,
 } from '@ward-comms/validation';
 import {
   providerCredentialListResponseSchema,
@@ -202,6 +214,42 @@ export class WardCommsApiClient {
     return wardCodeVerifyResponseSchema.parse(await response.json());
   }
 
+  async verifyTotp(
+    loginTicket: string,
+    code: string,
+    clientType: 'web' | 'mobile' = 'web',
+  ): Promise<TotpVerifyResponse> {
+    const response = await this.request('/auth/totp', {
+      method: 'POST',
+      body: JSON.stringify({ loginTicket, code, clientType }),
+    });
+    return totpVerifyResponseSchema.parse(await response.json());
+  }
+
+  async getTotpStatus(): Promise<TotpStatusResponse> {
+    const response = await this.request('/auth/totp/status');
+    return totpStatusResponseSchema.parse(await response.json());
+  }
+
+  async beginTotpEnrollment(): Promise<TotpEnrollmentResponse> {
+    const response = await this.request('/auth/totp/enroll', { method: 'POST' });
+    return totpEnrollmentResponseSchema.parse(await response.json());
+  }
+
+  async confirmTotpEnrollment(code: string): Promise<void> {
+    await this.request('/auth/totp/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  async disableTotp(password: string, code: string): Promise<void> {
+    await this.request('/auth/totp/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password, code }),
+    });
+  }
+
   async refresh(refreshToken: string): Promise<{ tokens: MobileTokenPair }> {
     const response = await this.request('/auth/refresh', {
       method: 'POST',
@@ -269,6 +317,19 @@ export class WardCommsApiClient {
       body: JSON.stringify({ newWardCode }),
     });
     return wardCodeInfoSchema.parse(await response.json());
+  }
+
+  async listWards(): Promise<WardListResponse> {
+    const response = await this.request('/platform/wards');
+    return wardListResponseSchema.parse(await response.json());
+  }
+
+  async createWard(input: CreateWardRequest): Promise<CreateWardResponse> {
+    const response = await this.request('/platform/wards', {
+      method: 'POST',
+      body: JSON.stringify(createWardRequestSchema.parse(input)),
+    });
+    return createWardResponseSchema.parse(await response.json());
   }
 
   async listAuditEvents(query: AuditSearchQuery = {}): Promise<AuditListResponse> {

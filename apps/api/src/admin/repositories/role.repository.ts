@@ -14,4 +14,8 @@ export class RoleRepository {
     if (ids.length === 0) return [];
     return this.prisma.client.role.findMany({ where: { id: { in: ids } } });
   }
+
+  async findByName(name: string): Promise<Role | null> {
+    return this.prisma.client.role.findUnique({ where: { name } });
+  }
 }

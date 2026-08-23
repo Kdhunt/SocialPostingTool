@@ -22,6 +22,7 @@ import { WardCodeHasherService } from './ward-code-hasher.service.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { SessionRepository } from './repositories/session.repository.js';
 import { WardCodeRepository } from './repositories/ward-code.repository.js';
+import { computeTotpCode } from './totp-verifier.service.js';
 
 function fakeConfig(): AppConfig {
   return {
@@ -119,10 +120,33 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     if (verifyOutcome.status !== 'ok') throw new Error('unreachable');
 
     expect(verifyOutcome.user.username).toBe(user.username);
-    // Never expose password/ward code hashes on the returned user object.
     expect(verifyOutcome.user).not.toHaveProperty('passwordHash');
     expect(verifyOutcome.user).not.toHaveProperty('codeHash');
     expect(verifyOutcome.sessionToken).toBeTruthy();
+  });
+
+  it('requires TOTP before ward code when two-factor authentication is enabled', async () => {
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    const deviceId = `device-${randomUUID()}`;
+
+    const { secret } = await authService.beginTotpEnrollment(user.id);
+    await authService.confirmTotpEnrollment(user.id, computeTotpCode(secret), context(deviceId));
+
+    const loginOutcome = await authService.login(user.username, password, context(deviceId));
+    expect(loginOutcome.status).toBe('totp_required');
+    if (loginOutcome.status !== 'totp_required') throw new Error('unreachable');
+
+    const totpOutcome = await authService.verifyTotp(
+      loginOutcome.loginTicket,
+      computeTotpCode(secret),
+      context(deviceId),
+    );
+    expect(totpOutcome.status).toBe('ward_code_required');
+    if (totpOutcome.status !== 'ward_code_required') throw new Error('unreachable');
+
+    const verifyOutcome = await authService.verifyWardCode(totpOutcome.loginTicket, wardCode, context(deviceId));
+    expect(verifyOutcome.status).toBe('ok');
+    expect(verifyOutcome.user.totpEnabled).toBe(true);
   });
 
   it('does not require ward code again on the same device once already verified for the active version', async () => {

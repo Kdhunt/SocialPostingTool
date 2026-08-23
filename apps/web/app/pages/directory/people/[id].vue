@@ -33,6 +33,32 @@ const relationshipType = ref<
 const householdIdInput = ref('');
 const endOtherMemberships = ref(true);
 
+const activeTab = ref('profile');
+
+const PERSON_TABS = [
+  { id: 'profile', label: 'Profile', description: 'Basic information and record status.' },
+  { id: 'contact', label: 'Contact & consent', description: 'Email, phone, and communication consent.' },
+  { id: 'household', label: 'Household', description: 'Household memberships for this person.' },
+  { id: 'family', label: 'Family', description: 'Relationships to other members.' },
+] as const;
+
+const breadcrumbs = computed(() => {
+  if (pageState.value.kind !== 'loaded') {
+    return [{ label: 'Directory', to: '/directory' }, { label: 'Person' }];
+  }
+  const person = pageState.value.person;
+  const name = person.preferredName ?? `${person.firstName} ${person.lastName}`;
+  return [{ label: 'Directory', to: '/directory' }, { label: name }];
+});
+
+function onRelatedPersonSelected(personId: string): void {
+  relatedPersonId.value = personId;
+}
+
+function onHouseholdSelected(householdId: string): void {
+  householdIdInput.value = householdId;
+}
+
 async function load(): Promise<void> {
   pageState.value = { kind: 'loading' };
   try {
@@ -135,240 +161,212 @@ const restorePerson = withActionErrorHandling(async () => {
 </script>
 
 <template>
-  <main class="person-page">
-    <p><NuxtLink to="/directory">&larr; Back to directory</NuxtLink></p>
+  <div class="person-detail">
+    <LayoutBreadcrumbs :items="breadcrumbs" />
 
-    <p v-if="pageState.kind === 'loading'">Loading…</p>
-    <p v-else-if="pageState.kind === 'error'" role="alert" class="person-page__error">{{ pageState.message }}</p>
+    <UiLoadingState v-if="pageState.kind === 'loading'" />
+    <UiAlertBanner v-else-if="pageState.kind === 'error'">{{ pageState.message }}</UiAlertBanner>
 
     <template v-else-if="pageState.kind === 'loaded'">
-      <header class="person-page__header">
-        <h1>{{ pageState.person.preferredName ?? `${pageState.person.firstName} ${pageState.person.lastName}` }}</h1>
-        <span v-if="!pageState.person.isActive" class="person-page__tag">Inactive</span>
-        <span v-if="pageState.person.isMinor" class="person-page__tag person-page__tag--minor">Minor</span>
-      </header>
+      <LayoutPageHeader :title="pageState.person.preferredName ?? `${pageState.person.firstName} ${pageState.person.lastName}`">
+        <template #actions>
+          <span v-if="!pageState.person.isActive" class="status-pill status-pill--muted">Inactive</span>
+          <span v-if="pageState.person.isMinor" class="status-pill status-pill--warning">Minor</span>
+        </template>
+      </LayoutPageHeader>
 
-      <p v-if="actionError" role="alert" class="person-page__error">{{ actionError }}</p>
+      <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>
 
-      <p v-if="pageState.person.restricted" class="person-page__notice">
-        Date of birth and contact information are restricted for this record. You need the "view minor contact
-        info" permission to see or edit them.
-      </p>
+      <UiAlertBanner v-if="pageState.person.restricted" tone="info">
+        Date of birth and contact information are restricted for this record.
+      </UiAlertBanner>
 
-      <section aria-labelledby="basic-info-heading">
-        <h2 id="basic-info-heading">Basic info</h2>
-        <form class="person-page__form" novalidate @submit.prevent="saveBasicInfo">
-          <label for="edit-first-name">First name</label>
-          <input id="edit-first-name" v-model="editFirstName" type="text" required />
+      <UiWorkflowTabs v-model="activeTab" :tabs="[...PERSON_TABS]">
+        <template #profile>
+          <form class="form-stack" novalidate @submit.prevent="saveBasicInfo">
+            <UiFormField label="First name" input-id="edit-first-name">
+              <input id="edit-first-name" v-model="editFirstName" class="form-control" type="text" required />
+            </UiFormField>
+            <UiFormField label="Last name" input-id="edit-last-name">
+              <input id="edit-last-name" v-model="editLastName" class="form-control" type="text" required />
+            </UiFormField>
+            <UiFormField label="Preferred name" input-id="edit-preferred-name">
+              <input id="edit-preferred-name" v-model="editPreferredName" class="form-control" type="text" />
+            </UiFormField>
+            <UiFormField label="Gender" input-id="edit-gender">
+              <select id="edit-gender" v-model="editGender" class="form-control">
+                <option value="NotSpecified">Not specified</option>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+              </select>
+            </UiFormField>
+            <UiFormField v-if="!pageState.person.restricted" label="Date of birth" input-id="edit-dob">
+              <input id="edit-dob" v-model="editDateOfBirth" class="form-control" type="date" />
+            </UiFormField>
+            <div class="button-row">
+              <UiAppButton type="submit">Save profile</UiAppButton>
+              <UiAppButton v-if="pageState.person.isActive" variant="secondary" type="button" @click="archivePerson">Mark inactive</UiAppButton>
+              <UiAppButton v-else variant="secondary" type="button" @click="restorePerson">Mark active</UiAppButton>
+            </div>
+          </form>
+        </template>
 
-          <label for="edit-last-name">Last name</label>
-          <input id="edit-last-name" v-model="editLastName" type="text" required />
-
-          <label for="edit-preferred-name">Preferred name</label>
-          <input id="edit-preferred-name" v-model="editPreferredName" type="text" />
-
-          <label for="edit-gender">Gender</label>
-          <select id="edit-gender" v-model="editGender">
-            <option value="NotSpecified">Not specified</option>
-            <option value="Female">Female</option>
-            <option value="Male">Male</option>
-          </select>
-
+        <template #contact>
           <template v-if="!pageState.person.restricted">
-            <label for="edit-dob">Date of birth</label>
-            <input id="edit-dob" v-model="editDateOfBirth" type="date" />
+            <ul class="item-list">
+              <li v-for="method in pageState.person.contactMethods" :key="method.id" class="item-list__row">
+                <div>
+                  <strong>{{ method.type }}:</strong> {{ method.value }}
+                  <p class="hint">Consent: {{ method.consent?.status ?? 'Not recorded' }}</p>
+                </div>
+                <div class="button-row">
+                  <UiAppButton variant="ghost" type="button" @click="grantConsent(method.id)">Grant</UiAppButton>
+                  <UiAppButton variant="ghost" type="button" @click="denyConsent(method.id)">Deny</UiAppButton>
+                  <UiAppButton variant="ghost" type="button" @click="archiveContactMethod(method.id)">Remove</UiAppButton>
+                </div>
+              </li>
+            </ul>
+            <form class="form-stack" novalidate @submit.prevent="addContactMethod">
+              <UiFormField label="Type" input-id="contact-type">
+                <select id="contact-type" v-model="contactType" class="form-control">
+                  <option value="Email">Email</option>
+                  <option value="Phone">Phone</option>
+                </select>
+              </UiFormField>
+              <UiFormField label="Value" input-id="contact-value">
+                <input id="contact-value" v-model="contactValue" class="form-control" type="text" required />
+              </UiFormField>
+              <UiAppButton type="submit">Add contact method</UiAppButton>
+            </form>
           </template>
+          <UiAlertBanner v-else tone="info">Contact details are hidden for this restricted record.</UiAlertBanner>
+        </template>
 
-          <button type="submit">Save basic info</button>
-        </form>
+        <template #household>
+          <ul class="item-list">
+            <li v-for="membership in pageState.person.householdMemberships" :key="membership.id" class="item-list__row">
+              <div>
+                <NuxtLink :to="`/directory/households/${membership.householdId}`">{{ membership.householdName }}</NuxtLink>
+                <p class="hint">{{ membership.householdRole }}</p>
+              </div>
+              <UiAppButton v-if="!membership.endedAt" variant="ghost" type="button" @click="endHouseholdMembership(membership.id)">
+                End membership
+              </UiAppButton>
+              <span v-else class="status-pill status-pill--muted">Ended</span>
+            </li>
+          </ul>
+          <form class="form-stack" novalidate @submit.prevent="addHouseholdMembership">
+            <UiHouseholdSearchPicker input-id="household-picker" @select="onHouseholdSelected" />
+            <label class="checkbox-row">
+              <input v-model="endOtherMemberships" type="checkbox" />
+              End other current household memberships
+            </label>
+            <UiAppButton type="submit" :disabled="!householdIdInput">Add to household</UiAppButton>
+          </form>
+        </template>
 
-        <button v-if="pageState.person.isActive" type="button" @click="archivePerson">Mark inactive</button>
-        <button v-else type="button" @click="restorePerson">Mark active</button>
-      </section>
-
-      <section v-if="!pageState.person.restricted" aria-labelledby="contact-heading">
-        <h2 id="contact-heading">Contact methods</h2>
-        <ul class="person-page__list">
-          <li v-for="method in pageState.person.contactMethods" :key="method.id">
-            <strong>{{ method.type }}:</strong> {{ method.value }}
-            <span v-if="method.isPrimary" class="person-page__tag">Preferred</span>
-            <span class="person-page__consent">Consent: {{ method.consent?.status ?? 'Not recorded' }}</span>
-            <button type="button" @click="grantConsent(method.id)">Grant consent</button>
-            <button type="button" @click="denyConsent(method.id)">Deny consent</button>
-            <button type="button" @click="archiveContactMethod(method.id)">Remove</button>
-          </li>
-        </ul>
-
-        <form class="person-page__inline-form" novalidate @submit.prevent="addContactMethod">
-          <label for="contact-type">Type</label>
-          <select id="contact-type" v-model="contactType">
-            <option value="Email">Email</option>
-            <option value="Phone">Phone</option>
-          </select>
-          <label for="contact-value">Value</label>
-          <input id="contact-value" v-model="contactValue" type="text" required />
-          <button type="submit">Add contact method</button>
-        </form>
-      </section>
-
-      <section aria-labelledby="households-heading">
-        <h2 id="households-heading">Households</h2>
-        <ul class="person-page__list">
-          <li v-for="membership in pageState.person.householdMemberships" :key="membership.id">
-            <NuxtLink :to="`/directory/households/${membership.householdId}`">{{ membership.householdName }}</NuxtLink>
-            ({{ membership.householdRole }})
-            <span v-if="membership.endedAt" class="person-page__tag">Ended</span>
-            <button v-else type="button" @click="endHouseholdMembership(membership.id)">End membership</button>
-          </li>
-        </ul>
-
-        <form class="person-page__inline-form" novalidate @submit.prevent="addHouseholdMembership">
-          <label for="household-id">Household ID</label>
-          <input id="household-id" v-model="householdIdInput" type="text" required />
-          <label class="person-page__checkbox">
-            <input v-model="endOtherMemberships" type="checkbox" />
-            End other current household memberships
-          </label>
-          <button type="submit">Add to household</button>
-        </form>
-      </section>
-
-      <section aria-labelledby="relationships-heading">
-        <h2 id="relationships-heading">Family relationships</h2>
-        <ul class="person-page__list">
-          <li v-for="relationship in pageState.person.relationships" :key="relationship.id">
-            {{ relationship.relationshipType }} of
-            <NuxtLink :to="`/directory/people/${relationship.relatedPersonId}`">{{ relationship.relatedPersonDisplayName }}</NuxtLink>
-            <button type="button" @click="archiveRelationship(relationship.id)">End relationship</button>
-          </li>
-        </ul>
-
-        <form class="person-page__inline-form" novalidate @submit.prevent="addRelationship">
-          <label for="related-person-id">Related person ID</label>
-          <input id="related-person-id" v-model="relatedPersonId" type="text" required />
-          <label for="relationship-type">Relationship</label>
-          <select id="relationship-type" v-model="relationshipType">
-            <option value="Spouse">Spouse</option>
-            <option value="Husband">Husband</option>
-            <option value="Wife">Wife</option>
-            <option value="Parent">Parent</option>
-            <option value="Child">Child</option>
-            <option value="Son">Son</option>
-            <option value="Daughter">Daughter</option>
-            <option value="Guardian">Guardian</option>
-            <option value="Dependent">Dependent</option>
-            <option value="Other">Other</option>
-          </select>
-          <button type="submit">Add relationship</button>
-        </form>
-      </section>
+        <template #family>
+          <ul class="item-list">
+            <li v-for="relationship in pageState.person.relationships" :key="relationship.id" class="item-list__row">
+              <span>
+                {{ relationship.relationshipType }} of
+                <NuxtLink :to="`/directory/people/${relationship.relatedPersonId}`">{{ relationship.relatedPersonDisplayName }}</NuxtLink>
+              </span>
+              <UiAppButton variant="ghost" type="button" @click="archiveRelationship(relationship.id)">End relationship</UiAppButton>
+            </li>
+          </ul>
+          <form class="form-stack" novalidate @submit.prevent="addRelationship">
+            <UiPersonSearchPicker input-id="related-person-picker" label="Search for related person" @select="onRelatedPersonSelected" />
+            <UiFormField label="Relationship" input-id="relationship-type">
+              <select id="relationship-type" v-model="relationshipType" class="form-control">
+                <option value="Spouse">Spouse</option>
+                <option value="Husband">Husband</option>
+                <option value="Wife">Wife</option>
+                <option value="Parent">Parent</option>
+                <option value="Child">Child</option>
+                <option value="Son">Son</option>
+                <option value="Daughter">Daughter</option>
+                <option value="Guardian">Guardian</option>
+                <option value="Dependent">Dependent</option>
+                <option value="Other">Other</option>
+              </select>
+            </UiFormField>
+            <UiAppButton type="submit" :disabled="!relatedPersonId">Add relationship</UiAppButton>
+          </form>
+        </template>
+      </UiWorkflowTabs>
     </template>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.person-page {
-  max-width: 40rem;
-  margin: 2rem auto;
-  padding: 0 1rem 3rem;
+.person-detail {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--space-6);
 }
 
-.person-page__header {
+.status-pill {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+}
+
+.status-pill--muted {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
+.status-pill--warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.form-stack {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 32rem;
 }
 
-.person-page__form,
-.person-page__inline-form {
+.button-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0.75rem 0;
+  gap: var(--space-3);
 }
 
-.person-page__form {
-  flex-direction: column;
-  align-items: stretch;
-  max-width: 24rem;
-}
-
-.person-page__form input,
-.person-page__form select,
-.person-page__inline-form input,
-.person-page__inline-form select {
-  padding: 0.5rem;
-  border: 1px solid #57606a;
-  border-radius: 0.375rem;
-}
-
-.person-page__list {
+.item-list {
   list-style: none;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
-.person-page__list li {
+.item-list__row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid #d0d7de;
-  border-radius: 0.375rem;
 }
 
-.person-page__checkbox {
+.hint {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.checkbox-row {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-}
-
-.person-page__tag {
-  font-size: 0.75rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-  background: #eaeef2;
-  border: 1px solid #57606a;
-}
-
-.person-page__tag--minor {
-  background: #fff8c5;
-  border-color: #9a6700;
-}
-
-.person-page__consent {
-  color: #57606a;
-  font-size: 0.875rem;
-}
-
-.person-page__error {
-  color: #cf222e;
-  font-weight: 600;
-}
-
-.person-page__notice {
-  background: #fff8c5;
-  border: 1px solid #9a6700;
-  border-radius: 0.375rem;
-  padding: 0.75rem;
-}
-
-button {
-  cursor: pointer;
-}
-
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 2px solid #0969da;
-  outline-offset: 2px;
+  gap: var(--space-2);
+  font-size: 0.9375rem;
 }
 </style>

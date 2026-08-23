@@ -132,6 +132,12 @@ model ApplicationUser {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   archivedAt          DateTime? @map("archived_at")
+  /// AES-256-GCM encrypted base32 TOTP secret. Plaintext never stored.
+  totpSecretEncrypted String?   @map("totp_secret_encrypted")
+  /// Set when the user confirms enrollment; null while setup is pending.
+  totpEnabledAt       DateTime? @map("totp_enabled_at")
+  totpFailedAttempts  Int       @default(0) @map("totp_failed_attempts")
+  totpLockedUntil     DateTime? @map("totp_locked_until")
 
   ward                    Ward                  @relation(fields: [wardId], references: [id], onDelete: Restrict)
   roles                   UserRole[]
