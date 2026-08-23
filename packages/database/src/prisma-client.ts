@@ -14,11 +14,7 @@ export function createPrismaClient(): PrismaClient {
   }
 
   const client = new PrismaClient();
-
-  if (process.env.NODE_ENV !== 'production') {
-    globalThis.__wardCommsPrisma = client;
-  }
-
+  globalThis.__wardCommsPrisma = client;
   return client;
 }
 

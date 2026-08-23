@@ -22,6 +22,12 @@ export const envSchema = z.object({
   WARD_CODE_PEPPER: z.string().min(16, 'WARD_CODE_PEPPER must be at least 16 characters'),
 
   /**
+   * Vercel Cron sends Authorization: Bearer ${CRON_SECRET}. Required in production
+   * when cron routes are enabled (see docs/vercel.md).
+   */
+  CRON_SECRET: z.string().min(16).optional(),
+
+  /**
    * 32-byte key material as base64 (or a long passphrase hashed at load time).
    * Used only to encrypt/decrypt ProviderCredential rows — never logged.
    */
@@ -46,3 +52,33 @@ export const envSchema = z.object({
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/**
+ * Maps Vercel Storage / Marketplace integration env vars onto the canonical
+ * names used throughout the monorepo (see docs/vercel.md).
+ */
+export function normalizePlatformEnv(
+  source: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const normalized: Record<string, string | undefined> = { ...source };
+
+  normalized.DATABASE_URL =
+    source.DATABASE_URL ?? source.POSTGRES_PRISMA_URL ?? source.POSTGRES_URL ?? undefined;
+
+  normalized.REDIS_URL =
+    source.REDIS_URL ?? source.UPSTASH_REDIS_URL ?? source.KV_REDIS_URL ?? undefined;
+
+  if (!normalized.API_URL && source.VERCEL_URL) {
+    normalized.API_URL = `https://${source.VERCEL_URL}`;
+  }
+
+  if (!normalized.WEB_URL && source.VERCEL_URL) {
+    normalized.WEB_URL = `https://${source.VERCEL_URL}`;
+  }
+
+  if (!normalized.NODE_ENV && source.VERCEL) {
+    normalized.NODE_ENV = 'production';
+  }
+
+  return normalized;
+}

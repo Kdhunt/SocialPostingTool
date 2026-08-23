@@ -2,7 +2,16 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
   "globalDependencies": ["**/.env"],
-  "globalEnv": ["NUXT_PUBLIC_API_BASE_URL"],
+  "globalEnv": [
+    "NUXT_PUBLIC_API_BASE_URL",
+    "DATABASE_URL",
+    "POSTGRES_PRISMA_URL",
+    "POSTGRES_URL",
+    "REDIS_URL",
+    "UPSTASH_REDIS_URL",
+    "CRON_SECRET",
+    "VERCEL_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

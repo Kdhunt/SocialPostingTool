@@ -1,0 +1,38 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm exec turbo run build --filter=@ward-comms/web... --filter=@ward-comms/api...",
+  "outputDirectory": "apps/web/.vercel/output",
+  "framework": "nuxtjs",
+  "functions": {
+    "api/nest.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/cron/process-schedules.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "api/cron/process-delivery-queue.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    }
+  },
+  "rewrites": [
+    { "source": "/health", "destination": "/api/nest" },
+    { "source": "/auth/:path*", "destination": "/api/nest" },
+    { "source": "/directory/:path*", "destination": "/api/nest" },
+    { "source": "/audiences/:path*", "destination": "/api/nest" },
+    { "source": "/communication-destinations/:path*", "destination": "/api/nest" },
+    { "source": "/campaigns/:path*", "destination": "/api/nest" },
+    { "source": "/audit/:path*", "destination": "/api/nest" },
+    { "source": "/provider-credentials/:path*", "destination": "/api/nest" },
+    { "source": "/platform/:path*", "destination": "/api/nest" },
+    { "source": "/users/:path*", "destination": "/api/nest" },
+    { "source": "/ward/:path*", "destination": "/api/nest" }
+  ],
+  "crons": [
+    { "path": "/api/cron/process-schedules", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/process-delivery-queue", "schedule": "* * * * *" }
+  ]
+}

@@ -216,20 +216,22 @@ URLs. Confirmed assets are required before attaching to campaign content
 The Ionic shell (`apps/mobile`) includes audiences list/detail, campaigns
 list/detail, and approve/reject/revise/send-now actions when permissions allow.
 
-## Deploying the web app on Vercel
+## Deploying on Vercel
 
-Vercel hosts **`apps/web` (Nuxt)** only. The NestJS API and BullMQ worker need a
-separate host (they are not Nuxt).
+See **[docs/vercel.md](docs/vercel.md)** for the full setup. One Vercel project,
+one domain — Nuxt UI and NestJS API on the same host via root `vercel.json`
+rewrites.
 
-In the Vercel project settings:
+Quick summary:
 
-1. **Framework Preset:** Nuxt
-2. **Root Directory:** Prefer `apps/web`. If the project is still linked to `apps/api`,
-   `apps/api/vercel.json` will build the Nuxt app and copy `.vercel/output` into place.
-3. **Output Directory:** `.vercel/output` (never `dist`)
-4. **Build Command:** leave Override **off** (do not set `cd apps/web && …`)
+1. **One project** — root directory = repository root (`.`)
+2. Connect **Vercel Postgres** + **Upstash Redis**
+3. Set auth secrets + `CRON_SECRET`
+4. Run `db:deploy` + `db:seed` against production Postgres
+5. Verify `https://your-domain/health`, then sign in at `https://your-domain/`
 
-Set `NUXT_PUBLIC_API_BASE_URL` to your API origin. NestJS itself is not hosted on Vercel.
+Do **not** set `NUXT_PUBLIC_API_BASE_URL` unless you intentionally split web and
+API onto different domains.
 
 ## Common scripts
 

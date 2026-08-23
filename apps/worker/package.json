@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./delivery": "./src/delivery/process-delivery-recipient.ts",
+    "./schedule": "./src/schedule/process-due-schedules.ts",
+    "./providers": "./src/providers/create-delivery-providers.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/main.ts",

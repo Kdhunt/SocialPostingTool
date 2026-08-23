@@ -1,4 +1,4 @@
-import { envSchema, type Env } from './env.schema.js';
+import { envSchema, normalizePlatformEnv, type Env } from './env.schema.js';
 
 export interface AppConfig {
   nodeEnv: Env['NODE_ENV'];
@@ -79,7 +79,7 @@ function toAppConfig(env: Env): AppConfig {
  * missing or invalid configuration.
  */
 export function loadConfig(source: Record<string, string | undefined> = process.env): AppConfig {
-  const result = envSchema.safeParse(source);
+  const result = envSchema.safeParse(normalizePlatformEnv(source));
 
   if (!result.success) {
     const issues = result.error.issues

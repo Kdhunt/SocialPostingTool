@@ -37,10 +37,7 @@ import { RequirePermission } from './decorators/require-permission.decorator.js'
 import { SessionAuthGuard, type AuthContext, type AuthenticatedRequest } from './guards/session-auth.guard.js';
 import { PermissionsGuard } from './guards/permissions.guard.js';
 import { DEVICE_ID_COOKIE_NAME, DEVICE_ID_COOKIE_TTL_MS, SESSION_COOKIE_NAME } from './auth.constants.js';
-
-function isProduction(): boolean {
-  return process.env.NODE_ENV === 'production';
-}
+import { getAuthCookieOptions } from './auth-cookie.util.js';
 
 @Controller('auth')
 export class AuthController {
@@ -56,12 +53,7 @@ export class AuthController {
     }
 
     const deviceId = randomUUID();
-    res.cookie(DEVICE_ID_COOKIE_NAME, deviceId, {
-      httpOnly: true,
-      secure: isProduction(),
-      sameSite: 'lax',
-      maxAge: DEVICE_ID_COOKIE_TTL_MS,
-    });
+    res.cookie(DEVICE_ID_COOKIE_NAME, deviceId, getAuthCookieOptions({ maxAge: DEVICE_ID_COOKIE_TTL_MS }));
     return deviceId;
   }
 
@@ -75,12 +67,7 @@ export class AuthController {
   }
 
   private setSessionCookie(res: Response, sessionToken: string, expiresAt: Date): void {
-    res.cookie(SESSION_COOKIE_NAME, sessionToken, {
-      httpOnly: true,
-      secure: isProduction(),
-      sameSite: 'lax',
-      expires: expiresAt,
-    });
+    res.cookie(SESSION_COOKIE_NAME, sessionToken, getAuthCookieOptions({ expires: expiresAt }));
   }
 
   @Post('login')

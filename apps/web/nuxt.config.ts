@@ -16,7 +16,10 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001',
+      // Same-origin on Vercel (see vercel.json rewrites). Override for split-domain deploys.
+      apiBaseUrl:
+        process.env.NUXT_PUBLIC_API_BASE_URL ??
+        (process.env.VERCEL ? '' : 'http://localhost:3001'),
     },
   },
   app: {
