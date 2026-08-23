@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:vercel": "cd ../.. && pnpm run build:vercel",
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "lint": "eslint .",
