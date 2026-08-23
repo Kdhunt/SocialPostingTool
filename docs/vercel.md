@@ -4,112 +4,147 @@ This monorepo deploys as **one Vercel project** on **one domain**. Nuxt serves
 the UI; NestJS API routes are rewritten to a serverless function on the same
 host (see root `vercel.json`).
 
+**Database migrations and the role/permission seed run automatically during
+each Vercel build** when Postgres is linked (`scripts/vercel-build.ts`).
+
 ```
 https://your-app.vercel.app
-  ├── /login, /campaigns, …     → Nuxt (frontend)
-  ├── /health, /auth, /directory, … → NestJS (serverless)
-  └── /api/cron/*               → background jobs (Vercel Cron)
+  ├── /login, /campaigns, …          → Nuxt (frontend)
+  ├── /api/v1/health, /api/v1/auth, … → NestJS (serverless)
+  └── /api/cron/*                    → background jobs (Vercel Cron)
 ```
+
+## What the build does automatically
+
+On every Vercel deploy (`pnpm run build:vercel`):
+
+1. Builds the web app and API packages (Turbo)
+2. **Production only:** validates Postgres, Redis, and auth secrets — fails
+   with a checklist if anything is missing
+3. **`prisma migrate deploy`** when Postgres is linked (uses direct URL when
+   Vercel provides `POSTGRES_URL_NON_POOLING`)
+4. **`db:seed`** — idempotent upsert of roles and permissions
+5. **`db:bootstrap`** — when `BOOTSTRAP_*` env vars are set, creates the first
+   admin user and ward code (skips if username already exists)
+
+You do **not** need to run migrations manually from your machine unless you
+prefer to.
+
+## What you still set up once (Vercel dashboard)
+
+These cannot be created from the build — link them in the Vercel UI:
+
+| Step | Where |
+|------|--------|
+| Postgres | **Storage → Create → Postgres** → connect to project |
+| Redis | **Integrations → Upstash → Redis** → connect to project |
+| Auth secrets | **Settings → Environment Variables** (see below) |
 
 ## 1. Create the Vercel project
 
 1. Vercel → **Add New Project** → import this repository.
-2. **Root Directory:** leave as **`.`** (repository root) — do not set `apps/web` or `apps/api`.
-3. **Framework Preset:** Nuxt (auto-detected from root `vercel.json`).
+2. **Root Directory:** leave as **`.`** (repository root).
+3. **Framework Preset:** Nuxt (from root `vercel.json`).
 4. **Node.js Version:** 20.x.
 
-Build settings come from root `vercel.json` (`installCommand`, `buildCommand`,
-`outputDirectory`).
+Build settings come from root `vercel.json`.
 
-## 2. Add Vercel Postgres
+## 2. Link Postgres
 
 1. **Storage** → **Create** → **Postgres**
 2. Connect to this project.
-3. Vercel injects `POSTGRES_PRISMA_URL` — mapped to `DATABASE_URL` automatically.
+3. Vercel injects `PRISMA_DATABASE_URL` (pooled, for the app) and `POSTGRES_URL`
+   (direct, for migrations in the build). Older stores may use `POSTGRES_PRISMA_URL`
+   instead — all are mapped automatically.
 
-### Run migrations (once, from your machine)
+The build maps these to `DATABASE_URL` and runs migrations + seed on deploy.
 
-**PowerShell:**
-
-```powershell
-$env:DATABASE_URL = "<POSTGRES_PRISMA_URL from Vercel>"
-pnpm --filter @ward-comms/database db:deploy
-pnpm --filter @ward-comms/database db:seed
-```
-
-Do **not** run `db:seed:dev` in production.
-
-## 3. Add Upstash Redis
+## 3. Link Upstash Redis
 
 1. **Integrations** → **Upstash** → **Redis**
-2. Link to this project.
-3. Use the **Redis protocol URL** (`rediss://…`), not the REST URL. BullMQ
-   requires the protocol URL (`REDIS_URL` or `UPSTASH_REDIS_URL`).
+2. Connect to this project.
+3. Use the **Redis protocol URL** (`rediss://…`), not the REST URL.
 
-## 4. Environment variables
-
-Set these on the **single** Vercel project (Production + Preview as needed):
+## 4. Set secrets (one time)
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `POSTGRES_PRISMA_URL` | Yes | From Vercel Postgres (auto) |
-| `REDIS_URL` | Yes | Upstash Redis protocol URL |
 | `SESSION_SECRET` | Yes | `openssl rand -base64 48` |
 | `REFRESH_TOKEN_SECRET` | Yes | different random string |
 | `WARD_CODE_PEPPER` | Yes | ≥16 chars |
 | `PROVIDER_CREDENTIALS_ENCRYPTION_KEY` | Yes | ≥32 chars |
 | `CRON_SECRET` | Yes | `openssl rand -base64 32` |
+| `BOOTSTRAP_ADMIN_USERNAME` | Yes (first deploy) | Your prod admin login |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Yes (first deploy) | min 12 characters |
+| `BOOTSTRAP_WARD_CODE` | Yes (first deploy) | Ward code for sign-in |
+| `BOOTSTRAP_WARD_NAME` | Optional | Default: `Ward Communications Hub` |
 | `NODE_ENV` | Yes | `production` |
 | `PROVIDER_MODE` | Optional | `simulated` (default) |
-| `CORS_ALLOWED_ORIGINS` | Optional | Defaults to `WEB_URL`; same-origin deploys rarely need this |
-| `WEB_URL` | Optional | Defaults from `VERCEL_URL` |
-| `API_URL` | Optional | Defaults from `VERCEL_URL` |
-| `NUXT_PUBLIC_API_BASE_URL` | Optional | Leave **unset** for same-origin (recommended). Set only for split-domain deploys. |
 
-On Vercel, `WEB_URL` and `API_URL` both default to `https://<your-domain>`.
-Session cookies use `SameSite=Lax` on the same host — no cross-domain setup.
+**Auto-filled by Vercel when linked / deployed:**
+
+- `PRISMA_DATABASE_URL`, `POSTGRES_URL`, `REDIS_URL`
+- `WEB_URL`, `API_URL` (from `VERCEL_URL`)
+- `NUXT_PUBLIC_API_BASE_URL` — leave **unset** (same-origin API)
+
+Production builds **fail fast** with a checklist if secrets or storage are
+missing.
+
+**Remove `BOOTSTRAP_*` variables after the first successful deploy** — the
+build creates the admin user once, then skips on later deploys.
 
 ## 5. Deploy and verify
 
-1. Deploy the project.
-2. Open `https://<your-domain>/health` — JSON health response from NestJS.
-3. Open `https://<your-domain>/` — Nuxt web app.
-4. Sign in — browser requests go to `/auth/...` on the **same domain**.
+1. Deploy — watch build logs for `Applying database migrations…`,
+   `Seeding role and permission catalog…`, and `Running production admin bootstrap…`.
+2. `https://<your-domain>/api/v1/health` → JSON health response.
+3. `https://<your-domain>/` → web app.
+4. Sign in at `/login` with your **BOOTSTRAP_** credentials (not the dev
+   `admin` / `ChangeMeNow!23` defaults unless you ran `db:seed:dev` manually).
+
+After bootstrap, create more wards via **Administration → Wards** (requires
+`PlatformAdmin`, assigned automatically to the bootstrap admin).
+
+Do **not** run `db:seed:dev` in production.
 
 ## 6. Cron jobs
-
-Root `vercel.json` registers:
 
 | Path | Schedule |
 |------|----------|
 | `/api/cron/process-schedules` | every 5 minutes |
 | `/api/cron/process-delivery-queue` | every minute |
 
-Requires **Vercel Pro**. Vercel sends `Authorization: Bearer ${CRON_SECRET}`.
+Requires **Vercel Pro**. Uses `CRON_SECRET`.
 
-## 7. Provision your first ward
+## Manual database commands (optional)
 
-After `db:seed`, create a ward via **Administration → Wards** (requires
-`PlatformAdmin`) or assign that role in the database.
+```powershell
+$env:DATABASE_URL = "<PRISMA_DATABASE_URL from Vercel>"
+$env:WARD_CODE_PEPPER = "<same as Vercel>"
+$env:BOOTSTRAP_ADMIN_USERNAME = "your-admin"
+$env:BOOTSTRAP_ADMIN_PASSWORD = "Your-Secure-Password-12"
+$env:BOOTSTRAP_WARD_CODE = "your-ward-code"
+pnpm --filter @ward-comms/database db:bootstrap
+```
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| `/health` 404 but pages load | Confirm root directory is repo root, not `apps/web` |
-| Login fails | Check `/health`; verify secrets and migrations |
-| API routes hit Nuxt 404 | Rewrites in root `vercel.json` must deploy with the project |
-| Campaigns stuck on Sending | Cron needs Pro plan + `CRON_SECRET` + working Redis |
-| Prisma errors | Use pooled `POSTGRES_PRISMA_URL` |
+| Build fails with configuration checklist | Link Postgres + Redis; set all secrets |
+| `/health` 404 (Nuxt "Page not found") | API not deployed — redeploy with latest build; use `/api/v1/health` |
+| Login fails / invalid username | Set `BOOTSTRAP_*` env vars and redeploy, or run `db:bootstrap` manually against prod DB |
+| Ward code rejected | `WARD_CODE_PEPPER` on Vercel must match the value used when the ward code was created |
+| Login fails after successful build | Check browser Network tab — `/auth/login` should return JSON, not HTML 404 |
+| Prisma migrate errors during build | Ensure `POSTGRES_URL_NON_POOLING` or `POSTGRES_URL` is set |
+| Campaigns stuck on Sending | Pro plan + `CRON_SECRET` + Redis |
 
 ## Local development
-
-Unchanged — separate API and web processes:
 
 ```bash
 docker compose up -d
 pnpm dev
 ```
 
-Local dev still uses `http://localhost:3001` for the API and
-`http://localhost:3000` for the web app.
+Use `pnpm run build:vercel` locally to dry-run the Vercel build (skips deploy
+validation when `VERCEL` is not set).

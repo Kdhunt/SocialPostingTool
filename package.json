@@ -11,6 +11,7 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "build": "turbo run build",
+    "build:vercel": "tsx scripts/vercel-build.ts",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint -- --fix",
@@ -33,6 +34,10 @@
     "turbo": "^2.1.2",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.3.0",
-    "vue-eslint-parser": "^9.4.3"
+    "vue-eslint-parser": "^9.4.3",
+    "@ward-comms/config": "workspace:*",
+    "@vercel/nft": "^0.29.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0"
   }
 }

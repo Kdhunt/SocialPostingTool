@@ -225,13 +225,12 @@ rewrites.
 Quick summary:
 
 1. **One project** — root directory = repository root (`.`)
-2. Connect **Vercel Postgres** + **Upstash Redis**
-3. Set auth secrets + `CRON_SECRET`
-4. Run `db:deploy` + `db:seed` against production Postgres
-5. Verify `https://your-domain/health`, then sign in at `https://your-domain/`
+2. Link **Vercel Postgres** + **Upstash Redis** in the dashboard
+3. Set auth secrets + `CRON_SECRET` once
+4. Deploy — **migrations and role seed run in the build**
+5. Verify `https://your-domain/health`, create your first ward in the UI
 
-Do **not** set `NUXT_PUBLIC_API_BASE_URL` unless you intentionally split web and
-API onto different domains.
+Do **not** set `NUXT_PUBLIC_API_BASE_URL` unless you split web and API domains.
 
 ## Common scripts
 

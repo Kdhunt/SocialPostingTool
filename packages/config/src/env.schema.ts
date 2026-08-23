@@ -63,7 +63,11 @@ export function normalizePlatformEnv(
   const normalized: Record<string, string | undefined> = { ...source };
 
   normalized.DATABASE_URL =
-    source.DATABASE_URL ?? source.POSTGRES_PRISMA_URL ?? source.POSTGRES_URL ?? undefined;
+    source.DATABASE_URL ??
+    source.PRISMA_DATABASE_URL ??
+    source.POSTGRES_PRISMA_URL ??
+    source.POSTGRES_URL ??
+    undefined;
 
   normalized.REDIS_URL =
     source.REDIS_URL ?? source.UPSTASH_REDIS_URL ?? source.KV_REDIS_URL ?? undefined;
@@ -81,4 +85,32 @@ export function normalizePlatformEnv(
   }
 
   return normalized;
+}
+
+/**
+ * Direct Postgres URL for `prisma migrate deploy` during Vercel builds.
+ * Prefer the non-pooled URL when Vercel Postgres provides one.
+ */
+export function getMigrationDatabaseUrl(
+  source: Record<string, string | undefined>,
+): string | undefined {
+  const normalized = normalizePlatformEnv(source);
+  return (
+    source.POSTGRES_URL_NON_POOLING ??
+    source.POSTGRES_URL ??
+    normalized.DATABASE_URL ??
+    undefined
+  );
+}
+
+/** Runtime / seed URL — pooled Prisma URL when available. */
+export function getSeedDatabaseUrl(source: Record<string, string | undefined>): string | undefined {
+  const normalized = normalizePlatformEnv(source);
+  return (
+    normalized.DATABASE_URL ??
+    source.PRISMA_DATABASE_URL ??
+    source.POSTGRES_PRISMA_URL ??
+    source.POSTGRES_URL ??
+    undefined
+  );
 }

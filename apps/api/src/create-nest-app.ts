@@ -21,6 +21,10 @@ export async function createNestExpressApp(): Promise<Express> {
     logger: new PinoLoggerService('@ward-comms/api'),
   });
 
+  if (process.env.VERCEL) {
+    nestApp.setGlobalPrefix('api/v1');
+  }
+
   nestApp.use(cookieParser());
   nestApp.enableCors({
     origin: config.corsAllowedOrigins,

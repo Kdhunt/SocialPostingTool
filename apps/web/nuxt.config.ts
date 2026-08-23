@@ -6,6 +6,9 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   nitro: {
     preset: 'vercel',
+    output: {
+      dir: '../../.vercel/output',
+    },
   },
   devServer: {
     port: process.env.WEB_PORT ? Number(process.env.WEB_PORT) : 3000,
@@ -19,7 +22,7 @@ export default defineNuxtConfig({
       // Same-origin on Vercel (see vercel.json rewrites). Override for split-domain deploys.
       apiBaseUrl:
         process.env.NUXT_PUBLIC_API_BASE_URL ??
-        (process.env.VERCEL ? '' : 'http://localhost:3001'),
+        (process.env.VERCEL ? '/api/v1' : 'http://localhost:3001'),
     },
   },
   app: {
