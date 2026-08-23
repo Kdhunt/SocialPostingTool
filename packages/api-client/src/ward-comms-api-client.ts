@@ -117,7 +117,7 @@ import {
 } from '@ward-comms/validation';
 import type { CommunicationChannel } from '@ward-comms/validation';
 
-export type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export type FetchImpl = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
 export interface WardCommsApiClientOptions {
   baseUrl: string;
@@ -146,7 +146,7 @@ export class ApiRequestError extends Error {
  * browser authentication tokens").
  */
 /** Browser fetch must keep its receiver; assigning `fetch` to a field and calling it later throws "Illegal invocation". */
-function defaultFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+function defaultFetch(input: string | URL, init?: RequestInit): Promise<Response> {
   return fetch(input, init);
 }
 

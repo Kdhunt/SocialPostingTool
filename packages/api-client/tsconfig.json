@@ -4,7 +4,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "composite": false,
-    "declaration": true
+    "declaration": true,
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src"]
 }
