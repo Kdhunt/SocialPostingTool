@@ -105,9 +105,11 @@ import {
 } from '@ward-comms/validation';
 import type { CommunicationChannel } from '@ward-comms/validation';
 
+export type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 export interface WardCommsApiClientOptions {
   baseUrl: string;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchImpl;
   /** Bearer access token for mobile clients. Ignored by web (which relies on the HTTP-only session cookie). */
   getAccessToken?: () => string | null;
 }
@@ -131,14 +133,19 @@ export class ApiRequestError extends Error {
  * device storage for mobile — see AGENTS.md: "do not use localStorage for
  * browser authentication tokens").
  */
+/** Browser fetch must keep its receiver; assigning `fetch` to a field and calling it later throws "Illegal invocation". */
+function defaultFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, init);
+}
+
 export class WardCommsApiClient {
   private readonly baseUrl: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: FetchImpl;
   private readonly getAccessToken?: () => string | null;
 
   constructor(options: WardCommsApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? defaultFetch;
     this.getAccessToken = options.getAccessToken;
   }
 
