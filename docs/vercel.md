@@ -43,11 +43,14 @@ These cannot be created from the build — link them in the Vercel UI:
 ## 1. Create the Vercel project
 
 1. Vercel → **Add New Project** → import this repository.
-2. **Root Directory:** leave as **`.`** (repository root).
-3. **Framework Preset:** Nuxt (from root `vercel.json`).
+2. **Root Directory:** prefer **`.`** (repository root). If the project is
+   still rooted at `apps/api`, `apps/api/vercel.json` cds to the monorepo root
+   and runs `pnpm run build:vercel`.
+3. **Framework Preset:** Other / Nuxt (Build Output API from `build:vercel`).
 4. **Node.js Version:** 20.x.
 
-Build settings come from root `vercel.json`.
+Do **not** set the build command to `pnpm run build:vercel` inside `apps/api`
+without the `cd ../..` wrapper — that script only exists at the workspace root.
 
 ## 2. Link Postgres
 
