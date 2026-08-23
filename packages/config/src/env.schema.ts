@@ -21,6 +21,27 @@ export const envSchema = z.object({
   REFRESH_TOKEN_SECRET: z.string().min(32, 'REFRESH_TOKEN_SECRET must be at least 32 characters'),
   WARD_CODE_PEPPER: z.string().min(16, 'WARD_CODE_PEPPER must be at least 16 characters'),
 
+  /**
+   * 32-byte key material as base64 (or a long passphrase hashed at load time).
+   * Used only to encrypt/decrypt ProviderCredential rows — never logged.
+   */
+  PROVIDER_CREDENTIALS_ENCRYPTION_KEY: z
+    .string()
+    .min(32, 'PROVIDER_CREDENTIALS_ENCRYPTION_KEY must be at least 32 characters')
+    .default('dev-only-provider-credentials-key!!'),
+
+  /** `simulated` | `credentialed` | `live` — see docs/providers.md */
+  PROVIDER_MODE: z.enum(['simulated', 'credentialed', 'live']).default('simulated'),
+
+  /** Optional OpenAI key for live AI image generation. When absent, AI_IMAGE_MODE falls back to simulated. */
+  OPENAI_API_KEY: z.string().optional(),
+
+  /** `simulated` = deterministic placeholder URLs; `live` = OpenAI images API when OPENAI_API_KEY is set. */
+  AI_IMAGE_MODE: z.enum(['simulated', 'live']).default('simulated'),
+
+  /** Worker schedule poller interval in milliseconds. */
+  SCHEDULE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+
   CORS_ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
 });
 

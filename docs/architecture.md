@@ -4,7 +4,7 @@
 
 Ward Communications Hub is a pnpm + Turborepo monorepo. It is a secure communications platform used by ward leaders to manage people, households, audience groups, campaigns, and multichannel communications (email, SMS, Facebook).
 
-This document describes the repository-level architecture established in Phase 2 (Repository Foundation). Domain entities, authentication, audience logic, campaigns, and provider integrations are introduced in later phases (see `phases/`).
+This document describes the repository-level architecture established in Phase 2 (Repository Foundation), extended with the domain model (Phase 3, see `docs/domain-model.md`), authentication (Phase 4, see `docs/threat-model-auth.md`), the directory (Phase 5, see `docs/directory.md`), audience groups (Phase 6, see `docs/audiences.md`), campaign drafting (Phase 7, see `docs/campaigns.md`), the delivery engine (Phase 8, see `docs/delivery.md`), and provider integrations (Phase 9, see `docs/providers.md`).
 
 ## Repository layout
 
@@ -47,6 +47,33 @@ Provider integrations (email, SMS, Facebook, storage, queues, AI) are implemente
 ## Dependency injection in apps/api
 
 `apps/api` runs under `tsx` (esbuild) for `dev`/`start` and is type-checked/emitted with `tsc` for `build`. esbuild does not emit the `design:paramtypes` metadata that NestJS's implicit constructor-type dependency injection relies on (`emitDecoratorMetadata`). To keep behavior identical between `tsx` and a real `tsc` build, every constructor-injected dependency in `apps/api` must use an explicit `@Inject(Token)` decorator rather than relying on implicit type reflection. See `apps/api/src/health/health.controller.ts` for the pattern.
+
+## `apps/api` module structure (Phase 4)
+
+- `prisma/` — `PrismaModule`/`PrismaService`, a global module wrapping `PrismaClient` with NestJS lifecycle hooks. This is the only place `@ward-comms/database`'s generated client is instantiated.
+- `audit/` — `AuditModule`/`AuditService`, a global module used to append `AuditEvent` rows. Any module recording a sensitive action depends on this rather than writing to the table directly.
+- `auth/` — authentication module: password/ward-code hashing adapters, repositories (`UserRepository`, `SessionRepository`, `WardCodeRepository`), `AuthService` (orchestration — the only place login/session business rules live outside `packages/domain`), `SessionAuthGuard` + `PermissionsGuard` for server-side authorization, and a thin `AuthController` that only parses/validates requests and calls `AuthService`.
+- `common/` — framework-agnostic utilities shared across modules (signed-token HMAC helper, opaque session-token hashing, Zod body-parsing helper), kept dependency-free of Nest decorators where possible so they stay easy to unit test.
+
+Authorization is enforced with two composable guards: `SessionAuthGuard` establishes *who* the caller is (cookie for web, `Authorization: Bearer` for mobile) and rejects unauthenticated/expired/revoked/disabled sessions; `PermissionsGuard` reads `@RequirePermission(...)` metadata and rejects callers whose role's permissions don't include the required one. Both run server-side on every route that opts in — the frontend's own view of permissions is never trusted for authorization decisions.
+
+## `apps/api` module structure (Phase 5)
+
+- `directory/` — the ward directory: `PersonRepository`, `HouseholdRepository`, `ContactMethodRepository`, `RelationshipRepository`, and `HouseholdMembershipRepository` handle data access only; `DirectoryService` applies the pure domain rules (minor-data redaction, self-relationship checks, contact normalization, relationship-pair construction) and writes an `AuditEvent` for every mutation; `DirectoryController` stays thin, parsing/validating requests via `parseBody` and delegating everything else. See `docs/directory.md` for the family-structure rules (divorce, remarriage, guardianship, single-parent households) and the minor-data-restriction policy.
+
+## `apps/api` module structure (Phase 6)
+
+- `audiences/` — audience groups and communication destinations: `AudienceGroupRepository`, `AudienceMemberRepository`, `AudienceDestinationRepository`, and `CommunicationDestinationRepository` handle data access only; `AudiencesService` applies the pure domain rules (safe-delete eligibility, duplicate-membership detection, cross-audience overlap deduplication for preview) and writes an `AuditEvent` for every mutation; `AudiencesController` (audience CRUD, membership, destination links, preview) and `DestinationsController` (destination CRUD) stay thin. See `docs/audiences.md` for the safe-delete rule, the overlap/duplicate-detection design, and why no organization name is ever hardcoded into this module.
+
+## `apps/api` module structure (Phase 7)
+
+- `campaigns/` — campaign drafting: `CampaignRepository`, `CampaignVersionRepository`, `CampaignAssetRepository`, `CampaignAudienceRepository`, `CampaignChannelVersionRepository`, `CampaignDestinationRepository`, `CampaignApprovalRepository`, and `CampaignScheduleRepository` handle data access only; `CampaignsService` applies the pure domain rules from `packages/domain/src/campaigns` (status-transition legality, submission validation, base/channel/audience content resolution, cross-audience overlap for preview) and writes an `AuditEvent` for every mutation; `CampaignsController` stays thin. `sendNow` delegates to the Phase 8 delivery engine. See `docs/campaigns.md`.
+
+## `apps/api` / `apps/worker` module structure (Phase 8)
+
+- `delivery/` (API) — `DeliveryBatchRepository`, `DeliveryRecipientRepository`, `DeliveryAttemptRepository`; `DeliveryService` expands recipients (overlap + consent), creates idempotent batches, and enqueues BullMQ jobs via `DeliveryQueueService`; `DeliveryController` stays thin. See `docs/delivery.md`.
+- `delivery/` (worker) — `processDeliveryRecipient` claims a recipient, calls Email/SMS/Facebook adapters, records attempts, applies retry/dead-letter policy, and rolls up batch + campaign status. Retries never duplicate sends (claim guard + unique attempt numbers).
+- `providers/` (API + worker) — encrypted `ProviderCredential` storage (API) and channel adapters (worker) selected by `PROVIDER_MODE`. SDKs stay out of domain; see `docs/providers.md`.
 
 ## Local development environment
 

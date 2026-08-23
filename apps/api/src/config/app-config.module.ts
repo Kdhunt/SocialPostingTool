@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { loadConfig, type AppConfig } from '@ward-comms/config';
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
@@ -9,6 +9,7 @@ export const APP_CONFIG = Symbol('APP_CONFIG');
  * module initialization) on invalid or missing configuration rather than
  * booting with unsafe defaults.
  */
+@Global()
 @Module({
   providers: [
     {

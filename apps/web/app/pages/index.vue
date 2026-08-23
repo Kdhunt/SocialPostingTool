@@ -1,12 +1,15 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'authenticated' });
 import { ref, onMounted } from 'vue';
 import { useRuntimeConfig } from '#imports';
 import { WardCommsApiClient } from '@ward-comms/api-client';
 import { StatusBadge } from '@ward-comms/ui';
 import { toStatusBadgeLabel, toStatusBadgeTone, type HealthPageState } from '~/utils/health-status';
+import { useAuth } from '~/composables/useAuth';
 
 const config = useRuntimeConfig();
 const state = ref<HealthPageState>({ kind: 'loading' });
+const { state: authState, refreshSession, logout } = useAuth();
 
 async function checkHealth(): Promise<void> {
   state.value = { kind: 'loading' };
@@ -25,6 +28,7 @@ async function checkHealth(): Promise<void> {
 
 onMounted(() => {
   void checkHealth();
+  void refreshSession();
 });
 </script>
 
@@ -40,6 +44,19 @@ onMounted(() => {
     </p>
 
     <button type="button" :disabled="state.kind === 'loading'" @click="checkHealth">Recheck</button>
+
+    <section class="health-page__auth">
+      <template v-if="authState.kind === 'authenticated'">
+        <p>Signed in as <strong>{{ authState.user.displayName }}</strong>.</p>
+        <p><NuxtLink to="/directory">Go to directory</NuxtLink></p>
+        <p><NuxtLink to="/audiences">Go to audiences</NuxtLink></p>
+        <p><NuxtLink to="/campaigns">Go to campaigns</NuxtLink></p>
+        <button type="button" @click="logout">Sign out</button>
+      </template>
+      <template v-else-if="authState.kind === 'anonymous'">
+        <NuxtLink to="/login">Sign in</NuxtLink>
+      </template>
+    </section>
   </main>
 </template>
 
@@ -56,5 +73,10 @@ onMounted(() => {
 .health-page__timestamp {
   color: #57606a;
   font-size: 0.875rem;
+}
+
+.health-page__auth {
+  padding-top: 1rem;
+  border-top: 1px solid #d0d7de;
 }
 </style>
