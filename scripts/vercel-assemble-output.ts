@@ -7,6 +7,7 @@ import {
   FALLBACK_FUNCTION_NAME,
   functionNameFromFuncEntry,
   insertApiRoutes,
+  isObservabilityFunctionSymlink,
   remapRoutesToExistingFunctions,
 } from './vercel-output-routes.js';
 
@@ -149,25 +150,35 @@ async function pathExists(target: string): Promise<boolean> {
 }
 
 /**
- * Vercel's Nuxt ISR step resolves dest `/__fallback` to
- * `.vercel/output/functions/__fallback` (no `.func` suffix). Nitro only writes
- * `__fallback.func`, so that lookup fails with:
- * "Could not find target .../functions/__fallback ... for path __nuxt_error".
+ * Drop Nitro observability `*.func` symlinks. Vercel deserializes them via
+ * `applyFunctionSymlinks`, which fails when `readlink` is an absolute path
+ * (lookup `…/functions/__fallback` instead of `__fallback`).
  */
-async function mirrorFallbackFunctionWithoutSuffix(): Promise<void> {
+async function removeObservabilityFunctionSymlinks(): Promise<void> {
   const functionsDir = path.join(OUTPUT_DIR, 'functions');
-  const funcDir = path.join(functionsDir, `${FALLBACK_FUNCTION_NAME}.func`);
-  const aliasDir = path.join(functionsDir, FALLBACK_FUNCTION_NAME);
-
-  if (!(await pathExists(funcDir))) {
-    throw new Error(`Missing Build Output function at ${funcDir}`);
+  let entries: string[];
+  try {
+    entries = await readdir(functionsDir, { recursive: true });
+  } catch {
+    return;
   }
 
-  await rm(aliasDir, { recursive: true, force: true });
-  await cp(funcDir, aliasDir, { recursive: true, dereference: true });
-  console.log(
-    `  mirrored ${FALLBACK_FUNCTION_NAME}.func → ${FALLBACK_FUNCTION_NAME} (Nuxt ISR dest lookup)`,
-  );
+  const removed: string[] = [];
+  for (const entry of entries) {
+    const fullPath = path.join(functionsDir, entry);
+    const stat = await lstat(fullPath);
+    if (!isObservabilityFunctionSymlink(entry, stat.isSymbolicLink())) {
+      continue;
+    }
+    await rm(fullPath, { recursive: true, force: true });
+    removed.push(entry.replaceAll('\\', '/'));
+  }
+
+  if (removed.length > 0) {
+    console.log(
+      `  removed ${String(removed.length)} observability function symlink(s): ${removed.join(', ')}`,
+    );
+  }
 }
 
 /**
@@ -191,10 +202,9 @@ async function verifyDeployOutput(): Promise<void> {
   }
 
   const fallbackFunc = path.join(OUTPUT_DIR, 'functions', `${FALLBACK_FUNCTION_NAME}.func`);
-  const fallbackAlias = path.join(OUTPUT_DIR, 'functions', FALLBACK_FUNCTION_NAME);
-  if (!(await pathExists(fallbackFunc)) || !(await pathExists(fallbackAlias))) {
+  if (!(await pathExists(fallbackFunc))) {
     throw new Error(
-      `Missing ${FALLBACK_FUNCTION_NAME} Lambda at .vercel/output/functions/${FALLBACK_FUNCTION_NAME}[.func]`,
+      `Missing ${FALLBACK_FUNCTION_NAME} Lambda at .vercel/output/functions/${FALLBACK_FUNCTION_NAME}.func`,
     );
   }
 
@@ -202,14 +212,14 @@ async function verifyDeployOutput(): Promise<void> {
     if (!(await pathExists(apiRootConfig))) {
       throw new Error('Missing Build Output at apps/api/.vercel/output/config.json');
     }
-    const apiFallbackAlias = path.join(
+    const apiFallbackFunc = path.join(
       API_ROOT_OUTPUT_DIR,
       'functions',
-      FALLBACK_FUNCTION_NAME,
+      `${FALLBACK_FUNCTION_NAME}.func`,
     );
-    if (!(await pathExists(apiFallbackAlias))) {
+    if (!(await pathExists(apiFallbackFunc))) {
       throw new Error(
-        `Missing ${FALLBACK_FUNCTION_NAME} Lambda at apps/api/.vercel/output/functions/${FALLBACK_FUNCTION_NAME}`,
+        `Missing ${FALLBACK_FUNCTION_NAME} Lambda at apps/api/.vercel/output/functions/${FALLBACK_FUNCTION_NAME}.func`,
       );
     }
     console.log('  verified Build Output API config in repo root and apps/api/.vercel/output');
@@ -221,8 +231,8 @@ export async function assembleVercelOutput(): Promise<void> {
   for (const spec of API_FUNCTIONS) {
     await buildServerlessFunction(spec);
   }
+  await removeObservabilityFunctionSymlinks();
   await patchOutputConfig();
-  await mirrorFallbackFunctionWithoutSuffix();
   if (process.env.VERCEL === '1') {
     await publishBuildOutputForVercelRoot();
   }

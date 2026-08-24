@@ -5,6 +5,7 @@ import {
   functionNameFromDest,
   functionNameFromFuncEntry,
   insertApiRoutes,
+  isObservabilityFunctionSymlink,
   remapRoutesToExistingFunctions,
 } from './vercel-output-routes.js';
 
@@ -26,6 +27,24 @@ describe('functionNameFromFuncEntry', () => {
   it('ignores non-function paths', (): void => {
     expect(functionNameFromFuncEntry('__fallback')).toBeUndefined();
     expect(functionNameFromFuncEntry('index.mjs')).toBeUndefined();
+  });
+});
+
+describe('isObservabilityFunctionSymlink', () => {
+  it('matches top-level .func directories that are symlinks', (): void => {
+    expect(isObservabilityFunctionSymlink('__nuxt_error.func', true)).toBe(true);
+    expect(isObservabilityFunctionSymlink('login.func', true)).toBe(true);
+  });
+
+  it('leaves real function directories and nested copies alone', (): void => {
+    expect(isObservabilityFunctionSymlink('__fallback.func', false)).toBe(false);
+    expect(isObservabilityFunctionSymlink('api/nest.func', false)).toBe(false);
+    expect(
+      isObservabilityFunctionSymlink(
+        'api/nest.func/.vercel/output/functions/api/nest.func',
+        true,
+      ),
+    ).toBe(false);
   });
 });
 

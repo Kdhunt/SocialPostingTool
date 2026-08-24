@@ -25,6 +25,24 @@ export function functionNameFromDest(dest: string): string {
 }
 
 /**
+ * Nitro observability aliases (`__nuxt_error.func`, `login.func`, …) are
+ * symlinks to `__fallback.func`. Vercel `readlink`s them and looks up the
+ * target with `.func` stripped. Absolute link targets become
+ * `…/functions/__fallback`, which is not in the Lambda map (keyed
+ * `__fallback` from `__fallback.func`), so deploy fails:
+ * "Could not find target …/functions/__fallback … for path __nuxt_error".
+ *
+ * Routes are remapped to `/__fallback`; delete these symlink dirs so Vercel
+ * never tries to resolve them.
+ */
+export function isObservabilityFunctionSymlink(
+  relativePath: string,
+  isSymbolicLink: boolean,
+): boolean {
+  return isSymbolicLink && functionNameFromFuncEntry(relativePath) !== undefined;
+}
+
+/**
  * Nitro observability routes dest to names like `/index` and `/login`, and
  * creates those as symlinks to `__fallback.func`. Vercel does not deploy
  * those symlinks, so the dest 404s. Point missing dests at `__fallback`.
