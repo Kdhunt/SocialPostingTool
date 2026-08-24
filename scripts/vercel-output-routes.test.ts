@@ -27,6 +27,7 @@ describe('functionNameFromFuncEntry', () => {
   it('ignores non-function paths', (): void => {
     expect(functionNameFromFuncEntry('__fallback')).toBeUndefined();
     expect(functionNameFromFuncEntry('index.mjs')).toBeUndefined();
+    expect(functionNameFromFuncEntry('settings/security.func/.vc-config.json')).toBeUndefined();
   });
 });
 

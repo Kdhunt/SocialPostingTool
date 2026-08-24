@@ -1,3 +1,4 @@
+import { Dirent } from 'node:fs';
 import { access, cp, lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { nodeFileTrace } from '@vercel/nft';
@@ -150,24 +151,64 @@ async function pathExists(target: string): Promise<boolean> {
 }
 
 /**
+ * List `*.func` directories without following observability symlinks.
+ * Recursive `readdir` follows those links and then `lstat`s nested files
+ * like `settings/security.func/.vc-config.json` after the parent is gone.
+ */
+async function listFuncDirectoryPaths(functionsDir: string): Promise<string[]> {
+  const found: string[] = [];
+
+  async function walk(dir: string, prefix: string): Promise<void> {
+    let dirents: Dirent[];
+    try {
+      dirents = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const dirent of dirents) {
+      const relative = prefix.length > 0 ? `${prefix}/${dirent.name}` : dirent.name;
+      if (dirent.name.endsWith('.func')) {
+        found.push(relative);
+        continue;
+      }
+      if (dirent.isSymbolicLink() || !dirent.isDirectory()) {
+        continue;
+      }
+      await walk(path.join(dir, dirent.name), relative);
+    }
+  }
+
+  await walk(functionsDir, '');
+  return found;
+}
+
+/**
  * Drop Nitro observability `*.func` symlinks. Vercel deserializes them via
  * `applyFunctionSymlinks`, which fails when `readlink` is an absolute path
  * (lookup `…/functions/__fallback` instead of `__fallback`).
  */
 async function removeObservabilityFunctionSymlinks(): Promise<void> {
   const functionsDir = path.join(OUTPUT_DIR, 'functions');
-  let entries: string[];
-  try {
-    entries = await readdir(functionsDir, { recursive: true });
-  } catch {
-    return;
-  }
-
+  const entries = await listFuncDirectoryPaths(functionsDir);
   const removed: string[] = [];
+
   for (const entry of entries) {
+    if (functionNameFromFuncEntry(entry) === undefined) {
+      continue;
+    }
     const fullPath = path.join(functionsDir, entry);
-    const stat = await lstat(fullPath);
-    if (!isObservabilityFunctionSymlink(entry, stat.isSymbolicLink())) {
+    let isSymbolicLink = false;
+    try {
+      const stat = await lstat(fullPath);
+      isSymbolicLink = stat.isSymbolicLink();
+    } catch (error) {
+      if (isEnoent(error)) {
+        continue;
+      }
+      throw error;
+    }
+    if (!isObservabilityFunctionSymlink(entry, isSymbolicLink)) {
       continue;
     }
     await rm(fullPath, { recursive: true, force: true });
@@ -179,6 +220,15 @@ async function removeObservabilityFunctionSymlinks(): Promise<void> {
       `  removed ${String(removed.length)} observability function symlink(s): ${removed.join(', ')}`,
     );
   }
+}
+
+function isEnoent(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code: string }).code === 'ENOENT'
+  );
 }
 
 /**
