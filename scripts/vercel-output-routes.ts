@@ -22,15 +22,65 @@ export const API_ROUTES: Array<Record<string, string>> = [
 
 /**
  * Bundle JS into the Lambda (including `reflect-metadata`). Leave native
- * binaries external so NFT can copy `.node` files. `packages: 'external'`
- * plus pnpm's nested node_modules made Vercel fail with:
- * Cannot find package 'reflect-metadata' imported from /var/task/index.mjs
+ * binaries as real externals so NFT can copy `.node` files.
+ *
+ * Nest `require()`s class-validator, websockets, and microservices inside
+ * try/catch. Those packages are not app deps. Stub them so esbuild does not
+ * fail the build, and so ESM output does not hoist missing packages into
+ * top-level imports that would crash the Lambda.
  */
 export const SERVERLESS_NATIVE_EXTERNALS: string[] = [
   '@node-rs/argon2',
   '@prisma/client',
   'prisma',
+  '.prisma/client',
 ];
+
+export const SERVERLESS_OPTIONAL_PEERS: string[] = [
+  'class-validator',
+  'class-transformer',
+  '@nestjs/websockets',
+  '@nestjs/websockets/socket-module',
+  '@nestjs/microservices',
+  '@nestjs/microservices/microservices-module',
+];
+
+export const NEST_OPTIONAL_PEER_NAMESPACE = 'nest-optional-peer';
+
+function matchesPackage(modulePath: string, pkg: string): boolean {
+  if (modulePath === pkg || modulePath.startsWith(`${pkg}/`)) {
+    return true;
+  }
+  return pkg === '@node-rs/argon2' && modulePath.startsWith('@node-rs/argon2-');
+}
+
+export function isServerlessNativeExternal(modulePath: string): boolean {
+  return SERVERLESS_NATIVE_EXTERNALS.some((pkg) => matchesPackage(modulePath, pkg));
+}
+
+export function isNestOptionalPeer(modulePath: string): boolean {
+  return SERVERLESS_OPTIONAL_PEERS.some((pkg) => matchesPackage(modulePath, pkg));
+}
+
+export function isServerlessBundleExternal(modulePath: string): boolean {
+  return isServerlessNativeExternal(modulePath) || isNestOptionalPeer(modulePath);
+}
+
+export function nestOptionalPeerStubContents(modulePath: string): string {
+  return `throw Object.assign(new Error(${JSON.stringify(`Cannot find module '${modulePath}'`)}), { code: 'MODULE_NOT_FOUND' });`;
+}
+
+export function resolveServerlessBundleModule(
+  modulePath: string,
+): { path: string; external: true } | { path: string; namespace: string } | undefined {
+  if (isServerlessNativeExternal(modulePath)) {
+    return { path: modulePath, external: true };
+  }
+  if (isNestOptionalPeer(modulePath)) {
+    return { path: modulePath, namespace: NEST_OPTIONAL_PEER_NAMESPACE };
+  }
+  return undefined;
+}
 
 export function functionNameFromDest(dest: string): string {
   return dest.split('?')[0]?.replace(/^\//, '') ?? '';

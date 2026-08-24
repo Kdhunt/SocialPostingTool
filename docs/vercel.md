@@ -149,7 +149,7 @@ pnpm --filter @ward-comms/database db:bootstrap
 | Login fails / invalid username | Set `BOOTSTRAP_*` env vars and redeploy, or run `db:bootstrap` manually against prod DB |
 | Ward code rejected | `WARD_CODE_PEPPER` on Vercel must match the value used when the ward code was created |
 | Login fails after successful build | Check browser Network tab — `/api/v1/auth/login` should return JSON, not HTML 404 |
-| Login returns `FUNCTION_INVOCATION_FAILED` | Nest Lambda is missing bundled JS deps (was `Cannot find package 'reflect-metadata'`). Redeploy a build that bundles npm packages and only leaves Prisma/Argon2 external. |
+| Login returns `FUNCTION_INVOCATION_FAILED` | Nest Lambda is missing bundled JS deps (was `Cannot find package 'reflect-metadata'`). Redeploy a build that bundles npm packages, copies Prisma/Argon2 natives, and stubs Nest optional peers so esbuild can finish. |
 | Prisma migrate errors during build | Ensure `POSTGRES_URL_NON_POOLING` or `POSTGRES_URL` is set |
 | Campaigns stuck on Sending | Pro plan + `CRON_SECRET` + Redis |
 

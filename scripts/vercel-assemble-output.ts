@@ -9,7 +9,10 @@ import {
   functionNameFromFuncEntry,
   insertApiRoutes,
   isObservabilityFunctionSymlink,
+  NEST_OPTIONAL_PEER_NAMESPACE,
+  nestOptionalPeerStubContents,
   remapRoutesToExistingFunctions,
+  resolveServerlessBundleModule,
   SERVERLESS_NATIVE_EXTERNALS,
 } from './vercel-output-routes.js';
 
@@ -87,6 +90,7 @@ async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
   await esbuild.build({
     entryPoints: [entryPath],
     outfile: handlerPath,
+    absWorkingDir: ROOT,
     bundle: true,
     platform: 'node',
     target: 'node20',
@@ -94,11 +98,12 @@ async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
     external: SERVERLESS_NATIVE_EXTERNALS,
     plugins: [
       {
-        name: 'external-argon2-native',
+        name: 'serverless-native-and-nest-optional',
         setup(build) {
-          build.onResolve({ filter: /^@node-rs\/argon2/ }, (args) => ({
-            path: args.path,
-            external: true,
+          build.onResolve({ filter: /.*/ }, (args) => resolveServerlessBundleModule(args.path));
+          build.onLoad({ filter: /.*/, namespace: NEST_OPTIONAL_PEER_NAMESPACE }, (args) => ({
+            contents: nestOptionalPeerStubContents(args.path),
+            loader: 'js',
           }));
         },
       },

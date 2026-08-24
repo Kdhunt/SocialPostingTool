@@ -5,8 +5,13 @@ import {
   functionNameFromDest,
   functionNameFromFuncEntry,
   insertApiRoutes,
+  isNestOptionalPeer,
   isObservabilityFunctionSymlink,
+  isServerlessBundleExternal,
+  isServerlessNativeExternal,
+  nestOptionalPeerStubContents,
   remapRoutesToExistingFunctions,
+  resolveServerlessBundleModule,
   SERVERLESS_NATIVE_EXTERNALS,
 } from './vercel-output-routes.js';
 
@@ -41,6 +46,25 @@ describe('SERVERLESS_NATIVE_EXTERNALS', () => {
 
   it('does not leave reflect-metadata external', (): void => {
     expect(SERVERLESS_NATIVE_EXTERNALS).not.toContain('reflect-metadata');
+    expect(isServerlessBundleExternal('reflect-metadata')).toBe(false);
+  });
+
+  it('stubs Nest optional peers instead of resolving them from node_modules', (): void => {
+    expect(isNestOptionalPeer('class-validator')).toBe(true);
+    expect(isNestOptionalPeer('class-transformer')).toBe(true);
+    expect(isNestOptionalPeer('@nestjs/websockets/socket-module')).toBe(true);
+    expect(isNestOptionalPeer('@nestjs/microservices/microservices-module')).toBe(true);
+    expect(isServerlessNativeExternal('class-validator')).toBe(false);
+    expect(nestOptionalPeerStubContents('class-validator')).toContain('MODULE_NOT_FOUND');
+    expect(resolveServerlessBundleModule('class-validator')).toEqual({
+      path: 'class-validator',
+      namespace: 'nest-optional-peer',
+    });
+    expect(resolveServerlessBundleModule('@prisma/client')).toEqual({
+      path: '@prisma/client',
+      external: true,
+    });
+    expect(resolveServerlessBundleModule('reflect-metadata')).toBeUndefined();
   });
 });
 
@@ -121,5 +145,43 @@ describe('insertApiRoutes', () => {
       ...API_ROUTES,
     ]);
     expect(routes.at(-1)).toEqual({ src: '/(.*)', dest: FALLBACK_DEST });
+  });
+});
+
+describe('Nest optional peer stubs', () => {
+  it('lets esbuild bundle Nest-style optional requires when packages are absent', async (): Promise<void> => {
+    const esbuild = await import('esbuild');
+    const result = await esbuild.build({
+      stdin: {
+        contents: `
+          try { require('class-validator'); } catch {}
+          try { require('class-transformer'); } catch {}
+          try { require('@nestjs/websockets/socket-module'); } catch {}
+          try { require('@nestjs/microservices/microservices-module'); } catch {}
+          export const bundled = true;
+        `,
+        resolveDir: process.cwd(),
+        sourcefile: 'optional-peers.ts',
+      },
+      bundle: true,
+      write: false,
+      platform: 'node',
+      format: 'esm',
+      plugins: [
+        {
+          name: 'serverless-native-and-nest-optional',
+          setup(build) {
+            build.onResolve({ filter: /.*/ }, (args) => resolveServerlessBundleModule(args.path));
+            build.onLoad({ filter: /.*/, namespace: 'nest-optional-peer' }, (args) => ({
+              contents: nestOptionalPeerStubContents(args.path),
+              loader: 'js',
+            }));
+          },
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.outputFiles?.[0]?.text).toContain('MODULE_NOT_FOUND');
   });
 });
