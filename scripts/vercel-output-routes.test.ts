@@ -7,6 +7,7 @@ import {
   insertApiRoutes,
   isObservabilityFunctionSymlink,
   remapRoutesToExistingFunctions,
+  SERVERLESS_NATIVE_EXTERNALS,
 } from './vercel-output-routes.js';
 
 describe('functionNameFromFuncEntry', () => {
@@ -28,6 +29,18 @@ describe('functionNameFromFuncEntry', () => {
     expect(functionNameFromFuncEntry('__fallback')).toBeUndefined();
     expect(functionNameFromFuncEntry('index.mjs')).toBeUndefined();
     expect(functionNameFromFuncEntry('settings/security.func/.vc-config.json')).toBeUndefined();
+  });
+});
+
+describe('SERVERLESS_NATIVE_EXTERNALS', () => {
+  it('keeps Prisma and Argon2 external so NFT can copy native binaries', (): void => {
+    expect(SERVERLESS_NATIVE_EXTERNALS).toEqual(
+      expect.arrayContaining(['@node-rs/argon2', '@prisma/client', 'prisma']),
+    );
+  });
+
+  it('does not leave reflect-metadata external', (): void => {
+    expect(SERVERLESS_NATIVE_EXTERNALS).not.toContain('reflect-metadata');
   });
 });
 

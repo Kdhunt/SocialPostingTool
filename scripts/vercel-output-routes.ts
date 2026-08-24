@@ -20,6 +20,18 @@ export const API_ROUTES: Array<Record<string, string>> = [
   { src: '/api/cron/process-delivery-queue', dest: '/api/cron/process-delivery-queue' },
 ];
 
+/**
+ * Bundle JS into the Lambda (including `reflect-metadata`). Leave native
+ * binaries external so NFT can copy `.node` files. `packages: 'external'`
+ * plus pnpm's nested node_modules made Vercel fail with:
+ * Cannot find package 'reflect-metadata' imported from /var/task/index.mjs
+ */
+export const SERVERLESS_NATIVE_EXTERNALS: string[] = [
+  '@node-rs/argon2',
+  '@prisma/client',
+  'prisma',
+];
+
 export function functionNameFromDest(dest: string): string {
   return dest.split('?')[0]?.replace(/^\//, '') ?? '';
 }

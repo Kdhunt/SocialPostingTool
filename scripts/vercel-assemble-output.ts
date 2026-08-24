@@ -10,6 +10,7 @@ import {
   insertApiRoutes,
   isObservabilityFunctionSymlink,
   remapRoutesToExistingFunctions,
+  SERVERLESS_NATIVE_EXTERNALS,
 } from './vercel-output-routes.js';
 
 const ROOT = process.cwd();
@@ -56,6 +57,26 @@ async function copyTracedFiles(fromRoot: string, fileList: Set<string>, destRoot
   }
 }
 
+const NATIVE_RUNTIME_PATHS = [
+  'node_modules/@prisma/client',
+  'node_modules/.prisma',
+  'node_modules/@node-rs/argon2',
+  'packages/database/node_modules/@prisma/client',
+  'packages/database/node_modules/.prisma',
+];
+
+async function copyNativeRuntimePackages(funcDir: string): Promise<void> {
+  for (const relative of NATIVE_RUNTIME_PATHS) {
+    const source = path.join(ROOT, relative);
+    if (!(await pathExists(source))) {
+      continue;
+    }
+    const target = path.join(funcDir, relative);
+    await mkdir(path.dirname(target), { recursive: true });
+    await cp(source, target, { recursive: true, dereference: true, force: true });
+  }
+}
+
 async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
   const entryPath = path.join(ROOT, spec.entry);
   const funcDir = path.join(OUTPUT_DIR, 'functions', `${spec.name}.func`);
@@ -70,13 +91,25 @@ async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
     platform: 'node',
     target: 'node20',
     format: 'esm',
-    packages: 'external',
+    external: SERVERLESS_NATIVE_EXTERNALS,
+    plugins: [
+      {
+        name: 'external-argon2-native',
+        setup(build) {
+          build.onResolve({ filter: /^@node-rs\/argon2/ }, (args) => ({
+            path: args.path,
+            external: true,
+          }));
+        },
+      },
+    ],
     sourcemap: true,
     logLevel: 'warning',
   });
 
   const { fileList } = await nodeFileTrace([handlerPath], { base: ROOT });
   await copyTracedFiles(ROOT, fileList, funcDir);
+  await copyNativeRuntimePackages(funcDir);
 
   await writeFile(
     path.join(funcDir, '.vc-config.json'),
