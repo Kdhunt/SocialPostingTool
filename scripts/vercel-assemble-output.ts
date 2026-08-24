@@ -1,7 +1,12 @@
-import { access, cp, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { nodeFileTrace } from '@vercel/nft';
 import esbuild from 'esbuild';
+import {
+  API_ROUTES,
+  insertApiRoutes,
+  remapRoutesToExistingFunctions,
+} from './vercel-output-routes.js';
 
 const ROOT = process.cwd();
 const OUTPUT_DIR = path.join(ROOT, '.vercel/output');
@@ -27,13 +32,6 @@ const API_FUNCTIONS: FunctionSpec[] = [
     maxDuration: 300,
     memory: 1024,
   },
-];
-
-/** API routes must be registered before Nuxt page routes in config.json. */
-const API_ROUTES = [
-  { src: '/api/v1/(.*)', dest: '/api/nest' },
-  { src: '/api/cron/process-schedules', dest: '/api/cron/process-schedules' },
-  { src: '/api/cron/process-delivery-queue', dest: '/api/cron/process-delivery-queue' },
 ];
 
 async function copyTracedFiles(fromRoot: string, fileList: Set<string>, destRoot: string): Promise<void> {
@@ -95,18 +93,43 @@ async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
   console.log(`  bundled ${spec.name}`);
 }
 
+async function listDeployableFunctions(): Promise<Set<string>> {
+  const functionsDir = path.join(OUTPUT_DIR, 'functions');
+  const names = new Set<string>();
+  let entries: string[];
+  try {
+    entries = await readdir(functionsDir, { recursive: true });
+  } catch {
+    return names;
+  }
+
+  for (const entry of entries) {
+    const normalized = entry.replaceAll('\\', '/');
+    if (!normalized.endsWith('.func')) {
+      continue;
+    }
+    const fullPath = path.join(functionsDir, entry);
+    const stat = await lstat(fullPath);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      continue;
+    }
+    names.add(normalized.slice(0, -'.func'.length));
+  }
+
+  return names;
+}
+
 async function patchOutputConfig(): Promise<void> {
   const raw = await readFile(CONFIG_PATH, 'utf8');
   const config = JSON.parse(raw) as { version: number; routes: Array<Record<string, string>> };
+  const existingFunctions = await listDeployableFunctions();
 
-  const fallbackIndex = config.routes.findIndex(
-    (route) => route.src === '/(.*)' && route.dest === '/__fallback',
-  );
-  const insertAt = fallbackIndex === -1 ? config.routes.length : fallbackIndex;
-
-  config.routes.splice(insertAt, 0, ...API_ROUTES);
+  config.routes = remapRoutesToExistingFunctions(config.routes, existingFunctions);
+  config.routes = insertApiRoutes(config.routes, API_ROUTES);
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
-  console.log(`  patched config.json (${API_ROUTES.length} API routes, ${config.routes.length} total)`);
+  console.log(
+    `  patched config.json (${API_ROUTES.length} API routes, ${config.routes.length} total; functions: ${[...existingFunctions].join(', ')})`,
+  );
   for (const route of config.routes) {
     const src = route.src ?? route.handle ?? '(unnamed)';
     const dest = route.dest ? ` → ${route.dest}` : '';
