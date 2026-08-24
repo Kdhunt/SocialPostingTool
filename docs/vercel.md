@@ -149,7 +149,7 @@ pnpm --filter @ward-comms/database db:bootstrap
 | Login fails / invalid username | Set `BOOTSTRAP_*` env vars and redeploy, or run `db:bootstrap` manually against prod DB |
 | Ward code rejected | `WARD_CODE_PEPPER` on Vercel must match the value used when the ward code was created |
 | Login fails after successful build | Check browser Network tab — `/api/v1/auth/login` should return JSON, not HTML 404 |
-| Login returns `FUNCTION_INVOCATION_FAILED` | Nest Lambda crashed on missing `reflect-metadata`, Prisma CJS named imports, or a missing generated client (`.prisma/client/default`). The Lambda must bundle JS as CommonJS, stub Nest optional peers, and copy Prisma/Argon2 from pnpm's nested `node_modules`. |
+| Login returns `FUNCTION_INVOCATION_FAILED` | Nest Lambda crashed on missing `reflect-metadata`, Prisma CJS named imports, a missing generated client, AuthModule not exporting `LoginRateLimiterService`, or `@codegenie/serverless-express` treating Vercel `req`/`res` as an AWS event. |
 | Prisma migrate errors during build | Ensure `POSTGRES_URL_NON_POOLING` or `POSTGRES_URL` is set |
 | Campaigns stuck on Sending | Pro plan + `CRON_SECRET` + Redis |
 
