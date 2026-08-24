@@ -24,6 +24,15 @@ import { PermissionsGuard } from './guards/permissions.guard.js';
     SessionAuthGuard,
     PermissionsGuard,
   ],
-  exports: [AuthService, SessionAuthGuard, PermissionsGuard, UserRepository, PasswordHasherService, WardCodeRepository, WardCodeHasherService],
+  exports: [
+    AuthService,
+    SessionAuthGuard,
+    PermissionsGuard,
+    UserRepository,
+    PasswordHasherService,
+    WardCodeRepository,
+    WardCodeHasherService,
+    LoginRateLimiterService,
+  ],
 })
 export class AuthModule {}
