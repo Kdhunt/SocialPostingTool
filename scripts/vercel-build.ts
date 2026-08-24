@@ -105,13 +105,11 @@ function runDatabaseSetup(source: Record<string, string | undefined>): void {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   console.log('Building web and API…');
   run('pnpm exec turbo run build --filter=@ward-comms/web... --filter=@ward-comms/api...');
-
-  void assembleVercelOutput().then(() => {
-    finishVercelBuild();
-  });
+  await assembleVercelOutput();
+  finishVercelBuild();
 }
 
 function finishVercelBuild(): void {
@@ -136,4 +134,7 @@ function finishVercelBuild(): void {
   }
 }
 
-main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

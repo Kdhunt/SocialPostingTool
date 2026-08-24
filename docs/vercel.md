@@ -139,6 +139,9 @@ pnpm --filter @ward-comms/database db:bootstrap
 
 | Symptom | Fix |
 |---------|-----|
+| Build succeeds but every URL is `NOT_FOUND` | **Settings → General → Output Directory** must be **empty**. If set to `.vercel/output`, Vercel treats the build as a static folder and ignores serverless routes. Also confirm **Framework Preset** is **Other**, not Nuxt. |
+| Build uses `cd ../..` in install | **Root Directory** is `apps/api`. Either keep it (build copies output to `apps/api/.vercel/output`) or switch **Root Directory** to `.` and use root `vercel.json` only. |
+| Custom domain 404 but build is green | Open the project's `*.vercel.app` URL from **Vercel → Project → Domains**. If that works, re attach `wardcomms.online` to this project (not an older "Social Posting Tool" project). |
 | Build fails with configuration checklist | Link Postgres + Redis; set all secrets |
 | `/health` 404 (Nuxt "Page not found") | API not deployed — redeploy with latest build; use `/api/v1/health` |
 | Login fails / invalid username | Set `BOOTSTRAP_*` env vars and redeploy, or run `db:bootstrap` manually against prod DB |

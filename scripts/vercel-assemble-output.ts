@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { nodeFileTrace } from '@vercel/nft';
 import esbuild from 'esbuild';
@@ -114,11 +114,36 @@ async function patchOutputConfig(): Promise<void> {
  * Do not set `outputDirectory` in vercel.json — that treats the folder as a
  * static export and every route returns platform NOT_FOUND.
  */
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function publishBuildOutputForVercelRoot(): Promise<void> {
   await rm(API_ROOT_OUTPUT_DIR, { recursive: true, force: true });
   await mkdir(path.dirname(API_ROOT_OUTPUT_DIR), { recursive: true });
   await cp(OUTPUT_DIR, API_ROOT_OUTPUT_DIR, { recursive: true });
   console.log('  published Build Output to apps/api/.vercel/output (apps/api Root Directory)');
+}
+
+async function verifyDeployOutput(): Promise<void> {
+  const repoRootConfig = path.join(OUTPUT_DIR, 'config.json');
+  const apiRootConfig = path.join(API_ROOT_OUTPUT_DIR, 'config.json');
+
+  if (!(await pathExists(repoRootConfig))) {
+    throw new Error('Missing Build Output at .vercel/output/config.json');
+  }
+
+  if (process.env.VERCEL === '1') {
+    if (!(await pathExists(apiRootConfig))) {
+      throw new Error('Missing Build Output at apps/api/.vercel/output/config.json');
+    }
+    console.log('  verified Build Output API config in repo root and apps/api/.vercel/output');
+  }
 }
 
 export async function assembleVercelOutput(): Promise<void> {
@@ -130,5 +155,6 @@ export async function assembleVercelOutput(): Promise<void> {
   if (process.env.VERCEL === '1') {
     await publishBuildOutputForVercelRoot();
   }
+  await verifyDeployOutput();
   console.log('Vercel output assembly complete.');
 }
