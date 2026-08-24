@@ -166,7 +166,7 @@ describe('Nest optional peer stubs', () => {
       bundle: true,
       write: false,
       platform: 'node',
-      format: 'esm',
+      format: 'cjs',
       plugins: [
         {
           name: 'serverless-native-and-nest-optional',

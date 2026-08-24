@@ -83,10 +83,12 @@ async function copyNativeRuntimePackages(funcDir: string): Promise<void> {
 async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
   const entryPath = path.join(ROOT, spec.entry);
   const funcDir = path.join(OUTPUT_DIR, 'functions', `${spec.name}.func`);
-  const handlerPath = path.join(funcDir, 'index.mjs');
+  const handlerPath = path.join(funcDir, 'index.js');
 
   await mkdir(funcDir, { recursive: true });
 
+  // CommonJS so external Prisma/Argon2 named exports resolve via require().
+  // ESM output crashed with: Named export 'Prisma' not found (CJS module).
   await esbuild.build({
     entryPoints: [entryPath],
     outfile: handlerPath,
@@ -94,7 +96,9 @@ async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
     bundle: true,
     platform: 'node',
     target: 'node20',
-    format: 'esm',
+    format: 'cjs',
+    mainFields: ['main', 'module'],
+    conditions: ['node', 'require'],
     external: SERVERLESS_NATIVE_EXTERNALS,
     plugins: [
       {
@@ -121,7 +125,7 @@ async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
     JSON.stringify(
       {
         runtime: 'nodejs20.x',
-        handler: 'index.mjs',
+        handler: 'index.js',
         launcherType: 'Nodejs',
         shouldAddHelpers: true,
         maxDuration: spec.maxDuration,
