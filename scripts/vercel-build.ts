@@ -105,7 +105,37 @@ function runDatabaseSetup(source: Record<string, string | undefined>): void {
   }
 }
 
+function logVercelProjectSettings(source: Record<string, string | undefined>): void {
+  const keys = Object.keys(source)
+    .filter((key) => key.startsWith('VERCEL_PROJECT_SETTINGS_'))
+    .sort();
+
+  console.log('\nVercel project settings visible to this build:');
+  if (keys.length === 0) {
+    console.log('  (none — VERCEL_PROJECT_SETTINGS_* not injected)');
+    return;
+  }
+
+  for (const key of keys) {
+    const value = source[key] ?? '';
+    console.log(`  ${key}=${value === '' ? '(empty)' : value}`);
+  }
+
+  const outputDirectory = source.VERCEL_PROJECT_SETTINGS_OUTPUT_DIRECTORY?.trim();
+  if (outputDirectory) {
+    console.warn(
+      `\nWARNING: dashboard Output Directory is "${outputDirectory}". ` +
+        'If Override is ON, Vercel may treat the Build Output as a static folder and every URL returns NOT_FOUND. ' +
+        'Clear Settings → General → Output Directory (leave empty) and set Framework to Other.',
+    );
+  }
+}
+
 async function main(): Promise<void> {
+  if (process.env.VERCEL === '1') {
+    logVercelProjectSettings(process.env);
+  }
+
   console.log('Building web and API…');
   run('pnpm exec turbo run build --filter=@ward-comms/web... --filter=@ward-comms/api...');
   await assembleVercelOutput();

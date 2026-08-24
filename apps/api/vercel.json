@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd ../.. && pnpm install --prod=false",
   "buildCommand": "cd ../.. && pnpm run build:vercel",
-  "framework": null
+  "framework": null,
+  "outputDirectory": null
 }

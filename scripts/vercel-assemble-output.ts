@@ -106,7 +106,12 @@ async function patchOutputConfig(): Promise<void> {
 
   config.routes.splice(insertAt, 0, ...API_ROUTES);
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
-  console.log(`  patched config.json (${API_ROUTES.length} API routes)`);
+  console.log(`  patched config.json (${API_ROUTES.length} API routes, ${config.routes.length} total)`);
+  for (const route of config.routes) {
+    const src = route.src ?? route.handle ?? '(unnamed)';
+    const dest = route.dest ? ` → ${route.dest}` : '';
+    console.log(`    ${src}${dest}`);
+  }
 }
 
 /**
