@@ -7,6 +7,7 @@ import {
   API_ROUTES,
   FALLBACK_FUNCTION_NAME,
   functionNameFromFuncEntry,
+  generatedPrismaClientCandidates,
   insertApiRoutes,
   isObservabilityFunctionSymlink,
   NEST_OPTIONAL_PEER_NAMESPACE,
@@ -77,6 +78,65 @@ async function copyNativeRuntimePackages(funcDir: string): Promise<void> {
     const target = path.join(funcDir, relative);
     await mkdir(path.dirname(target), { recursive: true });
     await cp(source, target, { recursive: true, dereference: true, force: true });
+  }
+
+  await copyGeneratedPrismaClient(funcDir);
+  await copyArgon2NativePackages(funcDir);
+}
+
+async function copyGeneratedPrismaClient(funcDir: string): Promise<void> {
+  const pnpmDir = path.join(ROOT, 'node_modules', '.pnpm');
+  let pnpmEntries: string[] = [];
+  try {
+    pnpmEntries = await readdir(pnpmDir);
+  } catch {
+    pnpmEntries = [];
+  }
+
+  let source: string | undefined;
+  for (const candidate of generatedPrismaClientCandidates(ROOT, pnpmEntries)) {
+    if (await pathExists(path.join(candidate, 'client', 'default.js'))) {
+      source = candidate;
+      break;
+    }
+  }
+
+  if (!source) {
+    throw new Error(
+      'Generated Prisma client not found (.prisma/client/default.js). Run prisma generate before assembling Vercel functions.',
+    );
+  }
+
+  const target = path.join(funcDir, 'node_modules', '.prisma');
+  await mkdir(path.dirname(target), { recursive: true });
+  await cp(source, target, { recursive: true, dereference: true, force: true });
+}
+
+async function copyArgon2NativePackages(funcDir: string): Promise<void> {
+  const pnpmDir = path.join(ROOT, 'node_modules', '.pnpm');
+  let pnpmEntries: string[] = [];
+  try {
+    pnpmEntries = await readdir(pnpmDir);
+  } catch {
+    return;
+  }
+
+  const scopedTarget = path.join(funcDir, 'node_modules', '@node-rs');
+  for (const entry of pnpmEntries) {
+    if (!entry.startsWith('@node-rs+argon2')) {
+      continue;
+    }
+    const scopedSource = path.join(pnpmDir, entry, 'node_modules', '@node-rs');
+    if (!(await pathExists(scopedSource))) {
+      continue;
+    }
+    const names = await readdir(scopedSource);
+    for (const name of names) {
+      const from = path.join(scopedSource, name);
+      const to = path.join(scopedTarget, name);
+      await mkdir(path.dirname(to), { recursive: true });
+      await cp(from, to, { recursive: true, dereference: true, force: true });
+    }
   }
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import path from 'node:path';
 import {
   API_ROUTES,
   FALLBACK_DEST,
@@ -10,6 +11,7 @@ import {
   isServerlessBundleExternal,
   isServerlessNativeExternal,
   nestOptionalPeerStubContents,
+  generatedPrismaClientCandidates,
   remapRoutesToExistingFunctions,
   resolveServerlessBundleModule,
   SERVERLESS_NATIVE_EXTERNALS,
@@ -65,6 +67,26 @@ describe('SERVERLESS_NATIVE_EXTERNALS', () => {
       external: true,
     });
     expect(resolveServerlessBundleModule('reflect-metadata')).toBeUndefined();
+  });
+
+  it('finds the generated Prisma client under pnpm nested node_modules', (): void => {
+    const candidates = generatedPrismaClientCandidates('/repo', [
+      '@prisma+client@5.22.0_prisma@5.22.0',
+      'esbuild@0.25.12',
+    ]);
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        path.join('/repo', 'node_modules', '.prisma'),
+        path.join(
+          '/repo',
+          'node_modules',
+          '.pnpm',
+          '@prisma+client@5.22.0_prisma@5.22.0',
+          'node_modules',
+          '.prisma',
+        ),
+      ]),
+    );
   });
 });
 

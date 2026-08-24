@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 export const FALLBACK_FUNCTION_NAME = '__fallback';
 export const FALLBACK_DEST = `/${FALLBACK_FUNCTION_NAME}`;
 
@@ -68,6 +70,25 @@ export function isServerlessBundleExternal(modulePath: string): boolean {
 
 export function nestOptionalPeerStubContents(modulePath: string): string {
   return `throw Object.assign(new Error(${JSON.stringify(`Cannot find module '${modulePath}'`)}), { code: 'MODULE_NOT_FOUND' });`;
+}
+
+/**
+ * pnpm stores the generated client under
+ * node_modules/.pnpm/<prisma-client-package>/node_modules/.prisma, not
+ * node_modules/.prisma. The Lambda's Prisma default.js requires
+ * .prisma/client/default from node_modules/.prisma.
+ */
+export function generatedPrismaClientCandidates(root: string, pnpmDirEntries: string[]): string[] {
+  const candidates = [
+    path.join(root, 'node_modules', '.prisma'),
+    path.join(root, 'packages', 'database', 'node_modules', '.prisma'),
+  ];
+  for (const entry of pnpmDirEntries) {
+    if (entry.startsWith('@prisma+client@')) {
+      candidates.push(path.join(root, 'node_modules', '.pnpm', entry, 'node_modules', '.prisma'));
+    }
+  }
+  return candidates;
 }
 
 export function resolveServerlessBundleModule(
