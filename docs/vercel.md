@@ -45,9 +45,14 @@ These cannot be created from the build — link them in the Vercel UI:
 1. Vercel → **Add New Project** → import this repository.
 2. **Root Directory:** prefer **`.`** (repository root). If the project is
    still rooted at `apps/api`, `apps/api/vercel.json` cds to the monorepo root
-   and runs `pnpm run build:vercel`.
-3. **Framework Preset:** Other / Nuxt (Build Output API from `build:vercel`).
+   and runs `pnpm run build:vercel`, then publishes Build Output into
+   `apps/api/.vercel/output` so Vercel can find it.
+3. **Framework Preset:** **Other** (not Nuxt). The build writes the
+   [Build Output API](https://vercel.com/docs/build-output-api/v3) itself.
 4. **Node.js Version:** 20.x.
+5. Leave **Output Directory** empty in the dashboard. Do **not** set it to
+   `.vercel/output` — that makes Vercel treat the build as a static export and
+   every page returns `NOT_FOUND`.
 
 Do **not** set the build command to `pnpm run build:vercel` inside `apps/api`
 without the `cd ../..` wrapper — that script only exists at the workspace root.

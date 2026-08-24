@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { nodeFileTrace } from '@vercel/nft';
 import esbuild from 'esbuild';
@@ -6,6 +6,9 @@ import esbuild from 'esbuild';
 const ROOT = process.cwd();
 const OUTPUT_DIR = path.join(ROOT, '.vercel/output');
 const CONFIG_PATH = path.join(OUTPUT_DIR, 'config.json');
+/** When Vercel Root Directory is `apps/api`, Build Output must live here. */
+const API_ROOT_OUTPUT_DIR = path.join(ROOT, 'apps/api/.vercel/output');
+
 
 interface FunctionSpec {
   entry: string;
@@ -106,11 +109,26 @@ async function patchOutputConfig(): Promise<void> {
   console.log(`  patched config.json (${API_ROUTES.length} API routes)`);
 }
 
+/**
+ * Vercel only reads Build Output API from `<Root Directory>/.vercel/output`.
+ * Do not set `outputDirectory` in vercel.json — that treats the folder as a
+ * static export and every route returns platform NOT_FOUND.
+ */
+async function publishBuildOutputForVercelRoot(): Promise<void> {
+  await rm(API_ROOT_OUTPUT_DIR, { recursive: true, force: true });
+  await mkdir(path.dirname(API_ROOT_OUTPUT_DIR), { recursive: true });
+  await cp(OUTPUT_DIR, API_ROOT_OUTPUT_DIR, { recursive: true });
+  console.log('  published Build Output to apps/api/.vercel/output (apps/api Root Directory)');
+}
+
 export async function assembleVercelOutput(): Promise<void> {
   console.log('\nAssembling NestJS serverless functions into .vercel/output…');
   for (const spec of API_FUNCTIONS) {
     await buildServerlessFunction(spec);
   }
   await patchOutputConfig();
+  if (process.env.VERCEL === '1') {
+    await publishBuildOutputForVercelRoot();
+  }
   console.log('Vercel output assembly complete.');
 }
