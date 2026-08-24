@@ -1,4 +1,18 @@
-export const FALLBACK_DEST = '/__fallback';
+export const FALLBACK_FUNCTION_NAME = '__fallback';
+export const FALLBACK_DEST = `/${FALLBACK_FUNCTION_NAME}`;
+
+/** Nitro writes `functions/<name>.func`. Ignore nested copies traced into those bundles. */
+export function functionNameFromFuncEntry(relativePath: string): string | undefined {
+  const normalized = relativePath.replaceAll('\\', '/');
+  if (!normalized.endsWith('.func')) {
+    return undefined;
+  }
+  const name = normalized.slice(0, -'.func'.length);
+  if (name.length === 0 || name.includes('.func/')) {
+    return undefined;
+  }
+  return name;
+}
 
 export const API_ROUTES: Array<Record<string, string>> = [
   { src: '/api/v1/(.*)', dest: '/api/nest' },

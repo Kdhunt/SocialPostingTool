@@ -3,9 +3,31 @@ import {
   API_ROUTES,
   FALLBACK_DEST,
   functionNameFromDest,
+  functionNameFromFuncEntry,
   insertApiRoutes,
   remapRoutesToExistingFunctions,
 } from './vercel-output-routes.js';
+
+describe('functionNameFromFuncEntry', () => {
+  it('returns the Build Output function name for a top-level .func directory', (): void => {
+    expect(functionNameFromFuncEntry('__fallback.func')).toBe('__fallback');
+    expect(functionNameFromFuncEntry('api/nest.func')).toBe('api/nest');
+    expect(functionNameFromFuncEntry('api\\cron\\process-schedules.func')).toBe(
+      'api/cron/process-schedules',
+    );
+  });
+
+  it('ignores nested .func copies traced into another function bundle', (): void => {
+    expect(
+      functionNameFromFuncEntry('api/nest.func/.vercel/output/functions/api/nest.func'),
+    ).toBeUndefined();
+  });
+
+  it('ignores non-function paths', (): void => {
+    expect(functionNameFromFuncEntry('__fallback')).toBeUndefined();
+    expect(functionNameFromFuncEntry('index.mjs')).toBeUndefined();
+  });
+});
 
 describe('functionNameFromDest', () => {
   it('strips leading slash and query string', (): void => {

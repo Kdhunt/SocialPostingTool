@@ -4,6 +4,8 @@ import { nodeFileTrace } from '@vercel/nft';
 import esbuild from 'esbuild';
 import {
   API_ROUTES,
+  FALLBACK_FUNCTION_NAME,
+  functionNameFromFuncEntry,
   insertApiRoutes,
   remapRoutesToExistingFunctions,
 } from './vercel-output-routes.js';
@@ -104,8 +106,8 @@ async function listDeployableFunctions(): Promise<Set<string>> {
   }
 
   for (const entry of entries) {
-    const normalized = entry.replaceAll('\\', '/');
-    if (!normalized.endsWith('.func')) {
+    const name = functionNameFromFuncEntry(entry);
+    if (!name) {
       continue;
     }
     const fullPath = path.join(functionsDir, entry);
@@ -113,7 +115,7 @@ async function listDeployableFunctions(): Promise<Set<string>> {
     if (!stat.isDirectory() || stat.isSymbolicLink()) {
       continue;
     }
-    names.add(normalized.slice(0, -'.func'.length));
+    names.add(name);
   }
 
   return names;
@@ -137,11 +139,6 @@ async function patchOutputConfig(): Promise<void> {
   }
 }
 
-/**
- * Vercel only reads Build Output API from `<Root Directory>/.vercel/output`.
- * Do not set `outputDirectory` in vercel.json — that treats the folder as a
- * static export and every route returns platform NOT_FOUND.
- */
 async function pathExists(target: string): Promise<boolean> {
   try {
     await access(target);
@@ -151,6 +148,33 @@ async function pathExists(target: string): Promise<boolean> {
   }
 }
 
+/**
+ * Vercel's Nuxt ISR step resolves dest `/__fallback` to
+ * `.vercel/output/functions/__fallback` (no `.func` suffix). Nitro only writes
+ * `__fallback.func`, so that lookup fails with:
+ * "Could not find target .../functions/__fallback ... for path __nuxt_error".
+ */
+async function mirrorFallbackFunctionWithoutSuffix(): Promise<void> {
+  const functionsDir = path.join(OUTPUT_DIR, 'functions');
+  const funcDir = path.join(functionsDir, `${FALLBACK_FUNCTION_NAME}.func`);
+  const aliasDir = path.join(functionsDir, FALLBACK_FUNCTION_NAME);
+
+  if (!(await pathExists(funcDir))) {
+    throw new Error(`Missing Build Output function at ${funcDir}`);
+  }
+
+  await rm(aliasDir, { recursive: true, force: true });
+  await cp(funcDir, aliasDir, { recursive: true, dereference: true });
+  console.log(
+    `  mirrored ${FALLBACK_FUNCTION_NAME}.func → ${FALLBACK_FUNCTION_NAME} (Nuxt ISR dest lookup)`,
+  );
+}
+
+/**
+ * Vercel only reads Build Output API from `<Root Directory>/.vercel/output`.
+ * Do not set `outputDirectory` in vercel.json — that treats the folder as a
+ * static export and every route returns platform NOT_FOUND.
+ */
 async function publishBuildOutputForVercelRoot(): Promise<void> {
   await rm(API_ROOT_OUTPUT_DIR, { recursive: true, force: true });
   await mkdir(path.dirname(API_ROOT_OUTPUT_DIR), { recursive: true });
@@ -166,9 +190,27 @@ async function verifyDeployOutput(): Promise<void> {
     throw new Error('Missing Build Output at .vercel/output/config.json');
   }
 
+  const fallbackFunc = path.join(OUTPUT_DIR, 'functions', `${FALLBACK_FUNCTION_NAME}.func`);
+  const fallbackAlias = path.join(OUTPUT_DIR, 'functions', FALLBACK_FUNCTION_NAME);
+  if (!(await pathExists(fallbackFunc)) || !(await pathExists(fallbackAlias))) {
+    throw new Error(
+      `Missing ${FALLBACK_FUNCTION_NAME} Lambda at .vercel/output/functions/${FALLBACK_FUNCTION_NAME}[.func]`,
+    );
+  }
+
   if (process.env.VERCEL === '1') {
     if (!(await pathExists(apiRootConfig))) {
       throw new Error('Missing Build Output at apps/api/.vercel/output/config.json');
+    }
+    const apiFallbackAlias = path.join(
+      API_ROOT_OUTPUT_DIR,
+      'functions',
+      FALLBACK_FUNCTION_NAME,
+    );
+    if (!(await pathExists(apiFallbackAlias))) {
+      throw new Error(
+        `Missing ${FALLBACK_FUNCTION_NAME} Lambda at apps/api/.vercel/output/functions/${FALLBACK_FUNCTION_NAME}`,
+      );
     }
     console.log('  verified Build Output API config in repo root and apps/api/.vercel/output');
   }
@@ -180,6 +222,7 @@ export async function assembleVercelOutput(): Promise<void> {
     await buildServerlessFunction(spec);
   }
   await patchOutputConfig();
+  await mirrorFallbackFunctionWithoutSuffix();
   if (process.env.VERCEL === '1') {
     await publishBuildOutputForVercelRoot();
   }
