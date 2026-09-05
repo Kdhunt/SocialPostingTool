@@ -1,13 +1,24 @@
-import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
-import type { CreateWardRequest, CreateWardResponse, WardListResponse, WardSummaryDto } from '@ward-comms/validation';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import type {
+  CreateWardRequest,
+  CreateWardResponse,
+  PlatformWardSummaryDto,
+  RotateWardCodeRequest,
+  WardCodeInfoDto,
+  WardListResponse,
+  WardSummaryDto,
+} from '@ward-comms/validation';
 import { validatePasswordStrength } from '@ward-comms/domain';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordHasherService } from '../auth/password-hasher.service.js';
 import { WardCodeHasherService } from '../auth/ward-code-hasher.service.js';
+import { UserRepository } from '../auth/repositories/user.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RoleRepository } from './repositories/role.repository.js';
 import { WardRepository } from './repositories/ward.repository.js';
 import type { AdminActionContext } from './users-admin.service.js';
+import { UsersAdminService } from './users-admin.service.js';
+import { WardAdminService } from './ward-admin.service.js';
 
 function isValidTimeZone(timeZone: string): boolean {
   try {
@@ -24,14 +35,24 @@ export class WardProvisioningService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(WardRepository) private readonly wards: WardRepository,
     @Inject(RoleRepository) private readonly roles: RoleRepository,
+    @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(PasswordHasherService) private readonly passwordHasher: PasswordHasherService,
     @Inject(WardCodeHasherService) private readonly wardCodeHasher: WardCodeHasherService,
+    @Inject(WardAdminService) private readonly wardAdmin: WardAdminService,
+    @Inject(UsersAdminService) private readonly usersAdmin: UsersAdminService,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async list(): Promise<WardListResponse> {
-    const rows = await this.wards.listActive();
-    return { wards: rows.map((ward) => this.toSummary(ward)) };
+    const rows = await this.wards.listActiveWithAdmins();
+    return {
+      wards: rows.map(
+        (ward): PlatformWardSummaryDto => ({
+          ...this.toSummary(ward),
+          admins: ward.admins,
+        }),
+      ),
+    };
   }
 
   async create(input: CreateWardRequest, context: AdminActionContext): Promise<CreateWardResponse> {
@@ -108,6 +129,35 @@ export class WardProvisioningService {
       adminUserId: result.adminUser.id,
       adminUsername: result.adminUser.username,
     };
+  }
+
+  async rotateWardCode(
+    wardId: string,
+    input: RotateWardCodeRequest,
+    context: AdminActionContext,
+  ): Promise<WardCodeInfoDto> {
+    const ward = await this.wards.findActiveById(wardId);
+    if (!ward) throw new NotFoundException('Ward not found.');
+    return this.wardAdmin.rotate(wardId, input, context);
+  }
+
+  async resetWardAdminPassword(
+    wardId: string,
+    userId: string,
+    password: string,
+    context: AdminActionContext,
+  ): Promise<void> {
+    const ward = await this.wards.findActiveById(wardId);
+    if (!ward) throw new NotFoundException('Ward not found.');
+
+    const target = await this.users.findByIdForWard(wardId, userId);
+    if (!target) throw new NotFoundException('User not found.');
+
+    if (!(await this.users.hasRole(userId, 'WardAdmin'))) {
+      throw new BadRequestException('That user is not a ward administrator.');
+    }
+
+    await this.usersAdmin.resetPassword(wardId, userId, password, context);
   }
 
   private toSummary(ward: { id: string; name: string; timeZone: string; createdAt: Date }): WardSummaryDto {

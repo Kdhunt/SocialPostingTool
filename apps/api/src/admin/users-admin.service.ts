@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -15,6 +16,7 @@ import { validatePasswordStrength } from '@ward-comms/domain';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordHasherService } from '../auth/password-hasher.service.js';
 import { UserRepository } from '../auth/repositories/user.repository.js';
+import { SessionRepository } from '../auth/repositories/session.repository.js';
 import { RoleRepository } from './repositories/role.repository.js';
 
 export interface AdminActionContext {
@@ -23,12 +25,15 @@ export interface AdminActionContext {
   userAgent: string | null;
 }
 
+const PLATFORM_ADMIN_ROLE = 'PlatformAdmin';
+
 @Injectable()
 export class UsersAdminService {
   constructor(
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(RoleRepository) private readonly roles: RoleRepository,
     @Inject(PasswordHasherService) private readonly passwordHasher: PasswordHasherService,
+    @Inject(SessionRepository) private readonly sessions: SessionRepository,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
@@ -42,11 +47,13 @@ export class UsersAdminService {
   async listRoles(): Promise<RoleListResponse> {
     const rows = await this.roles.listAll();
     return {
-      roles: rows.map((role) => ({
-        id: role.id,
-        name: role.name,
-        description: role.description,
-      })),
+      roles: rows
+        .filter((role) => role.name !== PLATFORM_ADMIN_ROLE)
+        .map((role) => ({
+          id: role.id,
+          name: role.name,
+          description: role.description,
+        })),
     };
   }
 
@@ -68,6 +75,7 @@ export class UsersAdminService {
     if (roleRows.length !== input.roleIds.length) {
       throw new BadRequestException('One or more role IDs are invalid.');
     }
+    this.rejectPlatformAdminAssignment(roleRows);
 
     const passwordHash = await this.passwordHasher.hash(input.password);
     const user = await this.users.create({
@@ -108,8 +116,17 @@ export class UsersAdminService {
     if (roleRows.length !== roleIds.length) {
       throw new BadRequestException('One or more role IDs are invalid.');
     }
+    this.rejectPlatformAdminAssignment(roleRows);
 
-    await this.users.assignRoles(userId, roleIds);
+    const nextRoleIds = [...roleIds];
+    if (await this.users.hasRole(userId, PLATFORM_ADMIN_ROLE)) {
+      const platformAdmin = await this.roles.findByName(PLATFORM_ADMIN_ROLE);
+      if (platformAdmin && !nextRoleIds.includes(platformAdmin.id)) {
+        nextRoleIds.push(platformAdmin.id);
+      }
+    }
+
+    await this.users.assignRoles(userId, nextRoleIds);
 
     await this.audit.record({
       wardId,
@@ -117,7 +134,7 @@ export class UsersAdminService {
       action: 'user.roles_assigned',
       entityType: 'ApplicationUser',
       entityId: userId,
-      metadata: { roleIds },
+      metadata: { roleIds: nextRoleIds },
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
     });
@@ -126,6 +143,42 @@ export class UsersAdminService {
     const summary = rows.find((row) => row.id === userId);
     if (!summary) throw new NotFoundException('User not found.');
     return this.toSummary(summary);
+  }
+
+  async resetPassword(
+    wardId: string,
+    userId: string,
+    password: string,
+    context: AdminActionContext,
+  ): Promise<void> {
+    const user = await this.users.findByIdForWard(wardId, userId);
+    if (!user) throw new NotFoundException('User not found.');
+
+    const passwordCheck = validatePasswordStrength(password);
+    if (!passwordCheck.valid) {
+      throw new BadRequestException(passwordCheck.errors.join(' '));
+    }
+
+    const passwordHash = await this.passwordHasher.hash(password);
+    await this.users.setPasswordHash(userId, passwordHash);
+    await this.sessions.revokeAllForUser(userId);
+
+    await this.audit.record({
+      wardId,
+      actorUserId: context.actorUserId,
+      action: 'user.password_reset',
+      entityType: 'ApplicationUser',
+      entityId: userId,
+      metadata: { username: user.username },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+  }
+
+  private rejectPlatformAdminAssignment(roles: Array<{ name: string }>): void {
+    if (roles.some((role) => role.name === PLATFORM_ADMIN_ROLE)) {
+      throw new ForbiddenException('PlatformAdmin cannot be assigned from ward user management.');
+    }
   }
 
   private toSummary(row: {

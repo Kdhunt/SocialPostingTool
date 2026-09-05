@@ -95,6 +95,8 @@ import {
   wardListResponseSchema,
   createWardRequestSchema,
   createWardResponseSchema,
+  resetPasswordRequestSchema,
+  rotateWardCodeRequestSchema,
   createUserRequestSchema,
   type AuditListResponse,
   type AuditSearchQuery,
@@ -176,6 +178,10 @@ export class WardCommsApiClient {
       headers,
       credentials: 'include',
     });
+
+    if (response.status === 204) {
+      return response;
+    }
 
     if (!response.ok) {
       const body: unknown = await response.json().catch(() => null);
@@ -330,6 +336,28 @@ export class WardCommsApiClient {
       body: JSON.stringify(createWardRequestSchema.parse(input)),
     });
     return createWardResponseSchema.parse(await response.json());
+  }
+
+  async rotateWardCodeForWard(wardId: string, newWardCode: string): Promise<WardCodeInfoDto> {
+    const response = await this.request(`/platform/wards/${wardId}/code/rotate`, {
+      method: 'POST',
+      body: JSON.stringify(rotateWardCodeRequestSchema.parse({ newWardCode })),
+    });
+    return wardCodeInfoSchema.parse(await response.json());
+  }
+
+  async resetWardAdminPassword(wardId: string, userId: string, password: string): Promise<void> {
+    await this.request(`/platform/wards/${wardId}/admins/${userId}/password`, {
+      method: 'POST',
+      body: JSON.stringify(resetPasswordRequestSchema.parse({ password })),
+    });
+  }
+
+  async resetUserPassword(userId: string, password: string): Promise<void> {
+    await this.request(`/users/${userId}/password`, {
+      method: 'POST',
+      body: JSON.stringify(resetPasswordRequestSchema.parse({ password })),
+    });
   }
 
   async listAuditEvents(query: AuditSearchQuery = {}): Promise<AuditListResponse> {

@@ -33,6 +33,7 @@ import { PermissionsGuard } from './guards/permissions.guard.js';
     WardCodeRepository,
     WardCodeHasherService,
     LoginRateLimiterService,
+    SessionRepository,
   ],
 })
 export class AuthModule {}

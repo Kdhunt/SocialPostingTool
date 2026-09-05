@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Inject, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   assignUserRolesRequestSchema,
   createUserRequestSchema,
+  resetPasswordRequestSchema,
   rotateWardCodeRequestSchema,
   type RoleListResponse,
   type UserListResponse,
@@ -16,6 +17,7 @@ import { SessionAuthGuard, type AuthContext } from '../auth/guards/session-auth.
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import { UsersAdminService, type AdminActionContext } from './users-admin.service.js';
 import { WardAdminService } from './ward-admin.service.js';
+import { LoginRateLimiterService } from '../auth/login-rate-limiter.service.js';
 
 function buildContext(user: AuthContext['user'], req: Request): AdminActionContext {
   return { actorUserId: user.id, ipAddress: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null };
@@ -24,7 +26,10 @@ function buildContext(user: AuthContext['user'], req: Request): AdminActionConte
 @UseGuards(SessionAuthGuard, PermissionsGuard)
 @Controller('users')
 export class UsersAdminController {
-  constructor(@Inject(UsersAdminService) private readonly users: UsersAdminService) {}
+  constructor(
+    @Inject(UsersAdminService) private readonly users: UsersAdminService,
+    @Inject(LoginRateLimiterService) private readonly rateLimiter: LoginRateLimiterService,
+  ) {}
 
   @RequirePermission('users.manage')
   @Get()
@@ -59,6 +64,22 @@ export class UsersAdminController {
   ): Promise<UserSummaryDto> {
     const dto = parseBody(assignUserRolesRequestSchema, body);
     return this.users.assignRoles(user.wardId, userId, dto.roleIds, buildContext(user, req));
+  }
+
+  @RequirePermission('users.manage')
+  @Post(':id/password')
+  @HttpCode(204)
+  async resetPassword(
+    @Param('id') userId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<void> {
+    if (!this.rateLimiter.consume(`${req.ip}:user-password-reset`)) {
+      throw new ForbiddenException('Too many password reset attempts. Please wait and try again.');
+    }
+    const dto = parseBody(resetPasswordRequestSchema, body);
+    await this.users.resetPassword(user.wardId, userId, dto.password, buildContext(user, req));
   }
 }
 

@@ -57,6 +57,12 @@ Provider integrations (email, SMS, Facebook, storage, queues, AI) are implemente
 
 Authorization is enforced with two composable guards: `SessionAuthGuard` establishes *who* the caller is (cookie for web, `Authorization: Bearer` for mobile) and rejects unauthenticated/expired/revoked/disabled sessions; `PermissionsGuard` reads `@RequirePermission(...)` metadata and rejects callers whose role's permissions don't include the required one. Both run server-side on every route that opts in — the frontend's own view of permissions is never trusted for authorization decisions.
 
+Operator roles (seeded):
+
+- **PlatformAdmin** (`platform.wards.manage`) — the ENV-bootstrapped superadmin. Lives in a hub ward; can provision tenants, rotate any ward code, and reset WardAdmin passwords. Not assignable from **Admin → Users**.
+- **WardAdmin** — full administration **inside one ward** (users, that ward’s code, directory). Does not receive `platform.*` permissions.
+- Other ward roles (CommunicationsCoordinator, Contributor, Viewer) — day-to-day ward work.
+
 ## `apps/api` module structure (Phase 5)
 
 - `directory/` — the ward directory: `PersonRepository`, `HouseholdRepository`, `ContactMethodRepository`, `RelationshipRepository`, and `HouseholdMembershipRepository` handle data access only; `DirectoryService` applies the pure domain rules (minor-data redaction, self-relationship checks, contact normalization, relationship-pair construction) and writes an `AuditEvent` for every mutation; `DirectoryController` stays thin, parsing/validating requests via `parseBody` and delegating everything else. See `docs/directory.md` for the family-structure rules (divorce, remarriage, guardianship, single-parent households) and the minor-data-restriction policy.

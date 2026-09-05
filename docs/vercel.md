@@ -111,8 +111,10 @@ build creates the admin user once, then skips on later deploys.
 4. Sign in at `/login` with your **BOOTSTRAP_** credentials (not the dev
    `admin` / `ChangeMeNow!23` defaults unless you ran `db:seed:dev` manually).
 
-After bootstrap, create more wards via **Administration → Wards** (requires
-`PlatformAdmin`, assigned automatically to the bootstrap admin).
+After bootstrap, create more wards, rotate ward codes, and reset ward administrator
+passwords via **Administration → Wards** (requires `PlatformAdmin`, assigned
+automatically to the bootstrap admin). Re-run the role catalog seed after
+upgrading so WardAdmin no longer includes `platform.wards.manage`.
 
 Do **not** run `db:seed:dev` in production.
 

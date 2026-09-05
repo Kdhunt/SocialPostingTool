@@ -140,6 +140,25 @@ export class UserRepository {
     });
   }
 
+  async hasRole(userId: string, roleName: string): Promise<boolean> {
+    const row = await this.prisma.client.userRole.findFirst({
+      where: { userId, role: { name: roleName } },
+    });
+    return row !== null;
+  }
+
+  async setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+    await this.prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: {
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+  }
+
   async isUsernameTaken(wardId: string, username: string): Promise<boolean> {
     const existing = await this.prisma.client.applicationUser.findFirst({
       where: { wardId, username, archivedAt: null },

@@ -31,7 +31,8 @@ interface RoleSeed {
 const permissions: PermissionSeed[] = [
   {
     key: 'platform.wards.manage',
-    description: 'Create and list ward tenants. Restricted to platform operators.',
+    description:
+      'Provision ward tenants, rotate any ward code, and reset ward administrator passwords. Restricted to platform operators.',
   },
   { key: 'ward.manage', description: 'Manage ward settings and configuration.' },
   { key: 'users.manage', description: 'Create, disable, and manage user accounts.' },
@@ -53,6 +54,7 @@ const permissions: PermissionSeed[] = [
 ];
 
 const allPermissionKeys: string[] = permissions.map((permission) => permission.key);
+const wardAdminPermissionKeys: string[] = allPermissionKeys.filter((key) => !key.startsWith('platform.'));
 
 /**
  * Illustrative starter roles. These are seed defaults, not a fixed set —
@@ -62,13 +64,14 @@ const allPermissionKeys: string[] = permissions.map((permission) => permission.k
 const roles: RoleSeed[] = [
   {
     name: 'PlatformAdmin',
-    description: 'Platform operator — can provision new ward tenants.',
+    description:
+      'Platform operator — provisions wards, rotates any ward code, and resets ward administrator passwords.',
     permissionKeys: ['platform.wards.manage'],
   },
   {
     name: 'WardAdmin',
-    description: 'Full administrative access, including user and role management.',
-    permissionKeys: allPermissionKeys,
+    description: 'Full administrative access within one ward, including user and role management.',
+    permissionKeys: wardAdminPermissionKeys,
   },
   {
     name: 'CommunicationsCoordinator',
@@ -119,11 +122,13 @@ async function seedRoles(permissionIdsByKey: Map<string, string>): Promise<void>
       create: { name: role.name, description: role.description, isSystem: true },
     });
 
+    const allowedPermissionIds: string[] = [];
     for (const permissionKey of role.permissionKeys) {
       const permissionId = permissionIdsByKey.get(permissionKey);
       if (!permissionId) {
         throw new Error(`Seed error: unknown permission key "${permissionKey}" for role "${role.name}".`);
       }
+      allowedPermissionIds.push(permissionId);
 
       await prisma.rolePermission.upsert({
         where: { roleId_permissionId: { roleId: record.id, permissionId } },
@@ -131,6 +136,10 @@ async function seedRoles(permissionIdsByKey: Map<string, string>): Promise<void>
         create: { roleId: record.id, permissionId },
       });
     }
+
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: record.id, permissionId: { notIn: allowedPermissionIds } },
+    });
   }
 }
 

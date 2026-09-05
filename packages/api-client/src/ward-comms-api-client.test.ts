@@ -216,4 +216,36 @@ describe('WardCommsApiClient', () => {
     expect(url).toBe('http://localhost:3001/campaigns/c1/approve');
     expect(JSON.parse(init.body as string)).toEqual({ comment: 'Looks good' });
   });
+
+  it('rotates a ward code and resets a ward admin password through platform routes', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ version: 2, activatedAt: null, createdAt: '2026-01-01T00:00:00.000Z' }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    const rotated = await client.rotateWardCodeForWard('ward-1', 'fictional-new-code');
+    expect(rotated.version).toBe(2);
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:3001/platform/wards/ward-1/code/rotate');
+
+    await client.resetWardAdminPassword('ward-1', 'user-1', 'Fictional-Reset-42');
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
+      'http://localhost:3001/platform/wards/ward-1/admins/user-1/password',
+    );
+  });
+
+  it('resets a same-ward user password', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    await client.resetUserPassword('user-1', 'Fictional-Reset-42');
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://localhost:3001/users/user-1/password',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
 });

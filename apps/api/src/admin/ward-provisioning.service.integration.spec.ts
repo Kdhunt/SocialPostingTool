@@ -5,7 +5,12 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordHasherService } from '../auth/password-hasher.service.js';
 import { WardCodeHasherService } from '../auth/ward-code-hasher.service.js';
+import { UserRepository } from '../auth/repositories/user.repository.js';
+import { SessionRepository } from '../auth/repositories/session.repository.js';
+import { WardCodeRepository } from '../auth/repositories/ward-code.repository.js';
 import { WardProvisioningService } from './ward-provisioning.service.js';
+import { WardAdminService } from './ward-admin.service.js';
+import { UsersAdminService } from './users-admin.service.js';
 import { RoleRepository } from './repositories/role.repository.js';
 import { WardRepository } from './repositories/ward.repository.js';
 
@@ -48,12 +53,20 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
   const roles = new RoleRepository(prisma);
   const passwordHasher = new PasswordHasherService();
   const wardCodeHasher = new WardCodeHasherService(config);
+  const users = new UserRepository(prisma);
+  const sessions = new SessionRepository(prisma);
+  const wardCodes = new WardCodeRepository(prisma);
+  const wardAdmin = new WardAdminService(wardCodes, wardCodeHasher, audit);
+  const usersAdmin = new UsersAdminService(users, roles, passwordHasher, sessions, audit);
   const provisioning = new WardProvisioningService(
     prisma,
     wards,
     roles,
+    users,
     passwordHasher,
     wardCodeHasher,
+    wardAdmin,
+    usersAdmin,
     audit,
   );
 
@@ -151,6 +164,81 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
         { actorUserId, ipAddress: null, userAgent: null },
       ),
     ).rejects.toThrow(/already exists/i);
+  });
+
+  it('lists provisioned wards with their WardAdmin accounts', async () => {
+    const wardName = `Fictional Listed Ward ${randomUUID()}`;
+    const created = await provisioning.create(
+      {
+        name: wardName,
+        adminUsername: 'listed.admin',
+        adminDisplayName: 'Listed Admin',
+        adminPassword: 'Fictional-Bootstrap-42',
+        initialWardCode: 'fictional-listed-code',
+      },
+      { actorUserId, ipAddress: null, userAgent: null },
+    );
+    createdWardIds.push(created.ward.id);
+
+    const { wards } = await provisioning.list();
+    const listed = wards.find((ward) => ward.id === created.ward.id);
+    expect(listed?.admins).toEqual([
+      expect.objectContaining({
+        id: created.adminUserId,
+        username: 'listed.admin',
+        displayName: 'Listed Admin',
+      }),
+    ]);
+  });
+
+  it('rotates another ward code and resets that ward admin password', async () => {
+    const created = await provisioning.create(
+      {
+        name: `Fictional Rotate Ward ${randomUUID()}`,
+        adminUsername: 'rotate.admin',
+        adminDisplayName: 'Rotate Admin',
+        adminPassword: 'Fictional-Bootstrap-42',
+        initialWardCode: 'fictional-original-code',
+      },
+      { actorUserId, ipAddress: '203.0.113.10', userAgent: 'vitest' },
+    );
+    createdWardIds.push(created.ward.id);
+
+    const rotated = await provisioning.rotateWardCode(
+      created.ward.id,
+      { newWardCode: 'fictional-rotated-code' },
+      { actorUserId, ipAddress: '203.0.113.10', userAgent: 'vitest' },
+    );
+    expect(rotated.version).toBe(2);
+
+    const activeCode = await prisma.client.wardCodeVersion.findFirst({
+      where: { wardId: created.ward.id, retiredAt: null },
+    });
+    expect(await wardCodeHasher.verify(activeCode!.codeHash, 'fictional-rotated-code')).toBe(true);
+
+    await provisioning.resetWardAdminPassword(
+      created.ward.id,
+      created.adminUserId,
+      'Fictional-Reset-Password-42',
+      { actorUserId, ipAddress: '203.0.113.10', userAgent: 'vitest' },
+    );
+
+    const adminUser = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: created.adminUserId } });
+    expect(await passwordHasher.verify(adminUser.passwordHash, 'Fictional-Reset-Password-42')).toBe(true);
+
+    const resetAudit = await prisma.client.auditEvent.findFirst({
+      where: { action: 'user.password_reset', entityId: created.adminUserId },
+    });
+    expect(resetAudit).toBeTruthy();
+    expect(JSON.stringify(resetAudit?.metadata ?? {})).not.toMatch(/Fictional-Reset-Password-42/);
+  });
+
+  it('does not grant platform.wards.manage to the WardAdmin role', async () => {
+    const wardAdminRole = await prisma.client.role.findUniqueOrThrow({
+      where: { name: 'WardAdmin' },
+      include: { rolePermissions: { include: { permission: true } } },
+    });
+    expect(wardAdminRole.rolePermissions.some((row) => row.permission.key === 'platform.wards.manage')).toBe(false);
   });
 
   afterEach(async () => {

@@ -67,6 +67,10 @@ textarea {
   border-color: var(--color-brand);
 }
 
+.form-control[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
 .form-label {
   display: block;
   font-size: 0.875rem;

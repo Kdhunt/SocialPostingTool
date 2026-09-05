@@ -99,18 +99,27 @@ fictional dev credentials to the console. For custom users, use the
 
 ### Provisioning additional wards
 
-Platform operators with the `platform.wards.manage` permission can create new
-ward tenants from **Admin → Wards** (`/admin/wards`) or `POST /platform/wards`.
+Superadmin is the ENV-bootstrapped `PlatformAdmin` user (`BOOTSTRAP_*` variables;
+see `docs/vercel.md`). That operator can:
+
+- Create ward tenants from **Admin → Wards** (`/admin/wards`) or `POST /platform/wards`
+- Rotate **any** ward’s shared code (`POST /platform/wards/:wardId/code/rotate`)
+- Reset **any** ward administrator password (`POST /platform/wards/:wardId/admins/:userId/password`)
+
 Each provisioned ward receives:
 
 - A ward record (name and time zone)
-- An initial **WardAdmin** account
+- An initial **WardAdmin** account (cannot provision other wards)
 - Version 1 of the shared ward code (stored as a hash only)
 
-The dev seed assigns `PlatformAdmin` to the local `admin` user. In production,
-assign the `PlatformAdmin` role only to trusted operators (re-run
-`pnpm --filter @ward-comms/database db:seed` after upgrading to pick up the
-new permission, then assign the role via the database or user management).
+Ward administrators manage users in their own ward (**Admin → Users**, including
+password reset via `POST /users/:id/password`) and can rotate **their** ward code
+(**Admin → Ward code**). PlatformAdmin is not assignable from that screen —
+additional platform operators are created only by bootstrap or `pnpm db:seed:dev`.
+
+The dev seed assigns both `WardAdmin` and `PlatformAdmin` to the local `admin`
+user. After upgrading, re-run `pnpm --filter @ward-comms/database db:seed` so
+`WardAdmin` no longer receives `platform.wards.manage`.
 
 ### Authentication overview
 
@@ -119,6 +128,8 @@ new permission, then assign the role via the database or user management).
 - `POST /auth/refresh` → `{ refreshToken }` (mobile only)
 - `POST /auth/logout`, `GET /auth/session`, `GET /auth/sessions`, `POST /auth/sessions/:id/revoke`
 - `POST /auth/users/:id/disable` / `.../enable` (requires the `users.manage` permission)
+- `POST /users/:id/password` — same-ward password reset (`users.manage`)
+- `POST /platform/wards/:wardId/code/rotate` and `POST /platform/wards/:wardId/admins/:userId/password` (`platform.wards.manage`)
 
 See `docs/threat-model-auth.md` for the full threat model and known limitations.
 
@@ -198,8 +209,9 @@ are not supported.
 
 ### Admin overview (post-phase)
 
-- `/admin/users` — list/create users, assign roles, enable/disable
-- `/admin/ward-code` — view active version, rotate ward code
+- `/admin/users` — list/create users, assign ward roles, enable/disable, reset passwords
+- `/admin/ward-code` — view active version, rotate **this** ward’s code
+- `/admin/wards` — PlatformAdmin only: create wards, rotate any ward code, reset ward admin passwords
 - `/admin/provider-credentials` — upsert/revoke encrypted provider secrets
 - `/admin/audit` — audit log viewer (`GET /audit`)
 

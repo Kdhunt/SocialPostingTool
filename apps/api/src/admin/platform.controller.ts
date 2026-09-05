@@ -1,8 +1,11 @@
-import { Body, Controller, ForbiddenException, Get, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Param, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   createWardRequestSchema,
+  resetPasswordRequestSchema,
+  rotateWardCodeRequestSchema,
   type CreateWardResponse,
+  type WardCodeInfoDto,
   type WardListResponse,
 } from '@ward-comms/validation';
 import { parseBody } from '../common/parse-body.util.js';
@@ -38,12 +41,43 @@ export class PlatformWardsController {
     @CurrentUser() user: AuthContext['user'],
     @Req() req: Request,
   ): Promise<CreateWardResponse> {
-    const rateLimitKey = `${req.ip}:platform-ward-create`;
-    if (!this.rateLimiter.consume(rateLimitKey)) {
-      throw new ForbiddenException('Too many ward creation attempts. Please wait and try again.');
-    }
-
+    this.assertRateLimit(`${req.ip}:platform-ward-create`, 'Too many ward creation attempts. Please wait and try again.');
     const dto = parseBody(createWardRequestSchema, body);
     return this.provisioning.create(dto, buildContext(user, req));
+  }
+
+  @Post(':wardId/code/rotate')
+  async rotateCode(
+    @Param('wardId') wardId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<WardCodeInfoDto> {
+    this.assertRateLimit(`${req.ip}:platform-ward-rotate`, 'Too many ward code rotation attempts. Please wait and try again.');
+    const dto = parseBody(rotateWardCodeRequestSchema, body);
+    return this.provisioning.rotateWardCode(wardId, dto, buildContext(user, req));
+  }
+
+  @Post(':wardId/admins/:userId/password')
+  @HttpCode(204)
+  async resetAdminPassword(
+    @Param('wardId') wardId: string,
+    @Param('userId') userId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<void> {
+    this.assertRateLimit(
+      `${req.ip}:platform-ward-admin-password`,
+      'Too many password reset attempts. Please wait and try again.',
+    );
+    const dto = parseBody(resetPasswordRequestSchema, body);
+    await this.provisioning.resetWardAdminPassword(wardId, userId, dto.password, buildContext(user, req));
+  }
+
+  private assertRateLimit(key: string, message: string): void {
+    if (!this.rateLimiter.consume(key)) {
+      throw new ForbiddenException(message);
+    }
   }
 }

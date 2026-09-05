@@ -49,9 +49,20 @@ export const wardCodeInfoSchema = z.object({
 export type WardCodeInfoDto = z.infer<typeof wardCodeInfoSchema>;
 
 export const rotateWardCodeRequestSchema = z.object({
-  newWardCode: z.string().min(4).max(255),
+  newWardCode: z
+    .string()
+    .min(4, 'Ward code must be at least 4 characters.')
+    .max(255, 'Ward code must be at most 255 characters.'),
 });
 export type RotateWardCodeRequest = z.infer<typeof rotateWardCodeRequestSchema>;
+
+export const resetPasswordRequestSchema = z.object({
+  password: z
+    .string()
+    .min(12, 'Password must be at least 12 characters.')
+    .max(512, 'Password must be at most 512 characters.'),
+});
+export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
 
 export const wardSummarySchema = z.object({
   id: z.string(),
@@ -61,20 +72,73 @@ export const wardSummarySchema = z.object({
 });
 export type WardSummaryDto = z.infer<typeof wardSummarySchema>;
 
+export const wardAdminSummarySchema = z.object({
+  id: z.string(),
+  username: z.string(),
+  displayName: z.string(),
+});
+export type WardAdminSummaryDto = z.infer<typeof wardAdminSummarySchema>;
+
+export const platformWardSummarySchema = wardSummarySchema.extend({
+  admins: z.array(wardAdminSummarySchema),
+});
+export type PlatformWardSummaryDto = z.infer<typeof platformWardSummarySchema>;
+
 export const wardListResponseSchema = z.object({
-  wards: z.array(wardSummarySchema),
+  wards: z.array(platformWardSummarySchema),
 });
 export type WardListResponse = z.infer<typeof wardListResponseSchema>;
 
 export const createWardRequestSchema = z.object({
-  name: z.string().min(1).max(255),
-  timeZone: z.string().min(1).max(64).optional(),
-  adminUsername: z.string().min(1).max(255),
-  adminDisplayName: z.string().min(1).max(255),
-  adminPassword: z.string().min(12).max(512),
-  initialWardCode: z.string().min(4).max(255),
+  name: z.string().min(1, 'Ward name is required.').max(255, 'Ward name must be at most 255 characters.'),
+  timeZone: z
+    .string()
+    .min(1, 'Enter a valid IANA time zone (for example, America/Denver).')
+    .max(64, 'Time zone must be at most 64 characters.')
+    .optional(),
+  adminUsername: z
+    .string()
+    .min(1, 'Admin username is required.')
+    .max(255, 'Admin username must be at most 255 characters.'),
+  adminDisplayName: z
+    .string()
+    .min(1, 'Admin display name is required.')
+    .max(255, 'Admin display name must be at most 255 characters.'),
+  adminPassword: z
+    .string()
+    .min(12, 'Admin password must be at least 12 characters.')
+    .max(512, 'Admin password must be at most 512 characters.'),
+  initialWardCode: z
+    .string()
+    .min(4, 'Ward code must be at least 4 characters.')
+    .max(255, 'Ward code must be at most 255 characters.'),
 });
 export type CreateWardRequest = z.infer<typeof createWardRequestSchema>;
+
+export function fieldErrorsFromZodError(error: z.ZodError): Record<string, string> {
+  const fieldErrors: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const key = issue.path[0];
+    if (typeof key === 'string' && fieldErrors[key] === undefined) {
+      fieldErrors[key] = issue.message;
+    }
+  }
+  return fieldErrors;
+}
+
+export function fieldErrorsFromUnknown(error: unknown): Record<string, string> | null {
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    !('name' in error) ||
+    error.name !== 'ZodError' ||
+    !('issues' in error) ||
+    !Array.isArray(error.issues)
+  ) {
+    return null;
+  }
+  return fieldErrorsFromZodError(error as z.ZodError);
+}
 
 export const createWardResponseSchema = z.object({
   ward: wardSummarySchema,

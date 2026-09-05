@@ -2,7 +2,13 @@
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
 import { ApiRequestError } from '@ward-comms/api-client';
-import type { RoleSummaryDto, UserSummaryDto } from '@ward-comms/validation';
+import {
+  fieldErrorsFromUnknown,
+  fieldErrorsFromZodError,
+  resetPasswordRequestSchema,
+  type RoleSummaryDto,
+  type UserSummaryDto,
+} from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
 
@@ -26,6 +32,10 @@ const newRoleIds = ref<string[]>([]);
 
 const editingUserId = ref<string | null>(null);
 const editRoleIds = ref<string[]>([]);
+const resettingUserId = ref<string | null>(null);
+const resetPasswordValue = ref('');
+const resetPasswordError = ref<string | null>(null);
+const resetting = ref(false);
 
 function canManageUsers(): boolean {
   return authState.value.kind === 'authenticated' && authState.value.user.permissions.includes('users.manage');
@@ -80,7 +90,45 @@ async function createUser(): Promise<void> {
   }
 }
 
+function startResetPassword(user: UserSummaryDto): void {
+  editingUserId.value = null;
+  resettingUserId.value = user.id;
+  resetPasswordValue.value = '';
+  resetPasswordError.value = null;
+  actionError.value = null;
+}
+
+async function submitResetPassword(userId: string): Promise<void> {
+  actionError.value = null;
+  resetPasswordError.value = null;
+
+  const parsed = resetPasswordRequestSchema.safeParse({ password: resetPasswordValue.value });
+  if (!parsed.success) {
+    resetPasswordError.value =
+      fieldErrorsFromZodError(parsed.error).password ?? 'Password must be at least 12 characters.';
+    return;
+  }
+
+  resetting.value = true;
+  try {
+    await client.resetUserPassword(userId, parsed.data.password);
+    resettingUserId.value = null;
+    resetPasswordValue.value = '';
+    await load();
+  } catch (error) {
+    const zodFields = fieldErrorsFromUnknown(error);
+    if (zodFields?.password) {
+      resetPasswordError.value = zodFields.password;
+    } else {
+      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to reset password.';
+    }
+  } finally {
+    resetting.value = false;
+  }
+}
+
 function startEditRoles(user: UserSummaryDto): void {
+  resettingUserId.value = null;
   editingUserId.value = user.id;
   editRoleIds.value = [...user.roleIds];
 }
@@ -178,8 +226,35 @@ function toggleEditRole(roleId: string, checked: boolean): void {
               <button type="button" @click="toggleDisabled(user)">
                 {{ user.disabledAt ? 'Enable' : 'Disable' }}
               </button>
+              <button type="button" @click="startResetPassword(user)">Reset password</button>
               <button v-if="canManageRoles()" type="button" @click="startEditRoles(user)">Edit roles</button>
             </div>
+            <form
+              v-if="resettingUserId === user.id"
+              class="admin-page__form admin-page__form--inline"
+              novalidate
+              @submit.prevent="submitResetPassword(user.id)"
+            >
+              <UiFormField
+                :label="`New password for ${user.username}`"
+                :input-id="`reset-password-${user.id}`"
+                hint="Minimum 12 characters. This user’s sessions are revoked."
+                :error="resetPasswordError ?? undefined"
+              >
+                <input
+                  :id="`reset-password-${user.id}`"
+                  v-model="resetPasswordValue"
+                  type="password"
+                  required
+                  autocomplete="new-password"
+                  :aria-invalid="resetPasswordError ? true : undefined"
+                />
+              </UiFormField>
+              <button type="submit" :disabled="resetting">
+                {{ resetting ? 'Resetting…' : 'Save new password' }}
+              </button>
+              <button type="button" @click="resettingUserId = null">Cancel</button>
+            </form>
             <form
               v-if="editingUserId === user.id && canManageRoles()"
               class="admin-page__form admin-page__form--inline"
