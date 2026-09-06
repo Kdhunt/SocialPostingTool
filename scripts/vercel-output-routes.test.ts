@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   API_ROUTES,
@@ -152,6 +153,18 @@ describe('remapRoutesToExistingFunctions', () => {
     expect(() => remapRoutesToExistingFunctions([{ src: '/', dest: '/index' }], new Set())).toThrow(
       /__fallback/,
     );
+  });
+});
+
+describe('vercel.json cron declaration', () => {
+  it('omits crons so Vercel CLI does not reject CRON_SECRET whitespace', (): void => {
+    const files = ['vercel.json', path.join('apps', 'api', 'vercel.json')];
+    for (const relative of files) {
+      const parsed = JSON.parse(readFileSync(path.join(process.cwd(), relative), 'utf8')) as {
+        crons?: unknown;
+      };
+      expect(parsed.crons, relative).toBeUndefined();
+    }
   });
 });
 

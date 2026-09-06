@@ -25,7 +25,7 @@ export const envSchema = z.object({
    * Vercel Cron sends Authorization: Bearer ${CRON_SECRET}. Required in production
    * when cron routes are enabled (see docs/vercel.md).
    */
-  CRON_SECRET: z.string().min(16).optional(),
+  CRON_SECRET: z.string().trim().min(16).optional(),
 
   /**
    * 32-byte key material as base64 (or a long passphrase hashed at load time).
@@ -117,6 +117,11 @@ export function normalizePlatformEnv(
 
   if (!source.SYSTEM_EMAIL_PROVIDER && resendApiKey) {
     normalized.SYSTEM_EMAIL_PROVIDER = 'resend';
+  }
+
+  if (typeof source.CRON_SECRET === 'string') {
+    const trimmed = source.CRON_SECRET.trim();
+    normalized.CRON_SECRET = trimmed.length > 0 ? trimmed : undefined;
   }
 
   return normalized;

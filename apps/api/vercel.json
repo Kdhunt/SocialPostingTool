@@ -3,10 +3,5 @@
   "installCommand": "cd ../.. && pnpm install --prod=false",
   "buildCommand": "cd ../.. && pnpm run build:vercel",
   "framework": null,
-  "outputDirectory": null,
-  "crons": [
-    { "path": "/api/cron/process-schedules", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/process-delivery-queue", "schedule": "* * * * *" },
-    { "path": "/api/cron/process-outbound-mail", "schedule": "* * * * *" }
-  ]
+  "outputDirectory": null
 }

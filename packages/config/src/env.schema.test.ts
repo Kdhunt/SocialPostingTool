@@ -95,4 +95,12 @@ describe('normalizePlatformEnv', () => {
     expect(normalized.WEB_URL).toBe('https://www.wardcomms.online');
     expect(normalized.API_URL).toBe('https://www.wardcomms.online');
   });
+
+  it('trims CRON_SECRET so pasted newlines do not break Vercel cron headers', () => {
+    const normalized = normalizePlatformEnv({
+      CRON_SECRET: '  pasted-cron-secret-16  \n',
+    });
+
+    expect(normalized.CRON_SECRET).toBe('pasted-cron-secret-16');
+  });
 });

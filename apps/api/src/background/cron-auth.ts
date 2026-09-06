@@ -5,12 +5,12 @@ import type { VercelRequest } from '@vercel/node';
  * without the configured secret (see docs/vercel.md).
  */
 export function assertCronAuthorized(req: VercelRequest): void {
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     throw new Error('CRON_SECRET is not configured.');
   }
 
-  const header = req.headers.authorization;
+  const header = typeof req.headers.authorization === 'string' ? req.headers.authorization.trim() : undefined;
   if (header !== `Bearer ${secret}`) {
     throw new Error('Unauthorized cron invocation.');
   }

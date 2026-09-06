@@ -30,8 +30,9 @@ export interface VercelCronJob {
 
 /**
  * Vercel Cron schedules for background drains. `* * * * *` requires Pro.
- * These must be written into Build Output `config.json` — listing the HTTP
- * routes alone does not register a cron.
+ * Write these into Build Output `config.json` only. Do not list them in
+ * `vercel.json`: `vercel build` rejects the deploy when `CRON_SECRET` has
+ * leading or trailing whitespace and that file declares crons.
  */
 export const VERCEL_CRON_JOBS: VercelCronJob[] = [
   { path: '/api/cron/process-schedules', schedule: '*/5 * * * *' },

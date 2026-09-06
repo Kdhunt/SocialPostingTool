@@ -125,9 +125,12 @@ Do **not** run `db:seed:dev` in production.
 
 ## 6. Cron jobs
 
-Cron **paths** are serverless functions; they only run on a schedule if
-they are listed in `vercel.json` **and** written into Build Output
-`config.json` (the assemble step calls `withVercelCronJobs`).
+Cron **paths** are serverless functions. The assemble step writes them
+into Build Output `config.json` (`withVercelCronJobs`). Do **not** list
+them in `vercel.json`: `vercel build` fails immediately when
+`CRON_SECRET` has leading or trailing whitespace and that file declares
+crons. Trim `CRON_SECRET` in the Vercel dashboard so Cron can send
+`Authorization: Bearer …` headers.
 
 | Path | Schedule |
 |------|----------|
@@ -165,7 +168,8 @@ pnpm --filter @ward-comms/database db:bootstrap
 | Login fails after successful build | Check browser Network tab — `/api/v1/auth/login` should return JSON, not HTML 404 |
 | Login returns `FUNCTION_INVOCATION_FAILED` | Nest Lambda crashed on missing `reflect-metadata`, Prisma CJS named imports, a missing generated client, AuthModule not exporting `LoginRateLimiterService`, or `@codegenie/serverless-express` treating Vercel `req`/`res` as an AWS event. |
 | Prisma migrate errors during build | Ensure `POSTGRES_URL_NON_POOLING` or `POSTGRES_URL` is set |
-| Campaigns stuck on Sending | Confirm `CRON_SECRET`, Redis, and Pro cron. Redeploy so `vercel.json` crons are registered. Send now also processes the first 25 recipients immediately. |
+| Deploy fails: `CRON_SECRET` contains leading or trailing whitespace | Vercel Cron cannot put whitespace in HTTP headers. Edit **Settings → Environment Variables → CRON_SECRET**, trim spaces/newlines, save for Production, redeploy. Do not put `crons` in `vercel.json`; assemble writes them to `config.json`. |
+| Campaigns stuck on Sending | Confirm `CRON_SECRET` is trimmed, Redis, and Pro cron. Redeploy so Build Output `config.json` crons are registered. Send now also processes the first 25 recipients immediately. |
 
 ## Local development
 
