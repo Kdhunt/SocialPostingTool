@@ -1,12 +1,21 @@
 import { defineConfig, devices } from '@playwright/test';
-import { authStatePath, e2eBaseUrl, e2eCredentials, isRemoteE2e } from './tests/helpers/env';
+import {
+  authStatePath,
+  e2eBaseUrl,
+  e2eCredentials,
+  hasStoredAuthState,
+  isRemoteE2e,
+} from './tests/helpers/env';
 
 const baseURL = e2eBaseUrl();
 const remote = isRemoteE2e();
 const credentials = e2eCredentials();
+const storedAuth = hasStoredAuthState();
+const canAuthenticate = Boolean(credentials || storedAuth);
 
 export default defineConfig({
   testDir: './tests',
+  testIgnore: /auth\.capture\.ts/,
   fullyParallel: !remote,
   timeout: 90_000,
   expect: { timeout: 20_000 },
@@ -16,6 +25,7 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL,
+    ignoreHTTPSErrors: true,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     launchOptions: {
@@ -28,7 +38,7 @@ export default defineConfig({
       testMatch: /smoke\.spec\.ts|login\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
-    ...(credentials
+    ...(canAuthenticate
       ? [
           { name: 'setup', testMatch: /auth\.setup\.ts/ },
           {

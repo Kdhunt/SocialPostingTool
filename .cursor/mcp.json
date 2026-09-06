@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "figma": {
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "vercel": {
+      "url": "https://mcp.vercel.com/green-flying-monkey/ward_communications"
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"]
+    }
+  }
+}
