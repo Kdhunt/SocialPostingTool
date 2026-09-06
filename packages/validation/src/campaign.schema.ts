@@ -209,11 +209,18 @@ export const campaignPreviewChannelSchema = z.object({
 });
 export type CampaignPreviewChannelDto = z.infer<typeof campaignPreviewChannelSchema>;
 
+export const campaignPreviewRecipientSchema = z.object({
+  personId: z.string(),
+  displayName: z.string(),
+});
+export type CampaignPreviewRecipientDto = z.infer<typeof campaignPreviewRecipientSchema>;
+
 export const campaignPreviewAudienceSchema = z.object({
   audienceGroupId: z.string(),
   audienceGroupName: z.string(),
   recipientCount: z.number().int(),
   resolvedImageAssetId: z.string().nullable(),
+  recipients: z.array(campaignPreviewRecipientSchema),
   channels: z.array(campaignPreviewChannelSchema),
 });
 export type CampaignPreviewAudienceDto = z.infer<typeof campaignPreviewAudienceSchema>;

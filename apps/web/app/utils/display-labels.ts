@@ -1,6 +1,8 @@
 import type {
   CampaignStatusDto,
   CommunicationChannel,
+  DeliveryBatchStatusDto,
+  DeliveryRecipientStatusDto,
   OverlapResolutionStrategyDto,
 } from '@ward-comms/validation';
 
@@ -27,6 +29,29 @@ const CHANNEL_LABELS: Record<CommunicationChannel, string> = {
   FacebookPage: 'Facebook page',
 };
 
+const DELIVERY_BATCH_STATUS_LABELS: Record<DeliveryBatchStatusDto, string> = {
+  Pending: 'Pending',
+  Running: 'Sending',
+  Completed: 'Completed',
+  PartialFailure: 'Partial failure',
+  Failed: 'Failed',
+};
+
+const DELIVERY_RECIPIENT_STATUS_LABELS: Record<DeliveryRecipientStatusDto, string> = {
+  Pending: 'Pending',
+  Queued: 'Queued',
+  Sending: 'Sending',
+  Sent: 'Sent',
+  Retrying: 'Retrying',
+  DeadLettered: 'Dead lettered',
+  Skipped: 'Skipped',
+};
+
+const SKIP_REASON_LABELS: Record<string, string> = {
+  no_contact_method: 'No matching contact method',
+  no_consent: 'Consent not granted',
+};
+
 export function campaignStatusLabel(status: CampaignStatusDto): string {
   return CAMPAIGN_STATUS_LABELS[status];
 }
@@ -43,4 +68,16 @@ export function approvalDecisionLabel(decision: string): string {
   if (decision === 'Approved') return 'Approved';
   if (decision === 'Rejected') return 'Rejected';
   return decision;
+}
+
+export function deliveryBatchStatusLabel(status: DeliveryBatchStatusDto): string {
+  return DELIVERY_BATCH_STATUS_LABELS[status];
+}
+
+export function deliveryRecipientStatusLabel(status: DeliveryRecipientStatusDto): string {
+  return DELIVERY_RECIPIENT_STATUS_LABELS[status];
+}
+
+export function skipReasonLabel(reason: string): string {
+  return SKIP_REASON_LABELS[reason] ?? reason.replaceAll('_', ' ');
 }

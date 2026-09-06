@@ -556,24 +556,19 @@ export class CampaignsService {
       version.preferSpecificAudienceGroupId,
     );
 
-    const overlapConflicts = await Promise.all(
-      overlapConflictsRaw.map(async (conflict) => {
-        const person = await this.people.findByIdForWard(wardId, conflict.personId);
-        const displayName = person
-          ? (person.preferredName ?? `${person.firstName} ${person.lastName}`)
-          : 'Unknown';
-        return {
-          personId: conflict.personId,
-          displayName,
-          audienceGroupIds: conflict.audienceGroupIds,
-          winningAudienceGroupId: conflict.winningAudienceGroupId,
-          winningAudienceGroupName: conflict.winningAudienceGroupId
-            ? (audienceNameById.get(conflict.winningAudienceGroupId) ?? null)
-            : null,
-          usesBaseContent: conflict.usesBaseContent,
-        };
-      }),
-    );
+    const allPersonIds = [...new Set(membershipSets.flatMap((set) => set.personIds))];
+    const displayNames = await this.people.listDisplayNamesForWard(wardId, allPersonIds);
+
+    const overlapConflicts = overlapConflictsRaw.map((conflict) => ({
+      personId: conflict.personId,
+      displayName: displayNames.get(conflict.personId) ?? 'Unknown',
+      audienceGroupIds: conflict.audienceGroupIds,
+      winningAudienceGroupId: conflict.winningAudienceGroupId,
+      winningAudienceGroupName: conflict.winningAudienceGroupId
+        ? (audienceNameById.get(conflict.winningAudienceGroupId) ?? null)
+        : null,
+      usesBaseContent: conflict.usesBaseContent,
+    }));
 
     const audiences = version.audiences.map((audience) => {
       const personIds = membershipSets.find((s) => s.audienceGroupId === audience.audienceGroupId)?.personIds ?? [];
@@ -598,6 +593,10 @@ export class CampaignsService {
         audienceGroupName: audience.audienceGroup.name,
         recipientCount: personIds.length,
         resolvedImageAssetId,
+        recipients: personIds.map((personId) => ({
+          personId,
+          displayName: displayNames.get(personId) ?? 'Unknown',
+        })),
         channels,
       };
     });

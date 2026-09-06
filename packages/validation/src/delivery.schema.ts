@@ -32,6 +32,7 @@ export type DeliveryAttemptDto = z.infer<typeof deliveryAttemptSchema>;
 export const deliveryRecipientSchema = z.object({
   id: z.string(),
   personId: z.string().nullable(),
+  displayName: z.string(),
   channel: communicationChannelSchema,
   destinationId: z.string().nullable(),
   status: deliveryRecipientStatusSchema,

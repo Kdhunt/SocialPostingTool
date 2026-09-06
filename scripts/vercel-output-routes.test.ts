@@ -15,6 +15,8 @@ import {
   remapRoutesToExistingFunctions,
   resolveServerlessBundleModule,
   SERVERLESS_NATIVE_EXTERNALS,
+  VERCEL_CRON_JOBS,
+  withVercelCronJobs,
 } from './vercel-output-routes.js';
 
 describe('functionNameFromFuncEntry', () => {
@@ -150,6 +152,30 @@ describe('remapRoutesToExistingFunctions', () => {
     expect(() => remapRoutesToExistingFunctions([{ src: '/', dest: '/index' }], new Set())).toThrow(
       /__fallback/,
     );
+  });
+});
+
+describe('withVercelCronJobs', () => {
+  it('registers the delivery, outbound, and schedule drains', (): void => {
+    expect(VERCEL_CRON_JOBS.map((job) => job.path)).toEqual(
+      expect.arrayContaining([
+        '/api/cron/process-schedules',
+        '/api/cron/process-delivery-queue',
+        '/api/cron/process-outbound-mail',
+      ]),
+    );
+    expect(VERCEL_CRON_JOBS.find((job) => job.path === '/api/cron/process-delivery-queue')?.schedule).toBe(
+      '* * * * *',
+    );
+  });
+
+  it('writes crons onto Build Output config without dropping existing routes', (): void => {
+    const patched = withVercelCronJobs({
+      version: 3,
+      routes: [{ src: '/api/v1/(.*)', dest: '/api/nest' }],
+    });
+    expect(patched.routes).toHaveLength(1);
+    expect(patched.crons).toEqual([...VERCEL_CRON_JOBS]);
   });
 });
 

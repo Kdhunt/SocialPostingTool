@@ -5,6 +5,7 @@
 // for the same pattern and the commands to bring one up locally.
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest';
+import type { AppConfig } from '@ward-comms/config';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AudienceGroupRepository } from '../audiences/repositories/audience-group.repository.js';
@@ -25,12 +26,21 @@ import { CampaignScheduleRepository } from './repositories/campaign-schedule.rep
 import { CampaignVersionRepository } from './repositories/campaign-version.repository.js';
 import { CampaignsService, type CampaignActionContext } from './campaigns.service.js';
 
-/** No-op queue so integration tests do not require Redis. */
+/** No-op queue so integration tests do not require Redis. Immediate kick still sends. */
 class StubDeliveryQueueService {
   async enqueue(_deliveryRecipientId: string): Promise<void> {
     return;
   }
+
+  async enqueueRetry(_deliveryRecipientId: string, _delayMs: number): Promise<void> {
+    return;
+  }
 }
+
+const simulatedProviderConfig = {
+  providerMode: 'simulated',
+  providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
+} as AppConfig;
 
 async function isMigratedDatabaseAvailable(prisma: PrismaService): Promise<boolean> {
   try {
@@ -60,6 +70,7 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
   const batches = new DeliveryBatchRepository(prisma);
   const recipients = new DeliveryRecipientRepository(prisma);
   const queue = new StubDeliveryQueueService() as never;
+  const people = new PersonRepository(prisma);
   const delivery = new DeliveryService(
     campaigns,
     versions,
@@ -69,9 +80,11 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     recipients,
     queue,
     audit,
+    prisma,
+    people,
+    simulatedProviderConfig,
   );
 
-  const people = new PersonRepository(prisma);
   const imageGeneration = new SimulatedImageGenerationAdapter();
 
   const service = new CampaignsService(
@@ -231,6 +244,10 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     const preview = await service.preview(wardId, created.id);
     expect(preview.totalUniqueRecipients).toBe(2);
     expect(preview.overlapCount).toBe(1);
+    expect(preview.audiences.flatMap((audience) => audience.recipients.map((r) => r.displayName))).toEqual(
+      expect.arrayContaining(['Shared Fictional', 'OnlyInA Fictional']),
+    );
+    expect(preview.overlapConflicts?.[0]?.displayName).toBe('Shared Fictional');
   });
 
   it('keeps a revised version independent from the version an approval decision was recorded against', async () => {
@@ -287,6 +304,43 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     const batches = await delivery.listForCampaign(wardId, created.id);
     expect(batches).toHaveLength(1);
     expect(batches[0]?.skippedCount).toBeGreaterThan(0);
+    const skippedBatch = await delivery.getBatch(wardId, created.id, batches[0]!.id);
+    expect(skippedBatch.recipients[0]?.displayName).toBe('Recipient Fictional');
+    expect(skippedBatch.recipients[0]?.status).toBe('Skipped');
+  });
+
+  it('sends a granted-consent email recipient immediately without waiting for Redis or cron', async () => {
+    await setupWard();
+    const personId = await createFictionalPerson('Consented');
+    await prisma.client.contactMethod.create({
+      data: {
+        personId,
+        type: 'Email',
+        value: 'fictional-consented@example.test',
+        consent: { create: { status: 'Granted', grantedAt: new Date(), source: 'test' } },
+      },
+    });
+    const { audienceGroupId } = await createAudienceWithMembersAndDestination('Live Kick Audience', [personId]);
+    const created = await service.create(wardId, { name: 'Immediate Kick Campaign', baseMessage: 'Hello!' }, ctx());
+    await service.addAudience(wardId, created.id, { audienceGroupId }, ctx());
+    await service.submitForApproval(wardId, created.id, ctx());
+    await service.decideApproval(wardId, created.id, 'Approved', undefined, ctx());
+
+    const sent = await service.sendNow(wardId, created.id, ctx());
+    expect(sent.status).toBe('Sent');
+    const batches = await delivery.listForCampaign(wardId, created.id);
+    expect(batches[0]?.status).toBe('Completed');
+    expect(batches[0]?.sentCount).toBe(1);
+    const detail = await delivery.getBatch(wardId, created.id, batches[0]!.id);
+    expect(detail.recipients).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          displayName: 'Consented Fictional',
+          channel: 'Email',
+          status: 'Sent',
+        }),
+      ]),
+    );
   });
 
   it('never lets an already-sent campaign be edited', async () => {

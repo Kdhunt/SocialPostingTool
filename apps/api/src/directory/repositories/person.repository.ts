@@ -94,6 +94,28 @@ export class PersonRepository {
     });
   }
 
+  async listDisplayNamesForWard(
+    wardId: string,
+    personIds: string[],
+  ): Promise<Map<string, string>> {
+    const uniqueIds = [...new Set(personIds)];
+    if (uniqueIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.prisma.client.person.findMany({
+      where: { wardId, id: { in: uniqueIds } },
+      select: { id: true, firstName: true, lastName: true, preferredName: true },
+    });
+
+    return new Map(
+      rows.map((person) => [
+        person.id,
+        person.preferredName ?? `${person.firstName} ${person.lastName}`,
+      ]),
+    );
+  }
+
   async create(input: CreatePersonInput): Promise<Person> {
     return this.prisma.client.person.create({
       data: {

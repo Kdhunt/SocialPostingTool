@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addCampaignAudienceRequestSchema,
+  campaignPreviewResponseSchema,
   campaignStatusSchema,
   createCampaignRequestSchema,
   scheduleCampaignRequestSchema,
@@ -40,6 +41,46 @@ describe('addCampaignAudienceRequestSchema', () => {
 describe('setCampaignChannelTextRequestSchema', () => {
   it('requires non-empty channel text', () => {
     expect(() => setCampaignChannelTextRequestSchema.parse({ channel: 'Sms', text: '' })).toThrow();
+  });
+});
+
+describe('campaignPreviewResponseSchema', () => {
+  it('requires named recipients on each audience so the review UI can list people', () => {
+    const parsed = campaignPreviewResponseSchema.parse({
+      versionNumber: 1,
+      totalUniqueRecipients: 1,
+      overlapCount: 0,
+      audiences: [
+        {
+          audienceGroupId: 'aud-1',
+          audienceGroupName: 'Fictional Email Audience',
+          recipientCount: 1,
+          resolvedImageAssetId: null,
+          recipients: [{ personId: 'person-1', displayName: 'Fictional Alex' }],
+          channels: [{ channel: 'Email', text: 'Hello', length: 5, exceedsLimit: false }],
+        },
+      ],
+    });
+    expect(parsed.audiences[0]?.recipients[0]?.displayName).toBe('Fictional Alex');
+  });
+
+  it('rejects an audience preview that omits recipients', () => {
+    expect(() =>
+      campaignPreviewResponseSchema.parse({
+        versionNumber: 1,
+        totalUniqueRecipients: 0,
+        overlapCount: 0,
+        audiences: [
+          {
+            audienceGroupId: 'aud-1',
+            audienceGroupName: 'Empty',
+            recipientCount: 0,
+            resolvedImageAssetId: null,
+            channels: [],
+          },
+        ],
+      }),
+    ).toThrow();
   });
 });
 

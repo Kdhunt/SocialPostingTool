@@ -5,6 +5,7 @@ import { AudienceMemberRepository } from '../audiences/repositories/audience-mem
 import { CampaignRepository } from '../campaigns/repositories/campaign.repository.js';
 import { CampaignVersionRepository } from '../campaigns/repositories/campaign-version.repository.js';
 import { ContactMethodRepository } from '../directory/repositories/contact-method.repository.js';
+import { PersonRepository } from '../directory/repositories/person.repository.js';
 import { DeliveryController } from './delivery.controller.js';
 import { DeliveryQueueService } from './delivery-queue.service.js';
 import { DeliveryService } from './delivery.service.js';
@@ -25,6 +26,7 @@ import { DeliveryRecipientRepository } from './repositories/delivery-recipient.r
     CampaignVersionRepository,
     AudienceMemberRepository,
     ContactMethodRepository,
+    PersonRepository,
   ],
   exports: [DeliveryService],
 })

@@ -67,10 +67,11 @@ takes both into account for a given (audience, channel) pair
   `packages/domain/src/campaigns/campaign-status.ts`); a `Rejected`
   campaign must be explicitly revised back into `Draft` first (see below).
 - **Preview** (`GET /campaigns/:id/preview`) resolves per-audience,
-  per-channel text/length/limit and — reusing the Phase 6 overlap helpers
+  per-channel text/length/limit, lists each audience member by display
+  name, and — reusing the Phase 6 overlap helpers
   (`mergeAudienceMemberships`, `findOverlappingPeople`) — a deduplicated
-  total unique recipient count plus an overlap count across the selected
-  audiences, so a shared member of two selected audiences is never
+  total unique recipient count plus named overlap conflicts across the
+  selected audiences, so a shared member of two selected audiences is never
   double-counted or (later) double-sent to.
 - **Validation** (`GET /campaigns/:id/validation`,
   `packages/domain/src/campaigns/campaign-submission-validation.ts`) is

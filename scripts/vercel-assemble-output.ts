@@ -15,6 +15,7 @@ import {
   remapRoutesToExistingFunctions,
   resolveServerlessBundleModule,
   SERVERLESS_NATIVE_EXTERNALS,
+  withVercelCronJobs,
 } from './vercel-output-routes.js';
 
 const ROOT = process.cwd();
@@ -233,14 +234,15 @@ async function listDeployableFunctions(): Promise<Set<string>> {
 
 async function patchOutputConfig(): Promise<void> {
   const raw = await readFile(CONFIG_PATH, 'utf8');
-  const config = JSON.parse(raw) as { version: number; routes: Array<Record<string, string>> };
+  const parsed = JSON.parse(raw) as { version: number; routes: Array<Record<string, string>>; crons?: unknown };
   const existingFunctions = await listDeployableFunctions();
 
-  config.routes = remapRoutesToExistingFunctions(config.routes, existingFunctions);
-  config.routes = insertApiRoutes(config.routes, API_ROUTES);
+  parsed.routes = remapRoutesToExistingFunctions(parsed.routes, existingFunctions);
+  parsed.routes = insertApiRoutes(parsed.routes, API_ROUTES);
+  const config = withVercelCronJobs(parsed);
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
   console.log(
-    `  patched config.json (${API_ROUTES.length} API routes, ${config.routes.length} total; functions: ${[...existingFunctions].join(', ')})`,
+    `  patched config.json (${API_ROUTES.length} API routes, ${config.routes.length} total, ${String(config.crons?.length ?? 0)} crons; functions: ${[...existingFunctions].join(', ')})`,
   );
   for (const route of config.routes) {
     const src = route.src ?? route.handle ?? '(unnamed)';

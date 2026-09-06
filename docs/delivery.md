@@ -1,8 +1,9 @@
 # Delivery engine (Phase 8 + post-phase)
 
 The delivery engine expands an approved campaign version into concrete
-recipients, enqueues one BullMQ job per recipient, and processes each job
-through Email/SMS/Facebook Page adapters (simulated, credentialed-simulated,
+recipients, enqueues one BullMQ job per recipient, kicks the first batch
+in the send-now request, and processes remaining jobs through
+Email/SMS/Facebook Page adapters (simulated, credentialed-simulated,
 or live depending on `PROVIDER_MODE`).
 
 ## Behavior
@@ -17,6 +18,9 @@ or live depending on `PROVIDER_MODE`).
   reprocessing a job never double-sends (claim guard).
 - **Retries / DLQ** — transient failures retry with exponential backoff
   up to 5 attempts; permanent failures dead-letter immediately.
+- **Immediate kick** — `send-now` processes up to 25 pending recipients
+  in the same API request (same claim guard as the worker). Remaining
+  jobs stay on Redis for `/api/cron/process-delivery-queue`.
 - **Partial success** — one recipient failing never blocks others;
   batch status rolls up to `PartialFailure` when some sent and some
   dead-lettered.
@@ -30,9 +34,15 @@ or live depending on `PROVIDER_MODE`).
 ## API
 
 - `POST /campaigns/:id/send-now` — starts delivery (same as
-  `POST /campaigns/:id/delivery-batches`)
+  `POST /campaigns/:id/delivery-batches`). If the campaign is already
+  `Sending` with pending recipients, this kicks them again (claim guards
+  prevent duplicates). The UI labels that action **Retry send**.
 - `GET /campaigns/:id/delivery-batches`
 - `GET /campaigns/:id/delivery-batches/:batchId`
+
+  Recipient rows include `displayName` (preferred or legal name, or
+  "Facebook page destination") so operators can see who was targeted
+  without opening directory records.
 
 Requires `campaigns.send` (start) or `campaigns.send` /
 `campaigns.approve` (read).

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Campaign, CommunicationChannel } from '@prisma/client';
+import type { AppConfig } from '@ward-comms/config';
 import {
   computeBatchIdempotencyKey,
   computeSkippedRecipientIdempotencyKey,
@@ -13,6 +14,8 @@ import {
   type ExpansionDestination,
 } from '@ward-comms/domain';
 import type { DeliveryBatchDetailDto, DeliveryBatchSummaryDto } from '@ward-comms/validation';
+import { processDeliveryRecipient } from '@ward-comms/worker/delivery';
+import { createDeliveryProviders } from '@ward-comms/worker/providers';
 import { AuditService } from '../audit/audit.service.js';
 import { AudienceMemberRepository } from '../audiences/repositories/audience-member.repository.js';
 import { CampaignRepository } from '../campaigns/repositories/campaign.repository.js';
@@ -20,7 +23,10 @@ import {
   CampaignVersionRepository,
   type CampaignVersionWithDetails,
 } from '../campaigns/repositories/campaign-version.repository.js';
+import { APP_CONFIG } from '../config/app-config.module.js';
 import { ContactMethodRepository } from '../directory/repositories/contact-method.repository.js';
+import { PersonRepository } from '../directory/repositories/person.repository.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import { DeliveryQueueService } from './delivery-queue.service.js';
 import { DeliveryBatchRepository } from './repositories/delivery-batch.repository.js';
 import {
@@ -34,9 +40,12 @@ export interface DeliveryActionContext {
   userAgent: string | null;
 }
 
+const IMMEDIATE_DELIVERY_KICK_LIMIT = 25;
+
 /**
  * Orchestrates Phase 8 delivery: expand recipients (overlap + consent),
- * persist idempotently, enqueue BullMQ jobs. Provider calls live in the worker.
+ * persist idempotently, enqueue BullMQ jobs, and kick the first batch
+ * immediately so serverless deploys do not wait solely on cron.
  */
 @Injectable()
 export class DeliveryService {
@@ -49,6 +58,9 @@ export class DeliveryService {
     @Inject(DeliveryRecipientRepository) private readonly recipients: DeliveryRecipientRepository,
     @Inject(DeliveryQueueService) private readonly queue: DeliveryQueueService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(PersonRepository) private readonly people: PersonRepository,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async listForCampaign(wardId: string, campaignId: string): Promise<DeliveryBatchSummaryDto[]> {
@@ -64,11 +76,18 @@ export class DeliveryService {
       throw new NotFoundException('Delivery batch not found.');
     }
     const recipientRows = await this.recipients.listForBatch(batch.id);
+    const displayNames = await this.people.listDisplayNamesForWard(
+      wardId,
+      recipientRows.flatMap((recipient) => (recipient.personId ? [recipient.personId] : [])),
+    );
     return {
       ...this.toSummary(batch),
       recipients: recipientRows.map((recipient) => ({
         id: recipient.id,
         personId: recipient.personId,
+        displayName: recipient.personId
+          ? (displayNames.get(recipient.personId) ?? 'Unknown person')
+          : 'Facebook page destination',
         channel: recipient.channel as CommunicationChannel,
         destinationId: recipient.destinationId,
         status: recipient.status,
@@ -127,41 +146,79 @@ export class DeliveryService {
 
       await this.expandAndPersistRecipients(batch.id, version);
       await this.batches.recomputeCounts(batch.id);
-
-      const allRecipients = await this.recipients.listForBatch(batch.id);
-      const pending = allRecipients.filter((r) => r.status === 'Pending');
-      await Promise.all(pending.map((r) => this.queue.enqueue(r.id)));
-
-      if (pending.length === 0) {
-        // Expansion produced only Skipped rows (or nothing) — no worker jobs
-        // will run, so finalize the batch and campaign here.
-        await this.batches.setStatus(batch.id, 'Completed', new Date());
-        await this.campaigns.updateStatus(campaignId, 'Sent');
-        await this.audit.record({
-          wardId,
-          actorUserId: context.actorUserId,
-          action: 'campaign.status_changed',
-          entityType: 'Campaign',
-          entityId: campaignId,
-          metadata: { from: 'Sending', to: 'Sent', reason: 'no_pending_recipients' },
-          ipAddress: context.ipAddress,
-          userAgent: context.userAgent,
-        });
-      }
-
       await this.audit.record({
         wardId,
         actorUserId: context.actorUserId,
         action: 'delivery.batch.started',
         entityType: 'DeliveryBatch',
         entityId: batch.id,
-        metadata: { campaignId, campaignVersionId: version.id, pendingCount: pending.length },
+        metadata: { campaignId, campaignVersionId: version.id },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      });
+    }
+
+    const allRecipients = await this.recipients.listForBatch(batch.id);
+    const pending = allRecipients.filter((recipient) =>
+      recipient.status === 'Pending' || recipient.status === 'Queued' || recipient.status === 'Retrying',
+    );
+    await Promise.allSettled(pending.map((recipient) => this.queue.enqueue(recipient.id)));
+    await this.kickPendingRecipients(pending.map((recipient) => recipient.id));
+
+    if (wasCreated && pending.length === 0) {
+      // Expansion produced only Skipped rows (or nothing) — no worker jobs
+      // will run, so finalize the batch and campaign here.
+      await this.batches.setStatus(batch.id, 'Completed', new Date());
+      await this.campaigns.updateStatus(campaignId, 'Sent');
+      await this.audit.record({
+        wardId,
+        actorUserId: context.actorUserId,
+        action: 'campaign.status_changed',
+        entityType: 'Campaign',
+        entityId: campaignId,
+        metadata: { from: 'Sending', to: 'Sent', reason: 'no_pending_recipients' },
         ipAddress: context.ipAddress,
         userAgent: context.userAgent,
       });
     }
 
     return this.getBatch(wardId, campaignId, batch.id);
+  }
+
+  /**
+   * Process a bounded set of pending recipients in this request so Send now
+   * does not wait solely for Vercel Cron / the worker. Remaining jobs stay
+   * on Redis for `/api/cron/process-delivery-queue`. Claim guards prevent
+   * duplicate sends if cron overlaps.
+   */
+  private async kickPendingRecipients(deliveryRecipientIds: string[]): Promise<void> {
+    const ids = deliveryRecipientIds.slice(0, IMMEDIATE_DELIVERY_KICK_LIMIT);
+    if (ids.length === 0) {
+      return;
+    }
+
+    const providers = createDeliveryProviders({
+      mode: this.config.providerMode,
+      prisma: this.prisma.client,
+      encryptionKey: this.config.providerCredentialsEncryptionKey,
+    });
+
+    for (const deliveryRecipientId of ids) {
+      try {
+        await processDeliveryRecipient(
+          {
+            prisma: this.prisma.client,
+            providers,
+            enqueueRetry: async (retryRecipientId, delayMs) => {
+              await this.queue.enqueueRetry(retryRecipientId, delayMs);
+            },
+          },
+          deliveryRecipientId,
+        );
+      } catch {
+        // Queue/cron retries the Pending or Retrying row.
+      }
+    }
   }
 
   private async expandAndPersistRecipients(

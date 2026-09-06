@@ -28,6 +28,17 @@ export class DeliveryQueueService implements OnModuleDestroy {
     );
   }
 
+  async enqueueRetry(deliveryRecipientId: string, delayMs: number): Promise<void> {
+    if (this.connection.status !== 'ready') {
+      await this.connection.connect();
+    }
+    await this.queue.add(
+      'deliver',
+      { deliveryRecipientId },
+      { delay: delayMs, jobId: `${deliveryRecipientId}:retry:${Date.now()}`, attempts: 1, removeOnComplete: true },
+    );
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
     this.connection.disconnect();

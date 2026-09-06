@@ -19,7 +19,10 @@ import {
   approvalDecisionLabel,
   campaignStatusLabel,
   channelLabel,
+  deliveryBatchStatusLabel,
+  deliveryRecipientStatusLabel,
   overlapStrategyLabel,
+  skipReasonLabel,
 } from '~/utils/display-labels';
 
 definePageMeta({ layout: 'authenticated' });
@@ -313,11 +316,12 @@ async function loadDeliveryBatches(): Promise<void> {
   try {
     const { batches } = await client.listDeliveryBatches(campaignId);
     deliveryBatches.value = batches;
-    if (batches.length > 0 && !selectedBatch.value) {
-      const firstBatch = batches[0];
-      if (firstBatch) {
-        selectedBatch.value = await client.getDeliveryBatch(campaignId, firstBatch.id);
-      }
+    const selectedId = selectedBatch.value?.id;
+    const batchToShow = batches.find((batch) => batch.id === selectedId) ?? batches[0];
+    if (batchToShow) {
+      selectedBatch.value = await client.getDeliveryBatch(campaignId, batchToShow.id);
+    } else {
+      selectedBatch.value = null;
     }
   } catch (error) {
     deliveryError.value = error instanceof ApiRequestError ? error.message : 'Unable to load delivery results.';
@@ -541,6 +545,12 @@ async function archiveCampaign(): Promise<void> {
               </p>
               <div v-for="audience in previewState.preview.audiences" :key="audience.audienceGroupId" class="preview-block">
                 <h3>{{ audience.audienceGroupName }} — {{ audience.recipientCount }} recipient(s)</h3>
+                <ul v-if="audience.recipients.length > 0" class="item-list">
+                  <li v-for="recipient in audience.recipients" :key="recipient.personId">
+                    {{ recipient.displayName }}
+                  </li>
+                </ul>
+                <p v-else class="section__hint">No members in this audience.</p>
                 <ul class="item-list">
                   <li v-for="channel in audience.channels" :key="channel.channel" class="item-list__row">
                     <strong>{{ channelLabel(channel.channel) }}:</strong>
@@ -550,6 +560,18 @@ async function archiveCampaign(): Promise<void> {
                   </li>
                 </ul>
               </div>
+              <section v-if="previewState.preview.overlapConflicts?.length" class="preview-block">
+                <h3>Overlapping people</h3>
+                <ul class="item-list">
+                  <li v-for="conflict in previewState.preview.overlapConflicts" :key="conflict.personId">
+                    {{ conflict.displayName }} is in more than one audience.
+                    <span v-if="conflict.winningAudienceGroupName">
+                      Uses {{ conflict.winningAudienceGroupName }}.
+                    </span>
+                    <span v-else-if="conflict.usesBaseContent">Uses the base campaign message.</span>
+                  </li>
+                </ul>
+              </section>
             </template>
           </section>
 
@@ -579,8 +601,12 @@ async function archiveCampaign(): Promise<void> {
               <UiAppButton v-if="canDraft() && pageState.campaign.status === 'Rejected'" type="button" @click="revise">
                 Reopen as draft
               </UiAppButton>
-              <UiAppButton v-if="canSend() && ['Approved', 'Scheduled'].includes(pageState.campaign.status)" type="button" @click="sendNowAndRefresh">
-                Send now
+              <UiAppButton
+                v-if="canSend() && ['Approved', 'Scheduled', 'Sending'].includes(pageState.campaign.status)"
+                type="button"
+                @click="sendNowAndRefresh"
+              >
+                {{ pageState.campaign.status === 'Sending' ? 'Retry send' : 'Send now' }}
               </UiAppButton>
               <UiAppButton
                 v-if="(canDraft() || canApprove() || canSend()) && !['Sent', 'Cancelled'].includes(pageState.campaign.status)"
@@ -621,16 +647,46 @@ async function archiveCampaign(): Promise<void> {
 
           <section v-if="canSend()" class="section">
             <h2 class="section__title">Delivery results</h2>
+            <div class="button-row">
+              <UiAppButton type="button" variant="secondary" @click="loadDeliveryBatches">Refresh results</UiAppButton>
+            </div>
             <UiLoadingState v-if="deliveryLoading" />
             <UiAlertBanner v-else-if="deliveryError">{{ deliveryError }}</UiAlertBanner>
             <template v-else-if="deliveryBatches.length > 0">
               <ul class="item-list">
                 <li v-for="batch in deliveryBatches" :key="batch.id">
-                  <UiAppButton variant="ghost" type="button" @click="viewBatch(batch.id)">
-                    Batch {{ batch.id.slice(0, 8) }}… — {{ batch.status }} ({{ batch.sentCount }}/{{ batch.totalRecipients }} sent)
+                  <UiAppButton
+                    variant="ghost"
+                    type="button"
+                    :aria-pressed="selectedBatch?.id === batch.id"
+                    @click="viewBatch(batch.id)"
+                  >
+                    Batch {{ batch.id.slice(0, 8) }}… —
+                    {{ deliveryBatchStatusLabel(batch.status) }}
+                    ({{ batch.sentCount }}/{{ batch.totalRecipients }} sent)
                   </UiAppButton>
                 </li>
               </ul>
+              <div v-if="selectedBatch" class="preview-block">
+                <h3>Recipients in this batch</h3>
+                <ul class="item-list">
+                  <li v-for="recipient in selectedBatch.recipients" :key="recipient.id" class="item-list__row">
+                    <strong>{{ recipient.displayName }}</strong>
+                    <span>{{ channelLabel(recipient.channel) }}</span>
+                    <span>{{ deliveryRecipientStatusLabel(recipient.status) }}</span>
+                    <span v-if="recipient.skipReason" class="section__hint">
+                      — {{ skipReasonLabel(recipient.skipReason) }}
+                    </span>
+                    <span
+                      v-else-if="recipient.attempts[0]?.errorMessage"
+                      class="section__hint"
+                    >
+                      — {{ recipient.attempts[0].errorMessage }}
+                    </span>
+                  </li>
+                </ul>
+                <p v-if="selectedBatch.recipients.length === 0" class="section__hint">No recipients in this batch.</p>
+              </div>
             </template>
             <p v-else class="section__hint">No delivery batches yet.</p>
           </section>

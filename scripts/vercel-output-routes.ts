@@ -23,6 +23,29 @@ export const API_ROUTES: Array<Record<string, string>> = [
   { src: '/api/cron/process-outbound-mail', dest: '/api/cron/process-outbound-mail' },
 ];
 
+export interface VercelCronJob {
+  path: string;
+  schedule: string;
+}
+
+/**
+ * Vercel Cron schedules for background drains. `* * * * *` requires Pro.
+ * These must be written into Build Output `config.json` — listing the HTTP
+ * routes alone does not register a cron.
+ */
+export const VERCEL_CRON_JOBS: VercelCronJob[] = [
+  { path: '/api/cron/process-schedules', schedule: '*/5 * * * *' },
+  { path: '/api/cron/process-delivery-queue', schedule: '* * * * *' },
+  { path: '/api/cron/process-outbound-mail', schedule: '* * * * *' },
+];
+
+export function withVercelCronJobs<T extends { crons?: VercelCronJob[] }>(
+  config: T,
+  jobs: readonly VercelCronJob[] = VERCEL_CRON_JOBS,
+): T {
+  return { ...config, crons: [...jobs] };
+}
+
 /**
  * Bundle JS into the Lambda (including `reflect-metadata`). Leave native
  * binaries as real externals so NFT can copy `.node` files.

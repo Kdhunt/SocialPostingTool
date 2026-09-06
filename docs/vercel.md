@@ -98,7 +98,7 @@ The build maps these to `DATABASE_URL` and runs migrations + seed on deploy.
 **Auto-filled by Vercel when linked / deployed:**
 
 - `PRISMA_DATABASE_URL`, `POSTGRES_URL`, `REDIS_URL`
-- `WEB_URL`, `API_URL` (from `VERCEL_URL`)
+- `WEB_URL`, `API_URL` (production uses `VERCEL_PROJECT_PRODUCTION_URL`, otherwise `VERCEL_URL`). Set `WEB_URL=https://www.wardcomms.online` explicitly if emailed links still point at `*.vercel.app`.
 - `NUXT_PUBLIC_API_BASE_URL` — leave **unset** (same-origin API)
 
 Production builds **fail fast** with a checklist if secrets or storage are
@@ -125,13 +125,19 @@ Do **not** run `db:seed:dev` in production.
 
 ## 6. Cron jobs
 
+Cron **paths** are serverless functions; they only run on a schedule if
+they are listed in `vercel.json` **and** written into Build Output
+`config.json` (the assemble step calls `withVercelCronJobs`).
+
 | Path | Schedule |
 |------|----------|
 | `/api/cron/process-schedules` | every 5 minutes |
 | `/api/cron/process-delivery-queue` | every minute |
 | `/api/cron/process-outbound-mail` | every minute |
 
-Requires **Vercel Pro**. Uses `CRON_SECRET`.
+Requires **Vercel Pro** for once-per-minute schedules, plus `CRON_SECRET`.
+Campaign **Send now** also kicks up to 25 pending recipients in the same
+request so a missing cron does not leave a small send stuck on Sending.
 
 ## Manual database commands (optional)
 
@@ -159,7 +165,7 @@ pnpm --filter @ward-comms/database db:bootstrap
 | Login fails after successful build | Check browser Network tab — `/api/v1/auth/login` should return JSON, not HTML 404 |
 | Login returns `FUNCTION_INVOCATION_FAILED` | Nest Lambda crashed on missing `reflect-metadata`, Prisma CJS named imports, a missing generated client, AuthModule not exporting `LoginRateLimiterService`, or `@codegenie/serverless-express` treating Vercel `req`/`res` as an AWS event. |
 | Prisma migrate errors during build | Ensure `POSTGRES_URL_NON_POOLING` or `POSTGRES_URL` is set |
-| Campaigns stuck on Sending | Pro plan + `CRON_SECRET` + Redis |
+| Campaigns stuck on Sending | Confirm `CRON_SECRET`, Redis, and Pro cron. Redeploy so `vercel.json` crons are registered. Send now also processes the first 25 recipients immediately. |
 
 ## Local development
 
