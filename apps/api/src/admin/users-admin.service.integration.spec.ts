@@ -192,6 +192,23 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
         { actorUserId, ipAddress: null, userAgent: null },
       ),
     ).rejects.toThrow(/email already exists/i);
+
+    const otherWard = await prisma.client.ward.create({
+      data: { name: `Fictional Email Ward ${randomUUID()}` },
+    });
+    createdWardIds.push(otherWard.id);
+    const otherWardUser = await usersAdmin.create(
+      otherWard.id,
+      {
+        username: `email.otherward.${randomUUID()}`,
+        email: 'jane.doe@example.com',
+        password: 'Fictional-Password-42',
+        displayName: 'Other Ward Email Member',
+        roleIds: [viewerRoleId],
+      },
+      { actorUserId, ipAddress: null, userAgent: null },
+    );
+    expect(otherWardUser.email).toBe('jane.doe@example.com');
   });
 
   it('rejects an implausible email at the service boundary', async () => {

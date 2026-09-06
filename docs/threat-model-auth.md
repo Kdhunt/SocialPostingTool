@@ -72,4 +72,6 @@ This document describes the threat model for the login flow implemented in
   production.
 - **No email-based account recovery flow** is implemented yet — administrators
   disable/enable accounts directly; a self-service password reset flow is
-  out of scope for Phase 4.
+  out of scope for Phase 4. New accounts require a normalized unique-per-ward
+  email, but inbox confirmation (`verifiedAt` / verification token) is not
+  implemented.
