@@ -43,7 +43,7 @@ export default defineConfig({
           { name: 'setup', testMatch: /auth\.setup\.ts/ },
           {
             name: 'authenticated',
-            testMatch: /authenticated\.spec\.ts|full-site\.spec\.ts/,
+            testMatch: /authenticated\.spec\.ts|full-site\.spec\.ts|account-email\.spec\.ts/,
             dependencies: ['setup'],
             use: {
               ...devices['Desktop Chrome'],

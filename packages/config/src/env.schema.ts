@@ -91,12 +91,13 @@ export function normalizePlatformEnv(
   normalized.REDIS_URL =
     source.REDIS_URL ?? source.UPSTASH_REDIS_URL ?? source.KV_REDIS_URL ?? undefined;
 
-  if (!normalized.API_URL && source.VERCEL_URL) {
-    normalized.API_URL = `https://${source.VERCEL_URL}`;
+  const vercelPublicOrigin = vercelCanonicalOrigin(source);
+  if (!normalized.API_URL && vercelPublicOrigin) {
+    normalized.API_URL = vercelPublicOrigin;
   }
 
-  if (!normalized.WEB_URL && source.VERCEL_URL) {
-    normalized.WEB_URL = `https://${source.VERCEL_URL}`;
+  if (!normalized.WEB_URL && vercelPublicOrigin) {
+    normalized.WEB_URL = vercelPublicOrigin;
   }
 
   if (!normalized.NODE_ENV && source.VERCEL) {
@@ -119,6 +120,24 @@ export function normalizePlatformEnv(
   }
 
   return normalized;
+}
+
+function httpsOriginFromVercelHost(value: string): string {
+  return `https://${value.trim().replace(/^https?:\/\//, '')}`;
+}
+
+/**
+ * Production account-email links must use the custom domain, not the
+ * per-deployment `*.vercel.app` host from `VERCEL_URL`.
+ */
+function vercelCanonicalOrigin(source: Record<string, string | undefined>): string | undefined {
+  if (source.VERCEL_ENV === 'production' && source.VERCEL_PROJECT_PRODUCTION_URL) {
+    return httpsOriginFromVercelHost(source.VERCEL_PROJECT_PRODUCTION_URL);
+  }
+  if (source.VERCEL_URL) {
+    return httpsOriginFromVercelHost(source.VERCEL_URL);
+  }
+  return undefined;
 }
 
 /**

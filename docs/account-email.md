@@ -91,3 +91,11 @@ non-enumeration; worker system-email adapter tests.
   secrets on the host. Resend marketplace vars `wardcomms_RESEND_API_KEY`
   and `wardcomms_RESEND_EMAIL_DOMAIN` are mapped automatically. Campaign
   live sending still needs per-ward credentials and `PROVIDER_MODE=live`.
+- Confirmation and reset links use `WEB_URL`. On Vercel production that
+  maps from `VERCEL_PROJECT_PRODUCTION_URL` (the custom domain), not the
+  per-deployment `VERCEL_URL`.
+- Playwright live-email coverage (`apps/web-e2e/tests/account-email.spec.ts`)
+  creates fictional `@mailinator.com` users, waits for the public inbox,
+  and opens `/verify-email` or `/reset-password` on `E2E_BASE_URL`. It does
+  not rotate the signed-in admin password. Set `E2E_LIVE_EMAIL=1` to run
+  the same tests against a local live-mail host.

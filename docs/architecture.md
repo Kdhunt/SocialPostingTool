@@ -92,7 +92,7 @@ Operator roles (seeded):
 
 - **Vitest** for unit tests across packages and apps.
 - **NestJS testing utilities** for API and worker integration tests.
-- **Playwright** for web end-to-end tests in `apps/web-e2e`: guest smoke/login plus authenticated walks of core and admin pages. Against localhost the suite starts Nuxt; set `E2E_BASE_URL` to a deployed origin to skip the local server. Authenticated tests need credentials **or** a gitignored `apps/web-e2e/.auth/user.json` session (never commit those values). Live-site writes use generated fictional names only; ward-code rotation, admin password reset, and tenant create stay on validation-error paths.
+- **Playwright** for web end-to-end tests in `apps/web-e2e`: guest smoke/login plus authenticated walks of core and admin pages. Against localhost the suite starts Nuxt; set `E2E_BASE_URL` to a deployed origin to skip the local server. Authenticated tests need credentials **or** a gitignored `apps/web-e2e/.auth/user.json` session (never commit those values). Live-site writes use generated fictional names only; ward-code rotation, admin password reset, and tenant create stay on validation-error paths. Live account-email tests use public Mailinator inboxes (`account-email.spec.ts`) when `E2E_BASE_URL` is remote or `E2E_LIVE_EMAIL=1`.
 - **Testcontainers or isolated Docker services** for database integration tests where practical.
 - Tests use only generated fictional data and must not depend on execution order.
 

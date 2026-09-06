@@ -92,3 +92,16 @@ export function e2eCredentials(): E2eCredentials | null {
 
 export const missingCredentialsMessage =
   'Set E2E_USERNAME, E2E_PASSWORD, and E2E_WARD_CODE, or save a gitignored session with pnpm --filter @ward-comms/web-e2e test:e2e:save-session.';
+
+export function e2eWardCode(): string | null {
+  const wardCode = process.env.E2E_WARD_CODE?.trim();
+  return wardCode && wardCode.length > 0 ? wardCode : null;
+}
+
+/**
+ * Live inbox waits against Mailinator. Remote E2E_BASE_URL implies production
+ * mail. Set E2E_LIVE_EMAIL=1 to force the same tests against a local live host.
+ */
+export function isLiveAccountEmailE2e(): boolean {
+  return process.env.E2E_LIVE_EMAIL === '1' || isRemoteE2e();
+}

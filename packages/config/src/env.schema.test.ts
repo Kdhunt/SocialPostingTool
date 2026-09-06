@@ -84,4 +84,15 @@ describe('normalizePlatformEnv', () => {
     expect(normalized.SYSTEM_EMAIL_FROM).toBe('noreply@wardcomms.online');
     expect(normalized.SYSTEM_EMAIL_PROVIDER).toBe('resend');
   });
+
+  it('uses the Vercel production domain for WEB_URL and API_URL', () => {
+    const normalized = normalizePlatformEnv({
+      VERCEL_ENV: 'production',
+      VERCEL_URL: 'wardcommunications-preview.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'www.wardcomms.online',
+    });
+
+    expect(normalized.WEB_URL).toBe('https://www.wardcomms.online');
+    expect(normalized.API_URL).toBe('https://www.wardcomms.online');
+  });
 });

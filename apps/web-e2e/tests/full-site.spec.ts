@@ -234,27 +234,32 @@ test.describe('Full site — authenticated admin', () => {
     await expect(page.getByText(/at least 12 characters|Unable to update/i)).toBeVisible();
   });
 
-  test('create a fictional ward user and reject a short password reset', async ({ page }) => {
+  test('create a fictional ward user and reject a short typed password override', async ({ page }) => {
     const suffix = fictionalSuffix();
     const username = `fic.user.${suffix}`;
+    const inbox = `wce2euser${suffix.replace(/[^a-z0-9]/gi, '')}`.slice(0, 32).toLowerCase();
 
     await page.goto('/admin/users');
     await expectPageHeading(page, 'User management');
 
-    await page.getByLabel('Username').fill(username);
-    await page.getByLabel('Display name').fill(`Fictional User ${suffix}`);
-    await page.getByLabel(/Password \(min 12/).fill('Fictional-User-42');
+    await page.locator('#new-username').fill(username);
+    await page.locator('#new-email').fill(`${inbox}@mailinator.com`);
+    await page.locator('#new-display-name').fill(`Fictional User ${suffix}`);
+    await page.locator('#new-password').fill('Fictional-User-42');
     const viewer = page.getByRole('checkbox', { name: 'Viewer' });
     await expect(viewer).toBeVisible();
     await viewer.check();
     await page.getByRole('button', { name: 'Create user' }).click();
     await expect(page.getByText(`@${username}`)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/confirmation email was queued/i)).toBeVisible();
 
     const row = page.locator('li', { hasText: `@${username}` });
-    await row.getByRole('button', { name: 'Reset password' }).click();
+    await row.getByRole('button', { name: 'Set password' }).click();
     await page.getByLabel(new RegExp(`New password for ${username}`)).fill('short');
     await page.getByRole('button', { name: 'Save new password' }).click();
     await expect(page.getByText(/at least 12 characters|Unable to reset/i)).toBeVisible();
+    await row.getByRole('button', { name: 'Disable' }).click();
+    await expect(row.getByText('Disabled')).toBeVisible({ timeout: 20_000 });
   });
 
   test('create-ward validation rejects a short password without provisioning', async ({ page }) => {
@@ -266,6 +271,7 @@ test.describe('Full site — authenticated admin', () => {
     await page.getByLabel('Ward name').fill(`Fictional E2E Ward ${suffix}`);
     await page.getByLabel('Time zone').fill('America/Denver');
     await page.getByLabel('Initial admin username').fill(`admin.${suffix}`);
+    await page.getByLabel('Initial admin email').fill(`admin.${suffix}@mailinator.com`);
     await page.getByLabel('Initial admin display name').fill('Fictional Ward Admin');
     await page.getByLabel('Initial admin password').fill('short');
     await page.getByLabel('Initial ward code').fill('abc');

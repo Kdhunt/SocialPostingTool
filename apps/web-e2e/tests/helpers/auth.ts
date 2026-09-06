@@ -1,13 +1,17 @@
 import { expect, type Page } from '@playwright/test';
 import type { E2eCredentials } from './env';
 
-async function waitForHydratedLoginForm(page: Page): Promise<void> {
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-  await expect(page.locator('#username')).toBeEditable();
+export async function waitForNuxtApp(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const root = document.getElementById('__nuxt');
     return Boolean(root && '__vue_app__' in root);
   });
+}
+
+async function waitForHydratedLoginForm(page: Page): Promise<void> {
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.locator('#username')).toBeEditable();
+  await waitForNuxtApp(page);
 }
 
 function assertFilledLength(selector: string, actualLength: number, expectedLength: number): void {
@@ -18,7 +22,7 @@ function assertFilledLength(selector: string, actualLength: number, expectedLeng
   }
 }
 
-async function fillField(page: Page, selector: string, value: string): Promise<void> {
+export async function fillHydratedInput(page: Page, selector: string, value: string): Promise<void> {
   const field = page.locator(selector);
   await expect(field).toBeEditable();
   await field.evaluate((element) => {
@@ -43,9 +47,9 @@ export async function fillLoginForm(
   credentials: { username: string; password: string; wardCode: string },
 ): Promise<void> {
   await waitForHydratedLoginForm(page);
-  await fillField(page, '#username', credentials.username);
-  await fillField(page, '#password', credentials.password);
-  await fillField(page, '#ward-code', credentials.wardCode.trim());
+  await fillHydratedInput(page, '#username', credentials.username);
+  await fillHydratedInput(page, '#password', credentials.password);
+  await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
 }
 
 export async function signIn(page: Page, credentials: E2eCredentials): Promise<void> {
@@ -72,7 +76,7 @@ export async function signIn(page: Page, credentials: E2eCredentials): Promise<v
     const wardBindingMiss =
       /incorrect ward code|enter the ward code to finish/i.test(message) && (await page.locator('#ward-code').isVisible());
     if (wardBindingMiss) {
-      await fillField(page, '#ward-code', credentials.wardCode.trim());
+      await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
       await page.getByRole('button', { name: 'Sign in' }).click();
       await expect(welcome.or(authenticator).or(alert)).toBeVisible({ timeout: 30_000 });
       if (await authenticator.isVisible()) {

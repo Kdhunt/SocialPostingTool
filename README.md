@@ -257,7 +257,7 @@ Do **not** set `NUXT_PUBLIC_API_BASE_URL` unless you split web and API domains.
 
 ## End-to-end tests
 
-Playwright lives in `apps/web-e2e`. Guest tests cover the public login page. Authenticated tests walk core and admin pages. Against a live origin they may create fictional throwaway records; they do not rotate the real ward code, reset the signed-in admin password, or provision a tenant.
+Playwright lives in `apps/web-e2e`. Guest tests cover the public login page, forgot-password, and verify-email. Authenticated tests walk core and admin pages. Against a live origin they may create fictional throwaway records, including `@mailinator.com` users to confirm verification and password-reset mail. They do not rotate the real ward code, reset the signed-in admin password, or provision a tenant.
 
 ```bash
 pnpm --filter @ward-comms/web-e2e exec playwright install chromium
