@@ -36,6 +36,13 @@ async function main(): Promise<void> {
   const wardName = process.env.BOOTSTRAP_WARD_NAME?.trim() || 'Ward Communications Hub';
   const adminDisplayName = process.env.BOOTSTRAP_ADMIN_DISPLAY_NAME?.trim() || adminUsername;
   const timeZone = process.env.WARD_TIME_ZONE?.trim() || 'America/Denver';
+  // Same plausible-email rule as packages/domain normalizeEmail (this
+  // package does not depend on domain; bootstrap is a one-shot seed).
+  const adminEmailRaw = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+  if (adminEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmailRaw)) {
+    throw new Error('BOOTSTRAP_ADMIN_EMAIL must be a valid email address.');
+  }
+  const adminEmail = adminEmailRaw || null;
 
   if (adminPassword.length < 12) {
     throw new Error('BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters.');
@@ -71,6 +78,7 @@ async function main(): Promise<void> {
       data: {
         wardId: ward.id,
         username: adminUsername,
+        email: adminEmail,
         displayName: adminDisplayName,
         passwordHash,
         passwordUpdatedAt: new Date(),

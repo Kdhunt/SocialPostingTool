@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { applicationUserEmailSchema } from './email.schema.js';
 
 export const userSummarySchema = z.object({
   id: z.string(),
   username: z.string(),
+  email: z.string().nullable(),
   displayName: z.string(),
   disabledAt: z.string().datetime().nullable(),
   lastLoginAt: z.string().datetime().nullable(),
@@ -17,10 +19,20 @@ export const userListResponseSchema = z.object({
 export type UserListResponse = z.infer<typeof userListResponseSchema>;
 
 export const createUserRequestSchema = z.object({
-  username: z.string().min(1).max(255),
-  password: z.string().min(12).max(512),
-  displayName: z.string().min(1).max(255),
-  roleIds: z.array(z.string().uuid()).min(1),
+  username: z
+    .string()
+    .min(1, 'Username is required.')
+    .max(255, 'Username must be at most 255 characters.'),
+  email: applicationUserEmailSchema,
+  password: z
+    .string()
+    .min(12, 'Password must be at least 12 characters.')
+    .max(512, 'Password must be at most 512 characters.'),
+  displayName: z
+    .string()
+    .min(1, 'Display name is required.')
+    .max(255, 'Display name must be at most 255 characters.'),
+  roleIds: z.array(z.string().uuid()).min(1, 'Select at least one role.'),
 });
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 
@@ -75,6 +87,7 @@ export type WardSummaryDto = z.infer<typeof wardSummarySchema>;
 export const wardAdminSummarySchema = z.object({
   id: z.string(),
   username: z.string(),
+  email: z.string().nullable(),
   displayName: z.string(),
 });
 export type WardAdminSummaryDto = z.infer<typeof wardAdminSummarySchema>;
@@ -100,6 +113,7 @@ export const createWardRequestSchema = z.object({
     .string()
     .min(1, 'Admin username is required.')
     .max(255, 'Admin username must be at most 255 characters.'),
+  adminEmail: applicationUserEmailSchema,
   adminDisplayName: z
     .string()
     .min(1, 'Admin display name is required.')
@@ -144,6 +158,7 @@ export const createWardResponseSchema = z.object({
   ward: wardSummarySchema,
   adminUserId: z.string(),
   adminUsername: z.string(),
+  adminEmail: z.string(),
 });
 export type CreateWardResponse = z.infer<typeof createWardResponseSchema>;
 

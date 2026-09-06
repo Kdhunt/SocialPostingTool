@@ -37,6 +37,7 @@ const fieldErrors = ref<Partial<Record<CreateWardField, string>>>({});
 const wardName = ref('');
 const timeZone = ref('America/Denver');
 const adminUsername = ref('');
+const adminEmail = ref('');
 const adminDisplayName = ref('');
 const adminPassword = ref('');
 const initialWardCode = ref('');
@@ -98,6 +99,7 @@ async function createWard(): Promise<void> {
     name: wardName.value.trim(),
     timeZone: timeZone.value.trim() || undefined,
     adminUsername: adminUsername.value.trim(),
+    adminEmail: adminEmail.value,
     adminDisplayName: adminDisplayName.value.trim(),
     adminPassword: adminPassword.value,
     initialWardCode: initialWardCode.value,
@@ -118,6 +120,7 @@ async function createWard(): Promise<void> {
     successMessage.value = `Ward "${result.ward.name}" was created. Share the admin credentials and ward code securely with the new ward administrator.`;
     wardName.value = '';
     adminUsername.value = '';
+    adminEmail.value = '';
     adminDisplayName.value = '';
     adminPassword.value = '';
     initialWardCode.value = '';
@@ -224,6 +227,7 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
       <h2>New ward created</h2>
       <p><strong>Ward:</strong> {{ createdWard.ward.name }}</p>
       <p><strong>Admin username:</strong> {{ createdWard.adminUsername }}</p>
+      <p><strong>Admin email:</strong> {{ createdWard.adminEmail }}</p>
       <p class="admin-page__hint">
         Store the password and ward code you entered in a secure channel. They cannot be retrieved from this screen.
       </p>
@@ -278,6 +282,24 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
             autocomplete="off"
             :aria-invalid="fieldErrors.adminUsername ? true : undefined"
             :aria-describedby="describedBy('admin-username', 'adminUsername', false)"
+          />
+        </UiFormField>
+
+        <UiFormField
+          label="Initial admin email"
+          input-id="admin-email"
+          hint="Required. Stored lowercase and unique within the new ward."
+          :error="fieldErrors.adminEmail"
+        >
+          <input
+            id="admin-email"
+            v-model="adminEmail"
+            class="form-control"
+            type="email"
+            required
+            autocomplete="off"
+            :aria-invalid="fieldErrors.adminEmail ? true : undefined"
+            :aria-describedby="describedBy('admin-email', 'adminEmail', true)"
           />
         </UiFormField>
 
@@ -353,6 +375,7 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
           <ul v-else class="admin-page__admins">
             <li v-for="admin in ward.admins" :key="admin.id">
               <span>{{ admin.displayName }} (@{{ admin.username }})</span>
+              <span v-if="admin.email" class="admin-page__hint">{{ admin.email }}</span>
               <form class="admin-page__inline-form" novalidate @submit.prevent="resetAdminPassword(ward.id, admin.id)">
                 <UiFormField
                   :label="`New password for ${admin.username}`"

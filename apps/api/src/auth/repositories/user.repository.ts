@@ -80,6 +80,7 @@ export class UserRepository {
     Array<{
       id: string;
       username: string;
+      email: string | null;
       displayName: string;
       disabledAt: Date | null;
       lastLoginAt: Date | null;
@@ -94,6 +95,7 @@ export class UserRepository {
     return users.map((user) => ({
       id: user.id,
       username: user.username,
+      email: user.email,
       displayName: user.displayName,
       disabledAt: user.disabledAt,
       lastLoginAt: user.lastLoginAt,
@@ -110,6 +112,7 @@ export class UserRepository {
   async create(input: {
     wardId: string;
     username: string;
+    email: string;
     displayName: string;
     passwordHash: string;
     roleIds: string[];
@@ -119,6 +122,7 @@ export class UserRepository {
         data: {
           wardId: input.wardId,
           username: input.username,
+          email: input.email,
           displayName: input.displayName,
           passwordHash: input.passwordHash,
           passwordUpdatedAt: new Date(),
@@ -162,6 +166,13 @@ export class UserRepository {
   async isUsernameTaken(wardId: string, username: string): Promise<boolean> {
     const existing = await this.prisma.client.applicationUser.findFirst({
       where: { wardId, username, archivedAt: null },
+    });
+    return existing !== null;
+  }
+
+  async isEmailTaken(wardId: string, email: string): Promise<boolean> {
+    const existing = await this.prisma.client.applicationUser.findFirst({
+      where: { wardId, email, archivedAt: null },
     });
     return existing !== null;
   }

@@ -12,7 +12,7 @@ import type {
   UserListResponse,
   UserSummaryDto,
 } from '@ward-comms/validation';
-import { validatePasswordStrength } from '@ward-comms/domain';
+import { normalizeEmail, validatePasswordStrength } from '@ward-comms/domain';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordHasherService } from '../auth/password-hasher.service.js';
 import { UserRepository } from '../auth/repositories/user.repository.js';
@@ -67,8 +67,17 @@ export class UsersAdminService {
       throw new BadRequestException(passwordCheck.errors.join(' '));
     }
 
+    const email = normalizeEmail(input.email);
+    if (!email) {
+      throw new BadRequestException('Enter a valid email address.');
+    }
+
     if (await this.users.isUsernameTaken(wardId, input.username)) {
       throw new ConflictException('A user with that username already exists in this ward.');
+    }
+
+    if (await this.users.isEmailTaken(wardId, email)) {
+      throw new ConflictException('A user with that email already exists in this ward.');
     }
 
     const roleRows = await this.roles.findByIds(input.roleIds);
@@ -81,6 +90,7 @@ export class UsersAdminService {
     const user = await this.users.create({
       wardId,
       username: input.username,
+      email,
       displayName: input.displayName,
       passwordHash,
       roleIds: input.roleIds,
@@ -92,7 +102,7 @@ export class UsersAdminService {
       action: 'user.created',
       entityType: 'ApplicationUser',
       entityId: user.id,
-      metadata: { username: user.username, roleIds: input.roleIds },
+      metadata: { username: user.username, email: user.email, roleIds: input.roleIds },
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
     });
@@ -184,6 +194,7 @@ export class UsersAdminService {
   private toSummary(row: {
     id: string;
     username: string;
+    email: string | null;
     displayName: string;
     disabledAt: Date | null;
     lastLoginAt: Date | null;
@@ -192,6 +203,7 @@ export class UsersAdminService {
     return {
       id: row.id,
       username: row.username,
+      email: row.email,
       displayName: row.displayName,
       disabledAt: row.disabledAt?.toISOString() ?? null,
       lastLoginAt: row.lastLoginAt?.toISOString() ?? null,

@@ -25,7 +25,7 @@ export class WardRepository {
       name: string;
       timeZone: string;
       createdAt: Date;
-      admins: Array<{ id: string; username: string; displayName: string }>;
+      admins: Array<{ id: string; username: string; email: string | null; displayName: string }>;
     }>
   > {
     const rows = await this.prisma.client.ward.findMany({
@@ -34,7 +34,7 @@ export class WardRepository {
       include: {
         users: {
           where: { archivedAt: null, roles: { some: { role: { name: 'WardAdmin' } } } },
-          select: { id: true, username: true, displayName: true },
+          select: { id: true, username: true, email: true, displayName: true },
           orderBy: { username: 'asc' },
         },
       },

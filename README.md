@@ -96,6 +96,8 @@ pnpm dev
 Use `pnpm db:seed:dev` after migrations and the role catalog seed — it prints
 fictional dev credentials to the console. For custom users, use the
 **Admin → Users** screen (`/admin/users`) or the `POST /users` API.
+New accounts require a unique (per ward) email address — format is
+validated and the value is stored trimmed and lowercased.
 
 ### Provisioning additional wards
 
@@ -109,7 +111,7 @@ see `docs/vercel.md`). That operator can:
 Each provisioned ward receives:
 
 - A ward record (name and time zone)
-- An initial **WardAdmin** account (cannot provision other wards)
+- An initial **WardAdmin** account with a required email (cannot provision other wards)
 - Version 1 of the shared ward code (stored as a hash only)
 
 Ward administrators manage users in their own ward (**Admin → Users**, including
@@ -209,7 +211,7 @@ are not supported.
 
 ### Admin overview (post-phase)
 
-- `/admin/users` — list/create users, assign ward roles, enable/disable, reset passwords
+- `/admin/users` — list/create users (email required), assign ward roles, enable/disable, reset passwords
 - `/admin/ward-code` — view active version, rotate **this** ward’s code
 - `/admin/wards` — PlatformAdmin only: create wards, rotate any ward code, reset ward admin passwords
 - `/admin/provider-credentials` — upsert/revoke encrypted provider secrets

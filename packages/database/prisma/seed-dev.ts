@@ -12,6 +12,7 @@ const prisma = new PrismaClient();
 
 const DEV_WARD_NAME = 'Fictional Dev Ward';
 const DEV_USERNAME = 'admin';
+const DEV_EMAIL = 'admin@example.com';
 const DEV_PASSWORD = 'ChangeMeNow!23';
 const DEV_WARD_CODE = 'WARD-DEV-CODE';
 const DEV_DISPLAY_NAME = 'Dev Ward Admin';
@@ -55,6 +56,7 @@ async function main(): Promise<void> {
       data: {
         wardId: ward.id,
         username: DEV_USERNAME,
+        email: DEV_EMAIL,
         displayName: DEV_DISPLAY_NAME,
         passwordHash,
         passwordUpdatedAt: new Date(),
@@ -63,7 +65,12 @@ async function main(): Promise<void> {
   } else {
     await prisma.applicationUser.update({
       where: { id: user.id },
-      data: { passwordHash, passwordUpdatedAt: new Date(), disabledAt: null },
+      data: {
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        disabledAt: null,
+        email: user.email ?? DEV_EMAIL,
+      },
     });
   }
 

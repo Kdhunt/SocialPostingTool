@@ -116,6 +116,9 @@ model ApplicationUser {
   id                  String    @id @default(uuid())
   wardId              String    @map("ward_id")
   username            String
+  /// Required and normalized (trim + lowercase) at the application layer.
+  /// Unique per ward. Nullable only for legacy rows created before email
+  /// was required on new accounts. Inbox verification is not stored here.
   email               String?
   displayName         String    @map("display_name")
   /// Argon2id hash of the user's password. Never expose via API responses.

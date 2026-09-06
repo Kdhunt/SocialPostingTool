@@ -3,9 +3,11 @@ import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
 import { ApiRequestError } from '@ward-comms/api-client';
 import {
+  createUserRequestSchema,
   fieldErrorsFromUnknown,
   fieldErrorsFromZodError,
   resetPasswordRequestSchema,
+  type CreateUserRequest,
   type RoleSummaryDto,
   type UserSummaryDto,
 } from '@ward-comms/validation';
@@ -22,10 +24,14 @@ type PageState =
 const client = useApiClient();
 const { state: authState, refreshSession } = useAuth();
 
+type CreateUserField = keyof CreateUserRequest;
+
 const pageState = ref<PageState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
+const fieldErrors = ref<Partial<Record<CreateUserField, string>>>({});
 
 const newUsername = ref('');
+const newEmail = ref('');
 const newPassword = ref('');
 const newDisplayName = ref('');
 const newRoleIds = ref<string[]>([]);
@@ -43,6 +49,18 @@ function canManageUsers(): boolean {
 
 function canManageRoles(): boolean {
   return authState.value.kind === 'authenticated' && authState.value.user.permissions.includes('roles.manage');
+}
+
+function describedBy(inputId: string, field: CreateUserField, hasHint: boolean): string | undefined {
+  const ids: string[] = [];
+  if (hasHint) ids.push(`${inputId}-hint`);
+  if (fieldErrors.value[field]) ids.push(`${inputId}-error`);
+  return ids.length > 0 ? ids.join(' ') : undefined;
+}
+
+function applyFieldErrors(errors: Record<string, string>): void {
+  fieldErrors.value = errors;
+  actionError.value = 'Fix the highlighted fields and try again.';
 }
 
 async function load(): Promise<void> {
@@ -73,20 +91,37 @@ onMounted(async () => {
 
 async function createUser(): Promise<void> {
   actionError.value = null;
+  fieldErrors.value = {};
+
+  const payload: CreateUserRequest = {
+    username: newUsername.value.trim(),
+    email: newEmail.value,
+    password: newPassword.value,
+    displayName: newDisplayName.value.trim(),
+    roleIds: newRoleIds.value,
+  };
+
+  const parsed = createUserRequestSchema.safeParse(payload);
+  if (!parsed.success) {
+    applyFieldErrors(fieldErrorsFromZodError(parsed.error));
+    return;
+  }
+
   try {
-    await client.createUser({
-      username: newUsername.value,
-      password: newPassword.value,
-      displayName: newDisplayName.value,
-      roleIds: newRoleIds.value,
-    });
+    await client.createUser(parsed.data);
     newUsername.value = '';
+    newEmail.value = '';
     newPassword.value = '';
     newDisplayName.value = '';
     newRoleIds.value = [];
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to create user.';
+    const zodFields = fieldErrorsFromUnknown(error);
+    if (zodFields && Object.keys(zodFields).length > 0) {
+      applyFieldErrors(zodFields);
+    } else {
+      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to create user.';
+    }
   }
 }
 
@@ -187,14 +222,60 @@ function toggleEditRole(roleId: string, checked: boolean): void {
       <section aria-labelledby="create-user-heading">
         <h2 id="create-user-heading">Create user</h2>
         <form class="admin-page__form" novalidate @submit.prevent="createUser">
-          <label for="new-username">Username</label>
-          <input id="new-username" v-model="newUsername" required autocomplete="off" />
+          <UiFormField label="Username" input-id="new-username" :error="fieldErrors.username">
+            <input
+              id="new-username"
+              v-model="newUsername"
+              required
+              autocomplete="off"
+              :aria-invalid="fieldErrors.username ? true : undefined"
+              :aria-describedby="describedBy('new-username', 'username', false)"
+            />
+          </UiFormField>
 
-          <label for="new-display-name">Display name</label>
-          <input id="new-display-name" v-model="newDisplayName" required />
+          <UiFormField
+            label="Email"
+            input-id="new-email"
+            hint="Required. Stored lowercase and unique within this ward."
+            :error="fieldErrors.email"
+          >
+            <input
+              id="new-email"
+              v-model="newEmail"
+              type="email"
+              required
+              autocomplete="off"
+              :aria-invalid="fieldErrors.email ? true : undefined"
+              :aria-describedby="describedBy('new-email', 'email', true)"
+            />
+          </UiFormField>
 
-          <label for="new-password">Password (min 12 characters)</label>
-          <input id="new-password" v-model="newPassword" type="password" required autocomplete="new-password" />
+          <UiFormField label="Display name" input-id="new-display-name" :error="fieldErrors.displayName">
+            <input
+              id="new-display-name"
+              v-model="newDisplayName"
+              required
+              :aria-invalid="fieldErrors.displayName ? true : undefined"
+              :aria-describedby="describedBy('new-display-name', 'displayName', false)"
+            />
+          </UiFormField>
+
+          <UiFormField
+            label="Password"
+            input-id="new-password"
+            hint="Minimum 12 characters."
+            :error="fieldErrors.password"
+          >
+            <input
+              id="new-password"
+              v-model="newPassword"
+              type="password"
+              required
+              autocomplete="new-password"
+              :aria-invalid="fieldErrors.password ? true : undefined"
+              :aria-describedby="describedBy('new-password', 'password', true)"
+            />
+          </UiFormField>
 
           <fieldset>
             <legend>Roles</legend>
@@ -206,9 +287,12 @@ function toggleEditRole(roleId: string, checked: boolean): void {
               />
               {{ role.name }}
             </label>
+            <p v-if="fieldErrors.roleIds" id="new-roles-error" class="admin-page__error" role="alert">
+              {{ fieldErrors.roleIds }}
+            </p>
           </fieldset>
 
-          <button type="submit" :disabled="newRoleIds.length === 0">Create user</button>
+          <button type="submit">Create user</button>
         </form>
       </section>
 
@@ -219,6 +303,7 @@ function toggleEditRole(roleId: string, checked: boolean): void {
             <div class="admin-page__user-info">
               <strong>{{ user.displayName }}</strong>
               <span class="admin-page__hint">@{{ user.username }}</span>
+              <span v-if="user.email" class="admin-page__hint">{{ user.email }}</span>
               <span v-if="user.disabledAt" class="admin-page__tag">Disabled</span>
               <span class="admin-page__hint">{{ user.roleNames.join(', ') }}</span>
             </div>

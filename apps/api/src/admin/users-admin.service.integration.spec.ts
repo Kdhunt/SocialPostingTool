@@ -86,6 +86,7 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
         wardId,
         {
           username: `escalated.${randomUUID()}`,
+          email: `escalated.${randomUUID()}@example.com`,
           password: 'Fictional-Password-42',
           displayName: 'Should Not Escalate',
           roleIds: [platformAdmin.id],
@@ -100,6 +101,7 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
       wardId,
       {
         username: `member.${randomUUID()}`,
+        email: `member.${randomUUID()}@example.com`,
         password: 'Fictional-Original-42',
         displayName: 'Fictional Member',
         roleIds: [viewerRoleId],
@@ -151,5 +153,60 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
         userAgent: null,
       }),
     ).rejects.toThrow(/not found/i);
+  });
+
+  it('persists a normalized email and rejects a duplicate in the same ward', async () => {
+    const created = await usersAdmin.create(
+      wardId,
+      {
+        username: `email.member.${randomUUID()}`,
+        email: '  Jane.Doe@Example.COM  ',
+        password: 'Fictional-Password-42',
+        displayName: 'Email Member',
+        roleIds: [viewerRoleId],
+      },
+      { actorUserId, ipAddress: '203.0.113.10', userAgent: 'vitest' },
+    );
+
+    expect(created.email).toBe('jane.doe@example.com');
+
+    const persisted = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: created.id } });
+    expect(persisted.email).toBe('jane.doe@example.com');
+
+    const createdAudit = await prisma.client.auditEvent.findFirst({
+      where: { action: 'user.created', entityId: created.id },
+    });
+    expect(createdAudit).toBeTruthy();
+    expect(JSON.stringify(createdAudit?.metadata ?? {})).toMatch(/jane\.doe@example\.com/);
+
+    await expect(
+      usersAdmin.create(
+        wardId,
+        {
+          username: `email.other.${randomUUID()}`,
+          email: 'jane.doe@example.com',
+          password: 'Fictional-Password-42',
+          displayName: 'Other Email Member',
+          roleIds: [viewerRoleId],
+        },
+        { actorUserId, ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toThrow(/email already exists/i);
+  });
+
+  it('rejects an implausible email at the service boundary', async () => {
+    await expect(
+      usersAdmin.create(
+        wardId,
+        {
+          username: `bad.email.${randomUUID()}`,
+          email: 'not-an-email',
+          password: 'Fictional-Password-42',
+          displayName: 'Bad Email',
+          roleIds: [viewerRoleId],
+        },
+        { actorUserId, ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toThrow(/valid email/i);
   });
 });

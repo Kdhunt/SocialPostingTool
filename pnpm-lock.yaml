@@ -372,6 +372,9 @@ importers:
 
   packages/validation:
     dependencies:
+      '@ward-comms/domain':
+        specifier: workspace:*
+        version: link:../domain
       zod:
         specifier: ^3.23.8
         version: 3.25.76

@@ -87,6 +87,7 @@ The build maps these to `DATABASE_URL` and runs migrations + seed on deploy.
 | `BOOTSTRAP_ADMIN_PASSWORD` | Yes (first deploy) | min 12 characters |
 | `BOOTSTRAP_WARD_CODE` | Yes (first deploy) | Ward code for sign-in |
 | `BOOTSTRAP_WARD_NAME` | Optional | Default: `Ward Communications Hub` |
+| `BOOTSTRAP_ADMIN_EMAIL` | Optional | Recommended; stored lowercase |
 | `NODE_ENV` | Yes | `production` |
 | `PROVIDER_MODE` | Optional | `simulated` (default) |
 

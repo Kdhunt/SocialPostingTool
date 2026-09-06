@@ -105,6 +105,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
         name: wardName,
         timeZone: 'America/Denver',
         adminUsername: 'bootstrap.admin',
+        adminEmail: '  Bootstrap.Admin@Example.COM  ',
         adminDisplayName: 'Bootstrap Admin',
         adminPassword: 'Fictional-Bootstrap-42',
         initialWardCode: 'fictional-bootstrap-code',
@@ -116,6 +117,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
 
     expect(result.ward.name).toBe(wardName);
     expect(result.adminUsername).toBe('bootstrap.admin');
+    expect(result.adminEmail).toBe('bootstrap.admin@example.com');
     expect(result).not.toHaveProperty('adminPassword');
     expect(result).not.toHaveProperty('initialWardCode');
 
@@ -124,6 +126,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
       include: { roles: { include: { role: true } } },
     });
     expect(adminUser.wardId).toBe(result.ward.id);
+    expect(adminUser.email).toBe('bootstrap.admin@example.com');
     expect(adminUser.roles.some((userRole) => userRole.role.name === 'WardAdmin')).toBe(true);
 
     const activeCode = await prisma.client.wardCodeVersion.findFirst({
@@ -144,6 +147,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
       {
         name: wardName,
         adminUsername: 'first.admin',
+        adminEmail: 'first.admin@example.com',
         adminDisplayName: 'First Admin',
         adminPassword: 'Fictional-Bootstrap-42',
         initialWardCode: 'fictional-bootstrap-code',
@@ -157,6 +161,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
         {
           name: wardName,
           adminUsername: 'second.admin',
+          adminEmail: 'second.admin@example.com',
           adminDisplayName: 'Second Admin',
           adminPassword: 'Fictional-Bootstrap-42',
           initialWardCode: 'another-bootstrap-code',
@@ -172,6 +177,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
       {
         name: wardName,
         adminUsername: 'listed.admin',
+        adminEmail: 'listed.admin@example.com',
         adminDisplayName: 'Listed Admin',
         adminPassword: 'Fictional-Bootstrap-42',
         initialWardCode: 'fictional-listed-code',
@@ -186,6 +192,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
       expect.objectContaining({
         id: created.adminUserId,
         username: 'listed.admin',
+        email: 'listed.admin@example.com',
         displayName: 'Listed Admin',
       }),
     ]);
@@ -196,6 +203,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
       {
         name: `Fictional Rotate Ward ${randomUUID()}`,
         adminUsername: 'rotate.admin',
+        adminEmail: 'rotate.admin@example.com',
         adminDisplayName: 'Rotate Admin',
         adminPassword: 'Fictional-Bootstrap-42',
         initialWardCode: 'fictional-original-code',
@@ -231,6 +239,22 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
     });
     expect(resetAudit).toBeTruthy();
     expect(JSON.stringify(resetAudit?.metadata ?? {})).not.toMatch(/Fictional-Reset-Password-42/);
+  });
+
+  it('rejects an implausible initial admin email', async () => {
+    await expect(
+      provisioning.create(
+        {
+          name: `Fictional Invalid Email Ward ${randomUUID()}`,
+          adminUsername: 'bad.email.admin',
+          adminEmail: 'not-an-email',
+          adminDisplayName: 'Bad Email Admin',
+          adminPassword: 'Fictional-Bootstrap-42',
+          initialWardCode: 'fictional-bootstrap-code',
+        },
+        { actorUserId, ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toThrow(/valid email/i);
   });
 
   it('does not grant platform.wards.manage to the WardAdmin role', async () => {

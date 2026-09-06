@@ -8,7 +8,7 @@ import type {
   WardListResponse,
   WardSummaryDto,
 } from '@ward-comms/validation';
-import { validatePasswordStrength } from '@ward-comms/domain';
+import { normalizeEmail, validatePasswordStrength } from '@ward-comms/domain';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordHasherService } from '../auth/password-hasher.service.js';
 import { WardCodeHasherService } from '../auth/ward-code-hasher.service.js';
@@ -75,6 +75,11 @@ export class WardProvisioningService {
       throw new BadRequestException('WardAdmin role is not configured. Run the database seed.');
     }
 
+    const adminEmail = normalizeEmail(input.adminEmail);
+    if (!adminEmail) {
+      throw new BadRequestException('Enter a valid email address.');
+    }
+
     const passwordHash = await this.passwordHasher.hash(input.adminPassword);
     const codeHash = await this.wardCodeHasher.hash(input.initialWardCode);
 
@@ -87,6 +92,7 @@ export class WardProvisioningService {
         data: {
           wardId: ward.id,
           username: input.adminUsername,
+          email: adminEmail,
           displayName: input.adminDisplayName,
           passwordHash,
           passwordUpdatedAt: new Date(),
@@ -118,6 +124,7 @@ export class WardProvisioningService {
       metadata: {
         wardName: result.ward.name,
         adminUsername: result.adminUser.username,
+        adminEmail: result.adminUser.email,
         adminUserId: result.adminUser.id,
       },
       ipAddress: context.ipAddress,
@@ -128,6 +135,7 @@ export class WardProvisioningService {
       ward: this.toSummary(result.ward),
       adminUserId: result.adminUser.id,
       adminUsername: result.adminUser.username,
+      adminEmail: result.adminUser.email ?? adminEmail,
     };
   }
 
