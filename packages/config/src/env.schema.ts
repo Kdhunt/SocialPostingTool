@@ -56,9 +56,10 @@ export const envSchema = z.object({
    * receive setup mail before they configure SendGrid/Twilio credentials.
    */
   SYSTEM_EMAIL_MODE: z.enum(['simulated', 'live']).default('simulated'),
-  SYSTEM_EMAIL_PROVIDER: z.enum(['sendgrid', 'smtp']).default('sendgrid'),
+  SYSTEM_EMAIL_PROVIDER: z.enum(['sendgrid', 'resend', 'smtp']).default('sendgrid'),
   SYSTEM_EMAIL_FROM: z.string().email().optional(),
   SYSTEM_EMAIL_SENDGRID_API_KEY: z.string().optional(),
+  SYSTEM_EMAIL_RESEND_API_KEY: z.string().optional(),
   SYSTEM_EMAIL_SMTP_HOST: z.string().optional(),
   SYSTEM_EMAIL_SMTP_PORT: z.coerce.number().int().positive().default(587),
   SYSTEM_EMAIL_SMTP_USER: z.string().optional(),
@@ -100,6 +101,21 @@ export function normalizePlatformEnv(
 
   if (!normalized.NODE_ENV && source.VERCEL) {
     normalized.NODE_ENV = 'production';
+  }
+
+  const resendApiKey =
+    source.SYSTEM_EMAIL_RESEND_API_KEY ?? source.RESEND_API_KEY ?? source.wardcomms_RESEND_API_KEY;
+  if (resendApiKey) {
+    normalized.SYSTEM_EMAIL_RESEND_API_KEY = resendApiKey;
+  }
+
+  const resendDomain = source.SYSTEM_EMAIL_RESEND_DOMAIN ?? source.wardcomms_RESEND_EMAIL_DOMAIN;
+  if (!normalized.SYSTEM_EMAIL_FROM && resendDomain) {
+    normalized.SYSTEM_EMAIL_FROM = `noreply@${resendDomain.replace(/^@/, '')}`;
+  }
+
+  if (!source.SYSTEM_EMAIL_PROVIDER && resendApiKey) {
+    normalized.SYSTEM_EMAIL_PROVIDER = 'resend';
   }
 
   return normalized;

@@ -88,5 +88,6 @@ non-enumeration; worker system-email adapter tests.
 - Unconfirmed email does **not** block sign-in (bootstrap and simulated
   mail must still work).
 - Production sending requires `SYSTEM_EMAIL_MODE=live` plus provider
-  secrets on the host. Campaign live sending still needs per-ward
-  credentials and `PROVIDER_MODE=live`.
+  secrets on the host. Resend marketplace vars `wardcomms_RESEND_API_KEY`
+  and `wardcomms_RESEND_EMAIL_DOMAIN` are mapped automatically. Campaign
+  live sending still needs per-ward credentials and `PROVIDER_MODE=live`.

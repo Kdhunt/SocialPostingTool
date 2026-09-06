@@ -8,7 +8,7 @@ Provider SDKs stay out of `packages/domain`. Adapters live in
 
 Account verification and password-reset mail use **platform** env vars
 (`SYSTEM_EMAIL_MODE`, `SYSTEM_EMAIL_PROVIDER`, `SYSTEM_EMAIL_FROM`, plus
-SendGrid or SMTP secrets). They do **not** use ward `ProviderCredential`
+Resend, SendGrid, or SMTP secrets). They do **not** use ward `ProviderCredential`
 rows, so a new ward can receive setup mail before campaign credentials
 exist. `SYSTEM_EMAIL_MODE=simulated` (default) records a successful send
 without calling a provider. See `docs/account-email.md`.
@@ -32,6 +32,12 @@ Campaign Email/SMS still use the modes below.
 - Responses never include plaintext secrets
 
 ### Example credential JSON shapes
+
+Email (Resend):
+
+```json
+{ "provider": "resend", "apiKey": "re_...", "fromAddress": "noreply@example.test" }
+```
 
 Email (SendGrid):
 

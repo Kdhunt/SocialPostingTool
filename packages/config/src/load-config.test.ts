@@ -68,4 +68,37 @@ describe('loadConfig', () => {
     expect(config.systemEmail.mode).toBe('live');
     expect(config.systemEmail.sendgridApiKey).toBe('sg-test-key');
   });
+
+  it('requires a Resend API key when SYSTEM_EMAIL_PROVIDER=resend', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        SYSTEM_EMAIL_MODE: 'live',
+        SYSTEM_EMAIL_PROVIDER: 'resend',
+        SYSTEM_EMAIL_FROM: 'noreply@example.test',
+      }),
+    ).toThrow(/SYSTEM_EMAIL_RESEND_API_KEY/);
+
+    const config = loadConfig({
+      ...validEnv,
+      SYSTEM_EMAIL_MODE: 'live',
+      SYSTEM_EMAIL_PROVIDER: 'resend',
+      SYSTEM_EMAIL_FROM: 'noreply@example.test',
+      SYSTEM_EMAIL_RESEND_API_KEY: 're-test-key',
+    });
+    expect(config.systemEmail.provider).toBe('resend');
+    expect(config.systemEmail.resendApiKey).toBe('re-test-key');
+  });
+
+  it('maps Vercel Resend marketplace env vars when live', () => {
+    const config = loadConfig({
+      ...validEnv,
+      SYSTEM_EMAIL_MODE: 'live',
+      wardcomms_RESEND_API_KEY: 're-marketplace-key',
+      wardcomms_RESEND_EMAIL_DOMAIN: 'wardcomms.online',
+    });
+    expect(config.systemEmail.provider).toBe('resend');
+    expect(config.systemEmail.resendApiKey).toBe('re-marketplace-key');
+    expect(config.systemEmail.fromAddress).toBe('noreply@wardcomms.online');
+  });
 });

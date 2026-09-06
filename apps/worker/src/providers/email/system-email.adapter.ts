@@ -62,9 +62,10 @@ export function createSystemEmailAdapter(options: SystemEmailAdapterOptions): Tr
 
 export function systemEmailCredentialsFromConfig(config: {
   mode: 'simulated' | 'live';
-  provider: 'sendgrid' | 'smtp';
+  provider: 'sendgrid' | 'resend' | 'smtp';
   fromAddress: string;
   sendgridApiKey: string | undefined;
+  resendApiKey?: string | undefined;
   smtp:
     | {
         host: string;
@@ -80,6 +81,9 @@ export function systemEmailCredentialsFromConfig(config: {
   }
   if (config.provider === 'sendgrid' && config.sendgridApiKey) {
     return { provider: 'sendgrid', apiKey: config.sendgridApiKey, fromAddress: config.fromAddress };
+  }
+  if (config.provider === 'resend' && config.resendApiKey) {
+    return { provider: 'resend', apiKey: config.resendApiKey, fromAddress: config.fromAddress };
   }
   if (config.provider === 'smtp' && config.smtp) {
     return {

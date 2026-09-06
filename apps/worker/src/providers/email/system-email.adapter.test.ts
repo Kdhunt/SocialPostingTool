@@ -44,15 +44,16 @@ describe('systemEmailCredentialsFromConfig', () => {
     ).toBeNull();
   });
 
-  it('builds sendgrid credentials in live mode', () => {
+  it('builds resend credentials in live mode', () => {
     expect(
       systemEmailCredentialsFromConfig({
         mode: 'live',
-        provider: 'sendgrid',
+        provider: 'resend',
         fromAddress: 'noreply@example.test',
-        sendgridApiKey: 'sg-key',
+        sendgridApiKey: undefined,
+        resendApiKey: 're-key',
         smtp: undefined,
       }),
-    ).toEqual({ provider: 'sendgrid', apiKey: 'sg-key', fromAddress: 'noreply@example.test' });
+    ).toEqual({ provider: 'resend', apiKey: 're-key', fromAddress: 'noreply@example.test' });
   });
 });

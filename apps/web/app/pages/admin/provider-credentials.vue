@@ -119,7 +119,8 @@ async function revoke(id: string): Promise<void> {
       </form>
       <details class="admin-page__examples">
         <summary>Example JSON shapes</summary>
-        <pre>Email (SendGrid): {"provider":"sendgrid","apiKey":"...","fromAddress":"noreply@example.test"}
+        <pre>Email (Resend): {"provider":"resend","apiKey":"re_...","fromAddress":"noreply@example.test"}
+Email (SendGrid): {"provider":"sendgrid","apiKey":"...","fromAddress":"noreply@example.test"}
 Email (SMTP): {"provider":"smtp","host":"localhost","port":1025,"user":"...","pass":"...","fromAddress":"..."}
 SMS: {"accountSid":"...","authToken":"...","fromNumber":"+15555550100"}
 Facebook Page: {"pageAccessToken":"...","pageId":"..."}</pre>

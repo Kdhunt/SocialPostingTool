@@ -73,4 +73,15 @@ describe('normalizePlatformEnv', () => {
       'postgresql://prisma-pooled',
     );
   });
+
+  it('maps Vercel Resend marketplace variables onto system email', () => {
+    const normalized = normalizePlatformEnv({
+      wardcomms_RESEND_API_KEY: 're_test_key',
+      wardcomms_RESEND_EMAIL_DOMAIN: 'wardcomms.online',
+    });
+
+    expect(normalized.SYSTEM_EMAIL_RESEND_API_KEY).toBe('re_test_key');
+    expect(normalized.SYSTEM_EMAIL_FROM).toBe('noreply@wardcomms.online');
+    expect(normalized.SYSTEM_EMAIL_PROVIDER).toBe('resend');
+  });
 });

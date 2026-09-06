@@ -2,10 +2,16 @@ import { randomUUID } from 'node:crypto';
 import type { EmailSendRequest, ProviderSendResult } from '@ward-comms/domain';
 import { appendEmailFooter } from '../communication-footer.js';
 
-export type EmailProviderKind = 'sendgrid' | 'smtp';
+export type EmailProviderKind = 'sendgrid' | 'resend' | 'smtp';
 
 export interface SendGridEmailCredentials {
   provider: 'sendgrid';
+  apiKey: string;
+  fromAddress: string;
+}
+
+export interface ResendEmailCredentials {
+  provider: 'resend';
   apiKey: string;
   fromAddress: string;
 }
@@ -20,7 +26,7 @@ export interface SmtpEmailCredentials {
   secure?: boolean;
 }
 
-export type LiveEmailCredentials = SendGridEmailCredentials | SmtpEmailCredentials;
+export type LiveEmailCredentials = SendGridEmailCredentials | ResendEmailCredentials | SmtpEmailCredentials;
 
 export function parseLiveEmailCredentials(plaintext: string): LiveEmailCredentials {
   const parsed = JSON.parse(plaintext) as Partial<LiveEmailCredentials & { apiKey?: string; fromAddress?: string }>;
@@ -29,6 +35,12 @@ export function parseLiveEmailCredentials(plaintext: string): LiveEmailCredentia
       throw new Error('SendGrid credentials must include apiKey and fromAddress.');
     }
     return { provider: 'sendgrid', apiKey: parsed.apiKey, fromAddress: parsed.fromAddress };
+  }
+  if (parsed.provider === 'resend') {
+    if (!parsed.apiKey || !parsed.fromAddress) {
+      throw new Error('Resend credentials must include apiKey and fromAddress.');
+    }
+    return { provider: 'resend', apiKey: parsed.apiKey, fromAddress: parsed.fromAddress };
   }
   if (parsed.provider === 'smtp') {
     const smtp = parsed as Partial<SmtpEmailCredentials>;
@@ -49,7 +61,7 @@ export function parseLiveEmailCredentials(plaintext: string): LiveEmailCredentia
   if (parsed.apiKey && parsed.fromAddress) {
     return { provider: 'sendgrid', apiKey: parsed.apiKey, fromAddress: parsed.fromAddress };
   }
-  throw new Error('Email credentials must specify provider "sendgrid" or "smtp".');
+  throw new Error('Email credentials must specify provider "sendgrid", "resend", or "smtp".');
 }
 
 export class LiveEmailProviderAdapter {
@@ -66,6 +78,9 @@ export async function sendLiveEmailMessage(
 ): Promise<ProviderSendResult> {
   if (credentials.provider === 'sendgrid') {
     return sendViaSendGrid(request, credentials, request.body);
+  }
+  if (credentials.provider === 'resend') {
+    return sendViaResend(request, credentials, request.body);
   }
   return sendViaSmtp(request, credentials, request.body);
 }
@@ -104,6 +119,49 @@ async function sendViaSendGrid(
   }
   if (status === 429) {
     return { success: false, errorCode: 'rate_limited', errorMessage: 'SendGrid rate limited the request.' };
+  }
+  return { success: false, errorCode: 'provider_unavailable', errorMessage: errorText.slice(0, 500) };
+}
+
+async function sendViaResend(
+  request: { toAddress: string; subject: string },
+  credentials: ResendEmailCredentials,
+  body: string,
+): Promise<ProviderSendResult> {
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${credentials.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: credentials.fromAddress,
+      to: [request.toAddress],
+      subject: request.subject,
+      text: body,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    id?: string;
+    message?: string;
+    name?: string;
+  };
+
+  if (response.ok && payload.id) {
+    return { success: true, providerMessageId: payload.id };
+  }
+
+  const status = response.status;
+  const errorText = payload.message ?? payload.name ?? 'Resend request failed.';
+  if (status === 401 || status === 403) {
+    return { success: false, errorCode: 'unauthorized', errorMessage: 'Resend rejected the API key.' };
+  }
+  if (status === 400 || status === 422) {
+    return { success: false, errorCode: 'invalid_recipient', errorMessage: errorText.slice(0, 500) };
+  }
+  if (status === 429) {
+    return { success: false, errorCode: 'rate_limited', errorMessage: 'Resend rate limited the request.' };
   }
   return { success: false, errorCode: 'provider_unavailable', errorMessage: errorText.slice(0, 500) };
 }

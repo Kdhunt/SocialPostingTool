@@ -90,7 +90,10 @@ The build maps these to `DATABASE_URL` and runs migrations + seed on deploy.
 | `BOOTSTRAP_ADMIN_EMAIL` | Optional | Recommended; stored lowercase |
 | `NODE_ENV` | Yes | `production` |
 | `PROVIDER_MODE` | Optional | `simulated` (default) |
-| `SYSTEM_EMAIL_MODE` | Optional | `simulated` (default). Set `live` plus `SYSTEM_EMAIL_FROM` and SendGrid/SMTP secrets to send verification and password-reset mail |
+| `SYSTEM_EMAIL_MODE` | Optional | `simulated` (default). Set `live` plus `SYSTEM_EMAIL_FROM` and a provider key |
+| `SYSTEM_EMAIL_PROVIDER` | Optional | `resend` (recommended), `sendgrid`, or `smtp` |
+| `SYSTEM_EMAIL_RESEND_API_KEY` | If Resend | Resend API key (`re_…`). Also accepts `RESEND_API_KEY` or `wardcomms_RESEND_API_KEY` |
+| `wardcomms_RESEND_EMAIL_DOMAIN` | Optional | Maps to `SYSTEM_EMAIL_FROM=noreply@<domain>` when FROM is unset |
 
 **Auto-filled by Vercel when linked / deployed:**
 

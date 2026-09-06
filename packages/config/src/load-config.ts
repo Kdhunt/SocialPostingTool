@@ -31,9 +31,10 @@ export interface AppConfig {
   corsAllowedOrigins: string[];
   systemEmail: {
     mode: 'simulated' | 'live';
-    provider: 'sendgrid' | 'smtp';
+    provider: 'sendgrid' | 'resend' | 'smtp';
     fromAddress: string;
     sendgridApiKey: string | undefined;
+    resendApiKey?: string | undefined;
     smtp:
       | {
           host: string;
@@ -90,6 +91,7 @@ function toAppConfig(env: Env): AppConfig {
       provider: env.SYSTEM_EMAIL_PROVIDER,
       fromAddress: env.SYSTEM_EMAIL_FROM ?? 'noreply@localhost',
       sendgridApiKey: env.SYSTEM_EMAIL_SENDGRID_API_KEY,
+      resendApiKey: env.SYSTEM_EMAIL_RESEND_API_KEY,
       smtp:
         env.SYSTEM_EMAIL_SMTP_HOST && env.SYSTEM_EMAIL_SMTP_USER && env.SYSTEM_EMAIL_SMTP_PASS
           ? {
@@ -129,6 +131,11 @@ export function loadConfig(source: Record<string, string | undefined> = process.
     if (config.systemEmail.provider === 'sendgrid' && !config.systemEmail.sendgridApiKey) {
       throw new ConfigValidationError(
         'Invalid environment configuration: SYSTEM_EMAIL_SENDGRID_API_KEY is required when SYSTEM_EMAIL_MODE=live and SYSTEM_EMAIL_PROVIDER=sendgrid',
+      );
+    }
+    if (config.systemEmail.provider === 'resend' && !config.systemEmail.resendApiKey) {
+      throw new ConfigValidationError(
+        'Invalid environment configuration: SYSTEM_EMAIL_RESEND_API_KEY is required when SYSTEM_EMAIL_MODE=live and SYSTEM_EMAIL_PROVIDER=resend',
       );
     }
     if (config.systemEmail.provider === 'smtp' && !config.systemEmail.smtp) {

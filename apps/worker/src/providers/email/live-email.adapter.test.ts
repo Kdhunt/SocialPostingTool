@@ -12,6 +12,16 @@ describe('parseLiveEmailCredentials', () => {
     }
   });
 
+  it('parses explicit resend provider shape', () => {
+    const creds = parseLiveEmailCredentials(
+      JSON.stringify({ provider: 'resend', apiKey: 're-key', fromAddress: 'noreply@example.test' }),
+    );
+    expect(creds.provider).toBe('resend');
+    if (creds.provider === 'resend') {
+      expect(creds.apiKey).toBe('re-key');
+    }
+  });
+
   it('parses smtp provider shape', () => {
     const creds = parseLiveEmailCredentials(
       JSON.stringify({
