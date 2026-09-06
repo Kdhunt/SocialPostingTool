@@ -90,6 +90,7 @@ The build maps these to `DATABASE_URL` and runs migrations + seed on deploy.
 | `BOOTSTRAP_ADMIN_EMAIL` | Optional | Recommended; stored lowercase |
 | `NODE_ENV` | Yes | `production` |
 | `PROVIDER_MODE` | Optional | `simulated` (default) |
+| `SYSTEM_EMAIL_MODE` | Optional | `simulated` (default). Set `live` plus `SYSTEM_EMAIL_FROM` and SendGrid/SMTP secrets to send verification and password-reset mail |
 
 **Auto-filled by Vercel when linked / deployed:**
 
@@ -125,6 +126,7 @@ Do **not** run `db:seed:dev` in production.
 |------|----------|
 | `/api/cron/process-schedules` | every 5 minutes |
 | `/api/cron/process-delivery-queue` | every minute |
+| `/api/cron/process-outbound-mail` | every minute |
 
 Requires **Vercel Pro**. Uses `CRON_SECRET`.
 

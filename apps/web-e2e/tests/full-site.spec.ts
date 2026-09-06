@@ -28,6 +28,12 @@ test.describe('Full site — authenticated admin', () => {
     await expectSettledList(page);
 
     const nav = primaryNav(page);
+    await nav.getByRole('link', { name: 'Account' }).click();
+    await expectPageHeading(page, 'Account');
+    await expect(page.getByRole('heading', { name: 'Email status' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Change email' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Change password' })).toBeVisible();
+
     await nav.getByRole('link', { name: 'Security' }).click();
     await expectPageHeading(page, 'Security');
     await expect(
@@ -207,6 +213,25 @@ test.describe('Full site — authenticated admin', () => {
     await page.getByLabel('Channel').selectOption('Email');
     await page.getByRole('button', { name: 'Add destination' }).click();
     await expect(page.getByText(name)).toBeVisible({ timeout: 20_000 });
+  });
+
+  test('account email and password forms reject invalid input without changing the signed-in admin', async ({
+    page,
+  }) => {
+    await page.goto('/settings/account');
+    await expectPageHeading(page, 'Account');
+    if (await page.getByText('Email unconfirmed').isVisible()) {
+      await expect(page.getByRole('button', { name: 'Resend confirmation email' })).toBeVisible();
+    }
+
+    await page.getByLabel('Email').fill('not-a-valid-email');
+    await page.getByRole('button', { name: 'Update email' }).click();
+    await expect(page.getByRole('alert').or(page.getByText(/valid email|invalid/i))).toBeVisible();
+
+    await page.getByLabel('Current password').fill('wrong-current-password');
+    await page.getByLabel('New password').fill('short');
+    await page.getByRole('button', { name: 'Update password' }).click();
+    await expect(page.getByText(/at least 12 characters|Unable to update/i)).toBeVisible();
   });
 
   test('create a fictional ward user and reject a short password reset', async ({ page }) => {

@@ -55,15 +55,23 @@ export function parseLiveEmailCredentials(plaintext: string): LiveEmailCredentia
 export class LiveEmailProviderAdapter {
   async send(request: EmailSendRequest, credentials: LiveEmailCredentials): Promise<ProviderSendResult> {
     const body = appendEmailFooter(request.body);
-    if (credentials.provider === 'sendgrid') {
-      return sendViaSendGrid(request, credentials, body);
-    }
-    return sendViaSmtp(request, credentials, body);
+    return sendLiveEmailMessage({ toAddress: request.toAddress, subject: request.subject, body }, credentials);
   }
 }
 
+/** Send a finalized body (campaign adapters append the member footer first). */
+export async function sendLiveEmailMessage(
+  request: { toAddress: string; subject: string; body: string },
+  credentials: LiveEmailCredentials,
+): Promise<ProviderSendResult> {
+  if (credentials.provider === 'sendgrid') {
+    return sendViaSendGrid(request, credentials, request.body);
+  }
+  return sendViaSmtp(request, credentials, request.body);
+}
+
 async function sendViaSendGrid(
-  request: EmailSendRequest,
+  request: { toAddress: string; subject: string },
   credentials: SendGridEmailCredentials,
   body: string,
 ): Promise<ProviderSendResult> {
@@ -101,7 +109,7 @@ async function sendViaSendGrid(
 }
 
 async function sendViaSmtp(
-  request: EmailSendRequest,
+  request: { toAddress: string; subject: string },
   credentials: SmtpEmailCredentials,
   body: string,
 ): Promise<ProviderSendResult> {

@@ -149,6 +149,10 @@ async function onTotpSubmit(): Promise<void> {
       <UiAppButton type="submit" :disabled="submitting" class="login__submit">
         {{ submitting ? 'Signing in…' : 'Sign in' }}
       </UiAppButton>
+
+      <p class="login__forgot">
+        <NuxtLink to="/forgot-password">Forgot password?</NuxtLink>
+      </p>
     </form>
 
     <form v-else class="login__form" novalidate @submit.prevent="onTotpSubmit">
@@ -199,5 +203,10 @@ async function onTotpSubmit(): Promise<void> {
 
 .login__submit {
   width: 100%;
+}
+
+.login__forgot {
+  margin: 0;
+  text-align: center;
 }
 </style>

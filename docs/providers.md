@@ -4,6 +4,17 @@ Provider SDKs stay out of `packages/domain`. Adapters live in
 `apps/worker/src/providers` and implement the domain interfaces from
 `packages/domain/src/delivery/provider-adapter.ts`.
 
+## System (account) email
+
+Account verification and password-reset mail use **platform** env vars
+(`SYSTEM_EMAIL_MODE`, `SYSTEM_EMAIL_PROVIDER`, `SYSTEM_EMAIL_FROM`, plus
+SendGrid or SMTP secrets). They do **not** use ward `ProviderCredential`
+rows, so a new ward can receive setup mail before campaign credentials
+exist. `SYSTEM_EMAIL_MODE=simulated` (default) records a successful send
+without calling a provider. See `docs/account-email.md`.
+
+Campaign Email/SMS still use the modes below.
+
 ## Modes
 
 | `PROVIDER_MODE` | Behavior |

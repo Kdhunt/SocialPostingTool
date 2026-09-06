@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { applicationUserEmailSchema } from './email.schema.js';
 
 // Request/response contracts for the Phase 4 authentication flows. These
 // are the ONLY shapes that may cross the wire — password hashes, ward code
@@ -34,6 +35,8 @@ export const authUserSchema = z.object({
   displayName: z.string(),
   permissions: z.array(z.string()),
   totpEnabled: z.boolean().optional(),
+  email: z.string().nullable().optional(),
+  emailVerifiedAt: z.string().datetime().nullable().optional(),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
 
@@ -116,3 +119,56 @@ export const sessionSummarySchema = z.object({
   expiresAt: z.string().datetime(),
 });
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
+
+export const GENERIC_ACCOUNT_EMAIL_MESSAGE =
+  'If an account exists for that email, we sent a message with next steps.';
+
+export const forgotPasswordRequestSchema = z.object({
+  email: z.string().min(1).max(255),
+});
+export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
+
+export const verifyEmailRequestSchema = z.object({
+  token: z.string().min(1).max(512),
+});
+export type VerifyEmailRequest = z.infer<typeof verifyEmailRequestSchema>;
+
+export const resetPasswordWithTokenRequestSchema = z.object({
+  token: z.string().min(1).max(512),
+  password: z
+    .string()
+    .min(12, 'Password must be at least 12 characters.')
+    .max(512, 'Password must be at most 512 characters.'),
+});
+export type ResetPasswordWithTokenRequest = z.infer<typeof resetPasswordWithTokenRequestSchema>;
+
+export const accountEmailAcceptedResponseSchema = z.object({
+  message: z.string(),
+});
+export type AccountEmailAcceptedResponse = z.infer<typeof accountEmailAcceptedResponseSchema>;
+
+export const changeEmailRequestSchema = z.object({
+  email: applicationUserEmailSchema,
+});
+export type ChangeEmailRequest = z.infer<typeof changeEmailRequestSchema>;
+
+export const changeEmailResponseSchema = z.object({
+  email: z.string(),
+  emailVerifiedAt: z.string().datetime().nullable(),
+  message: z.string(),
+});
+export type ChangeEmailResponse = z.infer<typeof changeEmailResponseSchema>;
+
+export const changePasswordRequestSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required.').max(512),
+    newPassword: z
+      .string()
+      .min(12, 'Password must be at least 12 characters.')
+      .max(512, 'Password must be at most 512 characters.'),
+  })
+  .refine((value) => value.currentPassword !== value.newPassword, {
+    message: 'Choose a password that is different from your current password.',
+    path: ['newPassword'],
+  });
+export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;

@@ -70,8 +70,11 @@ This document describes the threat model for the login flow implemented in
 - **No breached-password-list check** (e.g. HaveIBeenPwned k-anonymity
   API) — only a small common-password blocklist. Consider adding this for
   production.
-- **No email-based account recovery flow** is implemented yet — administrators
-  disable/enable accounts directly; a self-service password reset flow is
-  out of scope for Phase 4. New accounts require a normalized unique-per-ward
-  email, but inbox confirmation (`verifiedAt` / verification token) is not
-  implemented.
+- **Email-based recovery and inbox confirmation are implemented.** Tokens are
+  hashed at rest, short-lived, and rate-limited. Forgot-password does not
+  reveal whether an address exists. Signed-in users can change their own
+  password (`POST /auth/change-password`, current + new, all sessions
+  revoked) or email (`PATCH /auth/email`, unique per ward, confirmation
+  cleared). Administrators can still set a password as an emergency override
+  or change a same-ward user's email; neither path emails a plaintext
+  password. Unconfirmed email does not block sign-in. See `docs/account-email.md`.

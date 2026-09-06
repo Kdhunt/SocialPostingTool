@@ -98,6 +98,19 @@ import {
   resetPasswordRequestSchema,
   rotateWardCodeRequestSchema,
   createUserRequestSchema,
+  forgotPasswordRequestSchema,
+  resetPasswordWithTokenRequestSchema,
+  verifyEmailRequestSchema,
+  accountEmailAcceptedResponseSchema,
+  changeEmailRequestSchema,
+  changeEmailResponseSchema,
+  changePasswordRequestSchema,
+  updateUserEmailRequestSchema,
+  type AccountEmailAcceptedResponse,
+  type ChangeEmailRequest,
+  type ChangeEmailResponse,
+  type ChangePasswordRequest,
+  type UpdateUserEmailRequest,
   type AuditListResponse,
   type AuditSearchQuery,
   type CreateUserRequest,
@@ -274,6 +287,49 @@ export class WardCommsApiClient {
     await this.request('/auth/logout', { method: 'POST' });
   }
 
+  async requestPasswordReset(email: string): Promise<AccountEmailAcceptedResponse> {
+    const response = await this.request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify(forgotPasswordRequestSchema.parse({ email })),
+    });
+    return accountEmailAcceptedResponseSchema.parse(await response.json());
+  }
+
+  async verifyEmail(token: string): Promise<AccountEmailAcceptedResponse> {
+    const response = await this.request('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify(verifyEmailRequestSchema.parse({ token })),
+    });
+    return accountEmailAcceptedResponseSchema.parse(await response.json());
+  }
+
+  async resetPasswordWithToken(token: string, password: string): Promise<AccountEmailAcceptedResponse> {
+    const response = await this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(resetPasswordWithTokenRequestSchema.parse({ token, password })),
+    });
+    return accountEmailAcceptedResponseSchema.parse(await response.json());
+  }
+
+  async changeOwnEmail(input: ChangeEmailRequest): Promise<ChangeEmailResponse> {
+    const response = await this.request('/auth/email', {
+      method: 'PATCH',
+      body: JSON.stringify(changeEmailRequestSchema.parse(input)),
+    });
+    return changeEmailResponseSchema.parse(await response.json());
+  }
+
+  async changeOwnPassword(input: ChangePasswordRequest): Promise<void> {
+    await this.request('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(changePasswordRequestSchema.parse(input)),
+    });
+  }
+
+  async resendOwnVerificationEmail(): Promise<void> {
+    await this.request('/auth/verification-email', { method: 'POST' });
+  }
+
   // --- Admin: users & ward -----------------------------------------------------
 
   async listUsers(): Promise<UserListResponse> {
@@ -358,6 +414,26 @@ export class WardCommsApiClient {
       method: 'POST',
       body: JSON.stringify(resetPasswordRequestSchema.parse({ password })),
     });
+  }
+
+  async sendUserVerificationEmail(userId: string): Promise<void> {
+    await this.request(`/users/${userId}/verification-email`, { method: 'POST' });
+  }
+
+  async sendUserPasswordResetEmail(userId: string): Promise<void> {
+    await this.request(`/users/${userId}/password-reset-email`, { method: 'POST' });
+  }
+
+  async updateUserEmail(userId: string, input: UpdateUserEmailRequest): Promise<UserSummaryDto> {
+    const response = await this.request(`/users/${userId}/email`, {
+      method: 'PATCH',
+      body: JSON.stringify(updateUserEmailRequestSchema.parse(input)),
+    });
+    return userSummarySchema.parse(await response.json());
+  }
+
+  async sendWardAdminPasswordResetEmail(wardId: string, userId: string): Promise<void> {
+    await this.request(`/platform/wards/${wardId}/admins/${userId}/password-reset-email`, { method: 'POST' });
   }
 
   async listAuditEvents(query: AuditSearchQuery = {}): Promise<AuditListResponse> {

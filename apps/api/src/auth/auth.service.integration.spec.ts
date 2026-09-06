@@ -38,6 +38,13 @@ function fakeConfig(): AppConfig {
     wardCodePepper: 'fictional-pepper-value',
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    systemEmail: {
+      mode: 'simulated',
+      provider: 'sendgrid',
+      fromAddress: 'noreply@localhost',
+      sendgridApiKey: undefined,
+      smtp: undefined,
+    },
     openAiApiKey: undefined,
     aiImageMode: 'simulated',
     corsAllowedOrigins: ['http://localhost:3000'],
@@ -255,6 +262,35 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     await authService.logout(session.id, user.id, context(deviceId));
 
     await expect(authService.validateSessionToken(verified.sessionToken)).rejects.toThrow();
+  });
+
+  it('changes the signed-in password, revokes sessions, and rejects the previous password', async () => {
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    const deviceId = `device-${randomUUID()}`;
+    const first = await authService.login(user.username, password, context(deviceId));
+    if (first.status !== 'ward_code_required') throw new Error('expected ward_code_required');
+    const verified = await authService.verifyWardCode(first.loginTicket, wardCode, context(deviceId));
+    if (verified.status !== 'ok' || !verified.sessionToken) throw new Error('expected session token');
+
+    await authService.changeOwnPassword(user.id, password, 'Fictional-Reset-99x', context(deviceId));
+
+    await expect(authService.validateSessionToken(verified.sessionToken)).rejects.toThrow();
+    await expect(authService.login(user.username, password, context(`device-${randomUUID()}`))).rejects.toThrow(
+      InvalidCredentialsError,
+    );
+
+    const afterChange = await authService.login(user.username, 'Fictional-Reset-99x', context(`device-${randomUUID()}`));
+    expect(afterChange.status).toBe('ward_code_required');
+
+    await expect(
+      authService.changeOwnPassword(user.id, 'wrong-current-99x', 'Fictional-Another-99x', context(deviceId)),
+    ).rejects.toThrow(/Incorrect current password/i);
+
+    const auditEvent = await prisma.client.auditEvent.findFirst({
+      where: { action: 'account.password_changed', entityId: user.id },
+    });
+    expect(auditEvent).toBeTruthy();
+    expect(JSON.stringify(auditEvent ?? {})).not.toMatch(/Fictional-Reset-99x/);
   });
 
   it('surfaces a user permission set derived from assigned roles, never a raw hash', async () => {

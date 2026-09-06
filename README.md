@@ -129,8 +129,10 @@ user. After upgrading, re-run `pnpm --filter @ward-comms/database db:seed` so
 - `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (only when `/auth/login` responds `ward_code_required`)
 - `POST /auth/refresh` → `{ refreshToken }` (mobile only)
 - `POST /auth/logout`, `GET /auth/session`, `GET /auth/sessions`, `POST /auth/sessions/:id/revoke`
+- `PATCH /auth/email`, `POST /auth/change-password`, `POST /auth/verification-email` (signed-in account management)
 - `POST /auth/users/:id/disable` / `.../enable` (requires the `users.manage` permission)
-- `POST /users/:id/password` — same-ward password reset (`users.manage`)
+- `POST /users/:id/password` — same-ward emergency password set (`users.manage`)
+- `PATCH /users/:id/email` — same-ward email change; clears confirmation and queues verification (`users.manage`)
 - `POST /platform/wards/:wardId/code/rotate` and `POST /platform/wards/:wardId/admins/:userId/password` (`platform.wards.manage`)
 
 See `docs/threat-model-auth.md` for the full threat model and known limitations.
@@ -209,9 +211,16 @@ calls. See `docs/providers.md`. Manage credentials at
 `/admin/provider-credentials`. Facebook Page publishing only — Groups
 are not supported.
 
+Campaign Email/SMS send through the worker when a campaign is sent
+(`PROVIDER_MODE=live` plus ward credentials). Account confirmation and
+password-reset mail use `SYSTEM_EMAIL_*` (see `docs/account-email.md`).
+Self-service pages: `/settings/account` (signed-in email/password), `/forgot-password`,
+`/reset-password`, `/verify-email`.
+
 ### Admin overview (post-phase)
 
-- `/admin/users` — list/create users (email required), assign ward roles, enable/disable, reset passwords
+- `/admin/users` — list/create users (email required), change email, assign ward roles, enable/disable, email a reset/confirmation link, or set a password as an emergency override
+- `/settings/account` — signed-in email, confirmation status, and password change
 - `/admin/ward-code` — view active version, rotate **this** ward’s code
 - `/admin/wards` — PlatformAdmin only: create wards, rotate any ward code, reset ward admin passwords
 - `/admin/provider-credentials` — upsert/revoke encrypted provider secrets
@@ -255,7 +264,23 @@ pnpm --filter @ward-comms/web-e2e exec playwright install chromium
 pnpm test:e2e
 ```
 
-Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests also need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE`. Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit those values.
+Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE`, **or** a gitignored Playwright storage state at `apps/web-e2e/.auth/user.json`. Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit passwords, ward codes, or session files.
+
+To capture the session from a headed window (sign in yourself, including ward code):
+
+```bash
+pnpm --filter @ward-comms/web-e2e test:e2e:save-session
+```
+
+To copy cookies from an already-signed-in Chrome with remote debugging:
+
+```bash
+# Chrome 144+: chrome://inspect/#remote-debugging → allow, then reload the chrome-devtools MCP.
+# Or start Chrome with --remote-debugging-port=9222 and:
+E2E_USE_CDP=1 pnpm --filter @ward-comms/web-e2e test:e2e:save-session
+```
+
+The workspace Cursor MCP config includes `chrome-devtools` with `--autoConnect` so the agent can attach to that same Chrome after you allow remote debugging.
 
 ## Common scripts
 

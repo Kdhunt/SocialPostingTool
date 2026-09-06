@@ -42,4 +42,30 @@ describe('loadConfig', () => {
       }),
     ).toThrow(ConfigValidationError);
   });
+
+  it('defaults system email to simulated without requiring provider secrets', () => {
+    const config = loadConfig(validEnv);
+    expect(config.systemEmail.mode).toBe('simulated');
+    expect(config.systemEmail.fromAddress).toBe('noreply@localhost');
+  });
+
+  it('requires live system-email credentials when SYSTEM_EMAIL_MODE=live', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        SYSTEM_EMAIL_MODE: 'live',
+        SYSTEM_EMAIL_PROVIDER: 'sendgrid',
+      }),
+    ).toThrow(/SYSTEM_EMAIL_FROM/);
+
+    const config = loadConfig({
+      ...validEnv,
+      SYSTEM_EMAIL_MODE: 'live',
+      SYSTEM_EMAIL_PROVIDER: 'sendgrid',
+      SYSTEM_EMAIL_FROM: 'noreply@example.test',
+      SYSTEM_EMAIL_SENDGRID_API_KEY: 'sg-test-key',
+    });
+    expect(config.systemEmail.mode).toBe('live');
+    expect(config.systemEmail.sendgridApiKey).toBe('sg-test-key');
+  });
 });

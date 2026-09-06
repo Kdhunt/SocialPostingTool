@@ -10,6 +10,7 @@ import { CampaignsModule } from './campaigns/campaigns.module.js';
 import { DeliveryModule } from './delivery/delivery.module.js';
 import { ProvidersModule } from './providers/providers.module.js';
 import { AdminModule } from './admin/admin.module.js';
+import { MessagingModule } from './messaging/messaging.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AdminModule } from './admin/admin.module.js';
     AuditModule,
     HealthModule,
     AuthModule,
+    MessagingModule,
     DirectoryModule,
     AudiencesModule,
     CampaignsModule,

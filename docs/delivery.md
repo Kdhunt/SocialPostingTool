@@ -61,6 +61,9 @@ pnpm --filter @ward-comms/worker dev
 | Facebook | message contains `simulate-permanent-failure` | permanent |
 | Facebook | message contains `simulate-transient-failure` | transient |
 
+Account verification and password-reset emails use a separate
+`OutboundMessage` outbox (`docs/account-email.md`), not `DeliveryRecipient`.
+
 ## Known gaps
 
 - When a person belongs to multiple overlapping audiences with different

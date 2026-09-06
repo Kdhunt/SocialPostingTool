@@ -35,6 +35,17 @@ test.describe('Authenticated app', () => {
     await expectPageHeading(page, 'Communication destinations');
   });
 
+  test('account settings page loads', async ({ page }) => {
+    await page.goto('/settings/account');
+    await expectPageHeading(page, 'Account');
+    await expect(page.getByRole('heading', { name: 'Email status' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Change email' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Change password' })).toBeVisible();
+    if (await page.getByText('Email unconfirmed').isVisible()) {
+      await expect(page.getByRole('button', { name: 'Resend confirmation email' })).toBeVisible();
+    }
+  });
+
   test('security settings page loads', async ({ page }) => {
     await page.goto('/settings/security');
     await expectPageHeading(page, 'Security');

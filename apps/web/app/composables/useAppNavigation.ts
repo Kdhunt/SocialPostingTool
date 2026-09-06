@@ -30,7 +30,10 @@ export function useAppNavigation(): {
     {
       id: 'account',
       label: 'Account',
-      items: [{ label: 'Security', to: '/settings/security', matchPrefix: '/settings/security' }],
+      items: [
+        { label: 'Account', to: '/settings/account', matchPrefix: '/settings/account' },
+        { label: 'Security', to: '/settings/security', matchPrefix: '/settings/security' },
+      ],
     },
     {
       id: 'overview',

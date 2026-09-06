@@ -248,4 +248,73 @@ describe('WardCommsApiClient', () => {
       expect.objectContaining({ method: 'POST' }),
     );
   });
+
+  it('updates the signed-in user email and password through auth routes', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: 'new.member@example.com',
+            emailVerifiedAt: null,
+            message: 'Email updated. Confirm the new address from the message we queued.',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    const changed = await client.changeOwnEmail({ email: '  New.Member@Example.COM  ' });
+    expect(changed.email).toBe('new.member@example.com');
+    expect(changed.emailVerifiedAt).toBeNull();
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:3001/auth/email');
+
+    await client.changeOwnPassword({
+      currentPassword: 'Fictional-Password-42',
+      newPassword: 'Fictional-Reset-99x',
+    });
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe('http://localhost:3001/auth/change-password');
+
+    await client.resendOwnVerificationEmail();
+    expect(fetchImpl.mock.calls[2]?.[0]).toBe('http://localhost:3001/auth/verification-email');
+  });
+
+  it('updates a same-ward user email through the admin route', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'user-1',
+          username: 'ward.member',
+          email: 'updated.member@example.com',
+          emailVerifiedAt: null,
+          displayName: 'Fictional Member',
+          disabledAt: null,
+          lastLoginAt: null,
+          roleIds: [],
+          roleNames: [],
+        }),
+        { status: 200 },
+      ),
+    );
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    const updated = await client.updateUserEmail('user-1', { email: 'updated.member@example.com' });
+    expect(updated.email).toBe('updated.member@example.com');
+    expect(updated.emailVerifiedAt).toBeNull();
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:3001/users/user-1/email');
+  });
+
+  it('requests a password reset email without leaking account existence', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: 'If an account exists for that email, we sent a message with next steps.' }), {
+        status: 200,
+      }),
+    );
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+    const result = await client.requestPasswordReset('member@example.com');
+    expect(result.message).toContain('If an account exists');
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:3001/auth/forgot-password');
+  });
 });

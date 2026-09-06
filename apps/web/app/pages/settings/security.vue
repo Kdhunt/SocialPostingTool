@@ -100,8 +100,12 @@ async function disableTwoFactor(): Promise<void> {
   <LayoutPageContainer>
     <LayoutPageHeader
       title="Security"
-      description="Protect your account with an authenticator app. You will be asked for a code when signing in."
+      description="Protect your account with an authenticator app. You will be asked for a code when signing in. Email and password are on Account."
     />
+
+    <p class="security-section__hint">
+      <NuxtLink to="/settings/account">Change email or password</NuxtLink>
+    </p>
 
     <p v-if="status === undefined">Loading…</p>
     <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>

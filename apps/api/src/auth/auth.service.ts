@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { ApplicationUser, UserSession } from '@prisma/client';
 import type { AppConfig } from '@ward-comms/config';
 import {
@@ -9,6 +9,7 @@ import {
   isTotpEnabled,
   isTotpLocked,
   LOGIN_TICKET_TTL_MS,
+  validatePasswordStrength,
   MOBILE_ACCESS_TOKEN_TTL_MS,
   MOBILE_REFRESH_TOKEN_TTL_MS,
   requiresWardCodeVerification,
@@ -343,14 +344,7 @@ export class AuthService {
     await this.users.recordSuccessfulLogin(user.id);
 
     const permissionKeys = await this.users.getPermissionKeys(user.id);
-    const authUser: AuthUser = {
-      id: user.id,
-      wardId: user.wardId,
-      username: user.username,
-      displayName: user.displayName,
-      permissions: permissionKeys,
-      totpEnabled: isTotpEnabled(user),
-    };
+    const authUser = this.toAuthUser(user, permissionKeys);
 
     if (context.clientType === 'mobile') {
       const refreshToken = generateOpaqueToken();
@@ -496,15 +490,21 @@ export class AuthService {
 
     const permissionKeys = await this.users.getPermissionKeys(user.id);
     return {
-      user: {
-        id: user.id,
-        wardId: user.wardId,
-        username: user.username,
-        displayName: user.displayName,
-        permissions: permissionKeys,
-        totpEnabled: isTotpEnabled(user),
-      },
+      user: this.toAuthUser(user, permissionKeys),
       session,
+    };
+  }
+
+  private toAuthUser(user: ApplicationUser, permissionKeys: string[]): AuthUser {
+    return {
+      id: user.id,
+      wardId: user.wardId,
+      username: user.username,
+      displayName: user.displayName,
+      permissions: permissionKeys,
+      totpEnabled: isTotpEnabled(user),
+      email: user.email,
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
     };
   }
 
@@ -612,6 +612,44 @@ export class AuthService {
       action: 'auth.totp.disabled',
       entityType: 'ApplicationUser',
       entityId: user.id,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+  }
+
+  async changeOwnPassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    context: RequestContext,
+  ): Promise<void> {
+    const user = await this.requireActiveUser(userId);
+
+    const currentValid = await this.passwordHasher.verify(user.passwordHash, currentPassword);
+    if (!currentValid) {
+      throw new UnauthorizedException('Incorrect current password.');
+    }
+
+    const passwordCheck = validatePasswordStrength(newPassword);
+    if (!passwordCheck.valid) {
+      throw new BadRequestException(passwordCheck.errors.join(' '));
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('Choose a password that is different from your current password.');
+    }
+
+    const passwordHash = await this.passwordHasher.hash(newPassword);
+    await this.users.setPasswordHash(userId, passwordHash);
+    await this.sessions.revokeAllForUser(userId);
+
+    await this.audit.record({
+      wardId: user.wardId,
+      actorUserId: userId,
+      action: 'account.password_changed',
+      entityType: 'ApplicationUser',
+      entityId: userId,
+      metadata: { sessionsRevoked: true },
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
     });

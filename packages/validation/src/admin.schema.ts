@@ -5,6 +5,7 @@ export const userSummarySchema = z.object({
   id: z.string(),
   username: z.string(),
   email: z.string().nullable(),
+  emailVerifiedAt: z.string().datetime().nullable(),
   displayName: z.string(),
   disabledAt: z.string().datetime().nullable(),
   lastLoginAt: z.string().datetime().nullable(),
@@ -75,6 +76,11 @@ export const resetPasswordRequestSchema = z.object({
     .max(512, 'Password must be at most 512 characters.'),
 });
 export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
+
+export const updateUserEmailRequestSchema = z.object({
+  email: applicationUserEmailSchema,
+});
+export type UpdateUserEmailRequest = z.infer<typeof updateUserEmailRequestSchema>;
 
 export const wardSummarySchema = z.object({
   id: z.string(),

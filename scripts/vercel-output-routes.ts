@@ -20,6 +20,7 @@ export const API_ROUTES: Array<Record<string, string>> = [
   { src: '/api/v1/(.*)', dest: '/api/nest' },
   { src: '/api/cron/process-schedules', dest: '/api/cron/process-schedules' },
   { src: '/api/cron/process-delivery-queue', dest: '/api/cron/process-delivery-queue' },
+  { src: '/api/cron/process-outbound-mail', dest: '/api/cron/process-outbound-mail' },
 ];
 
 /**

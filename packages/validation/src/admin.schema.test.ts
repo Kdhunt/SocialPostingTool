@@ -6,6 +6,7 @@ import {
   fieldErrorsFromZodError,
   resetPasswordRequestSchema,
   rotateWardCodeRequestSchema,
+  updateUserEmailRequestSchema,
 } from './admin.schema.js';
 import { EMAIL_INVALID_MESSAGE, EMAIL_REQUIRED_MESSAGE } from './email.schema.js';
 
@@ -142,6 +143,19 @@ describe('resetPasswordRequestSchema', () => {
 
   it('accepts a fictional password that meets the length rule', () => {
     expect(resetPasswordRequestSchema.parse({ password: 'Fictional-Reset-42' }).password).toBe('Fictional-Reset-42');
+  });
+});
+
+describe('updateUserEmailRequestSchema', () => {
+  it('requires and normalizes email', () => {
+    const missing = updateUserEmailRequestSchema.safeParse({ email: '' });
+    expect(missing.success).toBe(false);
+    if (missing.success) return;
+    expect(fieldErrorsFromZodError(missing.error).email).toBe(EMAIL_REQUIRED_MESSAGE);
+
+    expect(updateUserEmailRequestSchema.parse({ email: '  Ward.Member@Example.COM  ' }).email).toBe(
+      'ward.member@example.com',
+    );
   });
 });
 

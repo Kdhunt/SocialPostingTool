@@ -1,10 +1,24 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Inject, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import {
   assignUserRolesRequestSchema,
   createUserRequestSchema,
   resetPasswordRequestSchema,
   rotateWardCodeRequestSchema,
+  updateUserEmailRequestSchema,
   type RoleListResponse,
   type UserListResponse,
   type UserSummaryDto,
@@ -67,6 +81,21 @@ export class UsersAdminController {
   }
 
   @RequirePermission('users.manage')
+  @Patch(':id/email')
+  async updateEmail(
+    @Param('id') userId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<UserSummaryDto> {
+    if (!this.rateLimiter.consume(`${req.ip}:user-email-update`)) {
+      throw new ForbiddenException('Too many email change attempts. Please wait and try again.');
+    }
+    const dto = parseBody(updateUserEmailRequestSchema, body);
+    return this.users.updateEmail(user.wardId, userId, dto.email, buildContext(user, req));
+  }
+
+  @RequirePermission('users.manage')
   @Post(':id/password')
   @HttpCode(204)
   async resetPassword(
@@ -80,6 +109,34 @@ export class UsersAdminController {
     }
     const dto = parseBody(resetPasswordRequestSchema, body);
     await this.users.resetPassword(user.wardId, userId, dto.password, buildContext(user, req));
+  }
+
+  @RequirePermission('users.manage')
+  @Post(':id/verification-email')
+  @HttpCode(204)
+  async sendVerificationEmail(
+    @Param('id') userId: string,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<void> {
+    if (!this.rateLimiter.consume(`${req.ip}:user-verification-email`)) {
+      throw new ForbiddenException('Too many email requests. Please wait and try again.');
+    }
+    await this.users.sendVerificationEmail(user.wardId, userId, buildContext(user, req));
+  }
+
+  @RequirePermission('users.manage')
+  @Post(':id/password-reset-email')
+  @HttpCode(204)
+  async sendPasswordResetEmail(
+    @Param('id') userId: string,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<void> {
+    if (!this.rateLimiter.consume(`${req.ip}:user-password-reset-email`)) {
+      throw new ForbiddenException('Too many password reset attempts. Please wait and try again.');
+    }
+    await this.users.sendPasswordResetEmail(user.wardId, userId, buildContext(user, req));
   }
 }
 

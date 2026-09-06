@@ -41,6 +41,12 @@ const API_FUNCTIONS: FunctionSpec[] = [
     maxDuration: 300,
     memory: 1024,
   },
+  {
+    entry: 'api/cron/process-outbound-mail.ts',
+    name: 'api/cron/process-outbound-mail',
+    maxDuration: 300,
+    memory: 1024,
+  },
 ];
 
 async function copyTracedFiles(fromRoot: string, fileList: Set<string>, destRoot: string): Promise<void> {

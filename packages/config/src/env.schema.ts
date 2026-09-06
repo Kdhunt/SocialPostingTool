@@ -49,6 +49,24 @@ export const envSchema = z.object({
   SCHEDULE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
 
   CORS_ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
+
+  /**
+   * Platform transactional email (account verification, password reset).
+   * Independent of per-ward campaign `PROVIDER_MODE` so new wards can
+   * receive setup mail before they configure SendGrid/Twilio credentials.
+   */
+  SYSTEM_EMAIL_MODE: z.enum(['simulated', 'live']).default('simulated'),
+  SYSTEM_EMAIL_PROVIDER: z.enum(['sendgrid', 'smtp']).default('sendgrid'),
+  SYSTEM_EMAIL_FROM: z.string().email().optional(),
+  SYSTEM_EMAIL_SENDGRID_API_KEY: z.string().optional(),
+  SYSTEM_EMAIL_SMTP_HOST: z.string().optional(),
+  SYSTEM_EMAIL_SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SYSTEM_EMAIL_SMTP_USER: z.string().optional(),
+  SYSTEM_EMAIL_SMTP_PASS: z.string().optional(),
+  SYSTEM_EMAIL_SMTP_SECURE: z
+    .enum(['true', 'false', '1', '0'])
+    .optional()
+    .transform((value) => value === 'true' || value === '1'),
 });
 
 export type Env = z.infer<typeof envSchema>;

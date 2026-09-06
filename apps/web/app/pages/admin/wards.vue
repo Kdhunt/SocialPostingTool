@@ -46,6 +46,7 @@ const resetPasswords = ref<Record<string, string>>({});
 const wardActionErrors = ref<Record<string, string>>({});
 const rotatingWardId = ref<string | null>(null);
 const resettingAdminId = ref<string | null>(null);
+const emailingAdminId = ref<string | null>(null);
 
 function canManageWards(): boolean {
   return authState.value.kind === 'authenticated' && authState.value.user.permissions.includes('platform.wards.manage');
@@ -117,7 +118,7 @@ async function createWard(): Promise<void> {
     const result = await client.createWard(parsed.data);
 
     createdWard.value = result;
-    successMessage.value = `Ward "${result.ward.name}" was created. Share the admin credentials and ward code securely with the new ward administrator.`;
+    successMessage.value = `Ward "${result.ward.name}" was created. A confirmation email was queued for ${result.adminEmail}. Share the initial password and ward code securely — they are not emailed.`;
     wardName.value = '';
     adminUsername.value = '';
     adminEmail.value = '';
@@ -195,7 +196,7 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
   try {
     await client.resetWardAdminPassword(wardId, userId, parsed.data.password);
     resetPasswords.value = { ...resetPasswords.value, [userId]: '' };
-    successMessage.value = 'Ward administrator password reset. Share the new password securely; it cannot be shown again.';
+    successMessage.value = 'Ward administrator password was set. Share it securely; it was not emailed.';
   } catch (error) {
     const zodFields = fieldErrorsFromUnknown(error);
     if (zodFields?.password) {
@@ -206,6 +207,20 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
     }
   } finally {
     resettingAdminId.value = null;
+  }
+}
+
+async function emailAdminPasswordReset(wardId: string, userId: string, email: string | null): Promise<void> {
+  actionError.value = null;
+  successMessage.value = null;
+  emailingAdminId.value = userId;
+  try {
+    await client.sendWardAdminPasswordResetEmail(wardId, userId);
+    successMessage.value = `A password reset email was queued${email ? ` for ${email}` : ''}.`;
+  } catch (error) {
+    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to send a reset email.';
+  } finally {
+    emailingAdminId.value = null;
   }
 }
 </script>
@@ -376,11 +391,18 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
             <li v-for="admin in ward.admins" :key="admin.id">
               <span>{{ admin.displayName }} (@{{ admin.username }})</span>
               <span v-if="admin.email" class="admin-page__hint">{{ admin.email }}</span>
+              <UiAppButton
+                type="button"
+                :disabled="emailingAdminId === admin.id || !admin.email"
+                @click="emailAdminPasswordReset(ward.id, admin.id, admin.email)"
+              >
+                {{ emailingAdminId === admin.id ? 'Emailing…' : 'Email reset link' }}
+              </UiAppButton>
               <form class="admin-page__inline-form" novalidate @submit.prevent="resetAdminPassword(ward.id, admin.id)">
                 <UiFormField
-                  :label="`New password for ${admin.username}`"
+                  :label="`Set password for ${admin.username}`"
                   :input-id="`reset-password-${admin.id}`"
-                  hint="Minimum 12 characters. Sessions for this administrator are revoked."
+                  hint="Emergency override. Prefer Email reset link. Minimum 12 characters. Sessions are revoked."
                   :error="wardActionErrors[`password:${admin.id}`]"
                 >
                   <input
@@ -399,7 +421,7 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
                   />
                 </UiFormField>
                 <UiAppButton type="submit" :disabled="resettingAdminId === admin.id">
-                  {{ resettingAdminId === admin.id ? 'Resetting…' : 'Reset password' }}
+                  {{ resettingAdminId === admin.id ? 'Saving…' : 'Set password' }}
                 </UiAppButton>
               </form>
             </li>

@@ -23,6 +23,8 @@ export * from './auth/lockout-policy.js';
 export * from './auth/ward-code-policy.js';
 export * from './auth/session-policy.js';
 export * from './auth/totp-policy.js';
+export * from './auth/account-token-policy.js';
+export * from './messaging/transactional-email.js';
 export * from './directory/minor-access-policy.js';
 export * from './directory/contact-method-rules.js';
 export * from './audiences/membership-mode.js';

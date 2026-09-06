@@ -7,6 +7,12 @@ import { createHealthServer } from './health-server.js';
 import { createDeliveryQueue, createDeliveryWorker } from './delivery/delivery-queue.js';
 import { createDeliveryProviders } from './providers/create-delivery-providers.js';
 import { startSchedulePoller } from './schedule/process-due-schedules.js';
+import { createOutboundQueue, createOutboundWorker } from './outbound/outbound-queue.js';
+import { processDueOutboundMessages } from './outbound/process-outbound-message.js';
+import {
+  createSystemEmailAdapter,
+  systemEmailCredentialsFromConfig,
+} from './providers/email/system-email.adapter.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -39,6 +45,38 @@ async function bootstrap(): Promise<void> {
     logger.error({ jobId: job?.id, error: error.message }, 'Delivery job threw unexpectedly');
   });
 
+  const systemEmail = createSystemEmailAdapter({
+    mode: config.systemEmail.mode,
+    credentials: systemEmailCredentialsFromConfig(config.systemEmail),
+  });
+  const outboundQueue = createOutboundQueue(redisConnection);
+  const outboundWorker = createOutboundWorker({
+    connection: redisConnection,
+    prisma,
+    email: systemEmail,
+    queue: outboundQueue,
+  });
+  outboundWorker.on('failed', (job, error) => {
+    logger.error({ jobId: job?.id, error: error.message }, 'Outbound mail job threw unexpectedly');
+  });
+
+  const outboundPoller = setInterval(() => {
+    void processDueOutboundMessages({
+      prisma,
+      email: systemEmail,
+      enqueueRetry: async (outboundMessageId, delayMs) => {
+        await outboundQueue.add(
+          'outbound',
+          { outboundMessageId },
+          { delay: delayMs, jobId: `${outboundMessageId}:retry:${Date.now()}` },
+        );
+      },
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Outbound poll failed';
+      logger.error({ error: message }, 'Outbound mail poller failed');
+    });
+  }, config.worker.schedulePollIntervalMs);
+
   const schedulePoller = startSchedulePoller(
     { prisma, deliveryQueue },
     config.worker.schedulePollIntervalMs,
@@ -48,6 +86,7 @@ async function bootstrap(): Promise<void> {
     {
       port: config.worker.healthPort,
       providerMode: config.providerMode,
+      systemEmailMode: config.systemEmail.mode,
       schedulePollIntervalMs: config.worker.schedulePollIntervalMs,
     },
     'Ward Communications Hub worker started',
@@ -56,7 +95,10 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (): Promise<void> => {
     logger.info('Shutting down worker');
     clearInterval(schedulePoller);
+    clearInterval(outboundPoller);
     healthServer.close();
+    await outboundWorker.close();
+    await outboundQueue.close();
     await deliveryWorker.close();
     await deliveryQueue.close();
     await healthWorker.close();

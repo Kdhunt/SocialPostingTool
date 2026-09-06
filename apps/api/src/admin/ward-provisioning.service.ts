@@ -18,6 +18,7 @@ import { RoleRepository } from './repositories/role.repository.js';
 import { WardRepository } from './repositories/ward.repository.js';
 import type { AdminActionContext } from './users-admin.service.js';
 import { UsersAdminService } from './users-admin.service.js';
+import { AccountEmailService } from '../messaging/account-email.service.js';
 import { WardAdminService } from './ward-admin.service.js';
 
 function isValidTimeZone(timeZone: string): boolean {
@@ -41,6 +42,7 @@ export class WardProvisioningService {
     @Inject(WardAdminService) private readonly wardAdmin: WardAdminService,
     @Inject(UsersAdminService) private readonly usersAdmin: UsersAdminService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(AccountEmailService) private readonly accountEmail: AccountEmailService,
   ) {}
 
   async list(): Promise<WardListResponse> {
@@ -115,6 +117,12 @@ export class WardProvisioningService {
       return { ward, adminUser };
     });
 
+    try {
+      await this.accountEmail.queueVerificationForUser(result.adminUser.id, context);
+    } catch {
+      // Ward and admin are persisted; verification can be resent.
+    }
+
     await this.audit.record({
       wardId: result.ward.id,
       actorUserId: context.actorUserId,
@@ -166,6 +174,24 @@ export class WardProvisioningService {
     }
 
     await this.usersAdmin.resetPassword(wardId, userId, password, context);
+  }
+
+  async sendWardAdminPasswordResetEmail(
+    wardId: string,
+    userId: string,
+    context: AdminActionContext,
+  ): Promise<void> {
+    const ward = await this.wards.findActiveById(wardId);
+    if (!ward) throw new NotFoundException('Ward not found.');
+
+    const target = await this.users.findByIdForWard(wardId, userId);
+    if (!target) throw new NotFoundException('User not found.');
+
+    if (!(await this.users.hasRole(userId, 'WardAdmin'))) {
+      throw new BadRequestException('That user is not a ward administrator.');
+    }
+
+    await this.usersAdmin.sendPasswordResetEmail(wardId, userId, context);
   }
 
   private toSummary(ward: { id: string; name: string; timeZone: string; createdAt: Date }): WardSummaryDto {

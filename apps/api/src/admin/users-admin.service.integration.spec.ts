@@ -7,6 +7,37 @@ import { UserRepository } from '../auth/repositories/user.repository.js';
 import { SessionRepository } from '../auth/repositories/session.repository.js';
 import { RoleRepository } from './repositories/role.repository.js';
 import { UsersAdminService } from './users-admin.service.js';
+import { AccountEmailService } from '../messaging/account-email.service.js';
+import type { AppConfig } from '@ward-comms/config';
+import type { OutboundQueueService } from '../messaging/outbound-queue.service.js';
+import type { TransactionalEmailAdapter } from '@ward-comms/domain';
+
+function fakeConfig(): AppConfig {
+  return {
+    nodeEnv: 'test',
+    appName: 'Ward Communications Hub',
+    wardTimeZone: 'America/Denver',
+    api: { host: '0.0.0.0', port: 3001, url: 'http://localhost:3001' },
+    web: { port: 3000, url: 'http://localhost:3000' },
+    worker: { healthPort: 3002, schedulePollIntervalMs: 60_000 },
+    databaseUrl: process.env.DATABASE_URL ?? '',
+    redisUrl: 'redis://localhost:6379',
+    session: { secret: 'a'.repeat(32), refreshTokenSecret: 'b'.repeat(32) },
+    wardCodePepper: 'fictional-pepper-value',
+    providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
+    providerMode: 'simulated',
+    systemEmail: {
+      mode: 'simulated',
+      provider: 'sendgrid',
+      fromAddress: 'noreply@localhost',
+      sendgridApiKey: undefined,
+      smtp: undefined,
+    },
+    openAiApiKey: undefined,
+    aiImageMode: 'simulated',
+    corsAllowedOrigins: ['http://localhost:3000'],
+  };
+}
 
 async function isMigratedDatabaseAvailable(prisma: PrismaService): Promise<boolean> {
   try {
@@ -26,7 +57,25 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
   const sessions = new SessionRepository(prisma);
   const roles = new RoleRepository(prisma);
   const passwordHasher = new PasswordHasherService();
-  const usersAdmin = new UsersAdminService(users, roles, passwordHasher, sessions, audit);
+  const accountEmail = new AccountEmailService(
+    prisma,
+    users,
+    sessions,
+    passwordHasher,
+    audit,
+    {
+      enqueue: async (): Promise<void> => undefined,
+      enqueueRetry: async (): Promise<void> => undefined,
+    } as unknown as OutboundQueueService,
+    {
+      send: async (): Promise<{ success: true; providerMessageId: string }> => ({
+        success: true,
+        providerMessageId: 'test',
+      }),
+    } as TransactionalEmailAdapter,
+    fakeConfig(),
+  );
+  const usersAdmin = new UsersAdminService(users, roles, passwordHasher, sessions, audit, accountEmail);
 
   const createdWardIds: string[] = [];
   let wardId: string;
@@ -65,6 +114,8 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
   afterEach(async () => {
     for (const id of createdWardIds) {
       await prisma.client.auditEvent.deleteMany({ where: { wardId: id } });
+      await prisma.client.outboundMessage.deleteMany({ where: { wardId: id } });
+      await prisma.client.userAccountToken.deleteMany({ where: { user: { wardId: id } } });
       await prisma.client.userSession.deleteMany({ where: { user: { wardId: id } } });
       await prisma.client.userRole.deleteMany({ where: { user: { wardId: id } } });
       await prisma.client.applicationUser.deleteMany({ where: { wardId: id } });
@@ -209,6 +260,87 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
       { actorUserId, ipAddress: null, userAgent: null },
     );
     expect(otherWardUser.email).toBe('jane.doe@example.com');
+  });
+
+  it('updates a same-ward email, clears verification, and rejects another ward or a duplicate', async () => {
+    const created = await usersAdmin.create(
+      wardId,
+      {
+        username: `email.update.${randomUUID()}`,
+        email: `before.${randomUUID()}@example.com`,
+        password: 'Fictional-Password-42',
+        displayName: 'Email Update Member',
+        roleIds: [viewerRoleId],
+      },
+      { actorUserId, ipAddress: '203.0.113.10', userAgent: 'vitest' },
+    );
+
+    await prisma.client.applicationUser.update({
+      where: { id: created.id },
+      data: { emailVerifiedAt: new Date() },
+    });
+
+    const neighbor = await usersAdmin.create(
+      wardId,
+      {
+        username: `email.neighbor.${randomUUID()}`,
+        email: `neighbor.${randomUUID()}@example.com`,
+        password: 'Fictional-Password-42',
+        displayName: 'Email Neighbor',
+        roleIds: [viewerRoleId],
+      },
+      { actorUserId, ipAddress: null, userAgent: null },
+    );
+
+    const updated = await usersAdmin.updateEmail(
+      wardId,
+      created.id,
+      '  Updated.Member@Example.COM  ',
+      { actorUserId, ipAddress: '203.0.113.10', userAgent: 'vitest' },
+    );
+
+    expect(updated.email).toBe('updated.member@example.com');
+    expect(updated.emailVerifiedAt).toBeNull();
+
+    const persisted = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: created.id } });
+    expect(persisted.email).toBe('updated.member@example.com');
+    expect(persisted.emailVerifiedAt).toBeNull();
+
+    const auditEvent = await prisma.client.auditEvent.findFirst({
+      where: { action: 'account.email_changed', entityId: created.id },
+    });
+    expect(auditEvent).toBeTruthy();
+    expect(JSON.stringify(auditEvent?.metadata ?? {})).not.toMatch(/updated\.member@example\.com/i);
+
+    await expect(
+      usersAdmin.updateEmail(wardId, created.id, neighbor.email ?? '', {
+        actorUserId,
+        ipAddress: null,
+        userAgent: null,
+      }),
+    ).rejects.toThrow(/email already exists/i);
+
+    const otherWard = await prisma.client.ward.create({
+      data: { name: `Fictional Email Update Ward ${randomUUID()}` },
+    });
+    createdWardIds.push(otherWard.id);
+    const otherUser = await prisma.client.applicationUser.create({
+      data: {
+        wardId: otherWard.id,
+        username: `other.email.${randomUUID()}`,
+        email: `other.email.${randomUUID()}@example.com`,
+        displayName: 'Other Ward Email',
+        passwordHash: await passwordHasher.hash('Fictional-Other-Password-42'),
+      },
+    });
+
+    await expect(
+      usersAdmin.updateEmail(wardId, otherUser.id, 'someone.else@example.com', {
+        actorUserId,
+        ipAddress: null,
+        userAgent: null,
+      }),
+    ).rejects.toThrow(/not found/i);
   });
 
   it('rejects an implausible email at the service boundary', async () => {

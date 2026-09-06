@@ -7,6 +7,7 @@ import {
   HttpCode,
   Inject,
   Param,
+  Patch,
   Post,
   Req,
   Res,
@@ -14,8 +15,14 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
+  GENERIC_ACCOUNT_EMAIL_MESSAGE,
+  changeEmailRequestSchema,
+  changePasswordRequestSchema,
+  forgotPasswordRequestSchema,
   loginRequestSchema,
   refreshRequestSchema,
+  resetPasswordWithTokenRequestSchema,
+  verifyEmailRequestSchema,
   totpConfirmEnrollmentRequestSchema,
   totpDisableRequestSchema,
   totpVerifyRequestSchema,
@@ -27,6 +34,8 @@ import {
   type TotpEnrollmentResponse,
   type TotpStatusResponse,
   type TotpVerifyResponse,
+  type AccountEmailAcceptedResponse,
+  type ChangeEmailResponse,
   type WardCodeVerifyResponse,
 } from '@ward-comms/validation';
 import { parseBody } from '../common/parse-body.util.js';
@@ -38,12 +47,14 @@ import { SessionAuthGuard, type AuthContext, type AuthenticatedRequest } from '.
 import { PermissionsGuard } from './guards/permissions.guard.js';
 import { DEVICE_ID_COOKIE_NAME, DEVICE_ID_COOKIE_TTL_MS, SESSION_COOKIE_NAME } from './auth.constants.js';
 import { getAuthCookieOptions } from './auth-cookie.util.js';
+import { AccountEmailService } from '../messaging/account-email.service.js';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     @Inject(AuthService) private readonly authService: AuthService,
     @Inject(LoginRateLimiterService) private readonly rateLimiter: LoginRateLimiterService,
+    @Inject(AccountEmailService) private readonly accountEmail: AccountEmailService,
   ) {}
 
   private resolveDeviceId(req: Request, res: Response): string {
@@ -68,6 +79,60 @@ export class AuthController {
 
   private setSessionCookie(res: Response, sessionToken: string, expiresAt: Date): void {
     res.cookie(SESSION_COOKIE_NAME, sessionToken, getAuthCookieOptions({ expires: expiresAt }));
+  }
+
+  @Post('forgot-password')
+  @HttpCode(200)
+  async forgotPassword(
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<AccountEmailAcceptedResponse> {
+    if (!this.rateLimiter.consume(`${req.ip}:forgot-password`)) {
+      throw new ForbiddenException('Too many password reset attempts. Please wait and try again.');
+    }
+    const dto = parseBody(forgotPasswordRequestSchema, body);
+    await this.accountEmail.requestPasswordResetByEmail(dto.email, {
+      actorUserId: null,
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    return { message: GENERIC_ACCOUNT_EMAIL_MESSAGE };
+  }
+
+  @Post('verify-email')
+  @HttpCode(200)
+  async verifyEmail(
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<AccountEmailAcceptedResponse> {
+    if (!this.rateLimiter.consume(`${req.ip}:verify-email`)) {
+      throw new ForbiddenException('Too many attempts. Please wait and try again.');
+    }
+    const dto = parseBody(verifyEmailRequestSchema, body);
+    await this.accountEmail.verifyEmail(dto.token, {
+      actorUserId: null,
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    return { message: 'Your email address is confirmed.' };
+  }
+
+  @Post('reset-password')
+  @HttpCode(200)
+  async resetPasswordWithToken(
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<AccountEmailAcceptedResponse> {
+    if (!this.rateLimiter.consume(`${req.ip}:reset-password-token`)) {
+      throw new ForbiddenException('Too many password reset attempts. Please wait and try again.');
+    }
+    const dto = parseBody(resetPasswordWithTokenRequestSchema, body);
+    await this.accountEmail.completePasswordReset(dto.token, dto.password, {
+      actorUserId: null,
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    return { message: 'Your password has been updated. You can sign in with the new password.' };
   }
 
   @Post('login')
@@ -241,6 +306,61 @@ export class AuthController {
   @Get('session')
   getSession(@CurrentUser() user: AuthContext['user']): SessionResponse {
     return { user };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Patch('email')
+  async changeEmail(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<ChangeEmailResponse> {
+    if (!this.rateLimiter.consume(`${req.ip}:change-email`)) {
+      throw new ForbiddenException('Too many email change attempts. Please wait and try again.');
+    }
+    const dto = parseBody(changeEmailRequestSchema, body);
+    const updated = await this.accountEmail.changeEmailForUser(user.id, dto.email, {
+      actorUserId: user.id,
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    return {
+      email: updated.email,
+      emailVerifiedAt: updated.emailVerifiedAt,
+      message: 'Email updated. Confirm the new address from the message we queued.',
+    };
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('change-password')
+  @HttpCode(204)
+  async changePassword(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    if (!this.rateLimiter.consume(`${req.ip}:change-password`)) {
+      throw new ForbiddenException('Too many password change attempts. Please wait and try again.');
+    }
+    const dto = parseBody(changePasswordRequestSchema, body);
+    const context = this.buildContext(req, res, 'web');
+    await this.authService.changeOwnPassword(user.id, dto.currentPassword, dto.newPassword, context);
+    res.clearCookie(SESSION_COOKIE_NAME);
+  }
+
+  @UseGuards(SessionAuthGuard)
+  @Post('verification-email')
+  @HttpCode(204)
+  async resendOwnVerificationEmail(@CurrentUser() user: AuthContext['user'], @Req() req: Request): Promise<void> {
+    if (!this.rateLimiter.consume(`${req.ip}:own-verification-email`)) {
+      throw new ForbiddenException('Too many email requests. Please wait and try again.');
+    }
+    await this.accountEmail.queueVerificationForUser(user.id, {
+      actorUserId: user.id,
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
   }
 
   @UseGuards(SessionAuthGuard)

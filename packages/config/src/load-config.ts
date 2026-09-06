@@ -29,6 +29,21 @@ export interface AppConfig {
   openAiApiKey: string | undefined;
   aiImageMode: 'simulated' | 'live';
   corsAllowedOrigins: string[];
+  systemEmail: {
+    mode: 'simulated' | 'live';
+    provider: 'sendgrid' | 'smtp';
+    fromAddress: string;
+    sendgridApiKey: string | undefined;
+    smtp:
+      | {
+          host: string;
+          port: number;
+          user: string;
+          pass: string;
+          secure: boolean;
+        }
+      | undefined;
+  };
 }
 
 export class ConfigValidationError extends Error {
@@ -70,6 +85,22 @@ function toAppConfig(env: Env): AppConfig {
     corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
+    systemEmail: {
+      mode: env.SYSTEM_EMAIL_MODE,
+      provider: env.SYSTEM_EMAIL_PROVIDER,
+      fromAddress: env.SYSTEM_EMAIL_FROM ?? 'noreply@localhost',
+      sendgridApiKey: env.SYSTEM_EMAIL_SENDGRID_API_KEY,
+      smtp:
+        env.SYSTEM_EMAIL_SMTP_HOST && env.SYSTEM_EMAIL_SMTP_USER && env.SYSTEM_EMAIL_SMTP_PASS
+          ? {
+              host: env.SYSTEM_EMAIL_SMTP_HOST,
+              port: env.SYSTEM_EMAIL_SMTP_PORT,
+              user: env.SYSTEM_EMAIL_SMTP_USER,
+              pass: env.SYSTEM_EMAIL_SMTP_PASS,
+              secure: env.SYSTEM_EMAIL_SMTP_SECURE ?? false,
+            }
+          : undefined,
+    },
   };
 }
 
@@ -88,5 +119,24 @@ export function loadConfig(source: Record<string, string | undefined> = process.
     throw new ConfigValidationError(`Invalid environment configuration: ${issues}`);
   }
 
-  return toAppConfig(result.data);
+  const config = toAppConfig(result.data);
+  if (config.systemEmail.mode === 'live') {
+    if (!result.data.SYSTEM_EMAIL_FROM) {
+      throw new ConfigValidationError(
+        'Invalid environment configuration: SYSTEM_EMAIL_FROM is required when SYSTEM_EMAIL_MODE=live',
+      );
+    }
+    if (config.systemEmail.provider === 'sendgrid' && !config.systemEmail.sendgridApiKey) {
+      throw new ConfigValidationError(
+        'Invalid environment configuration: SYSTEM_EMAIL_SENDGRID_API_KEY is required when SYSTEM_EMAIL_MODE=live and SYSTEM_EMAIL_PROVIDER=sendgrid',
+      );
+    }
+    if (config.systemEmail.provider === 'smtp' && !config.systemEmail.smtp) {
+      throw new ConfigValidationError(
+        'Invalid environment configuration: SYSTEM_EMAIL_SMTP_HOST, SYSTEM_EMAIL_SMTP_USER, and SYSTEM_EMAIL_SMTP_PASS are required when SYSTEM_EMAIL_MODE=live and SYSTEM_EMAIL_PROVIDER=smtp',
+      );
+    }
+  }
+
+  return config;
 }

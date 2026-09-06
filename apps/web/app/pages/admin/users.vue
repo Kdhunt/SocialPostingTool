@@ -7,6 +7,7 @@ import {
   fieldErrorsFromUnknown,
   fieldErrorsFromZodError,
   resetPasswordRequestSchema,
+  updateUserEmailRequestSchema,
   type CreateUserRequest,
   type RoleSummaryDto,
   type UserSummaryDto,
@@ -42,6 +43,13 @@ const resettingUserId = ref<string | null>(null);
 const resetPasswordValue = ref('');
 const resetPasswordError = ref<string | null>(null);
 const resetting = ref(false);
+const successMessage = ref<string | null>(null);
+const emailingUserId = ref<string | null>(null);
+const creating = ref(false);
+const editingEmailUserId = ref<string | null>(null);
+const editEmailValue = ref('');
+const editEmailError = ref<string | null>(null);
+const savingEmail = ref(false);
 
 function canManageUsers(): boolean {
   return authState.value.kind === 'authenticated' && authState.value.user.permissions.includes('users.manage');
@@ -91,6 +99,7 @@ onMounted(async () => {
 
 async function createUser(): Promise<void> {
   actionError.value = null;
+  successMessage.value = null;
   fieldErrors.value = {};
 
   const payload: CreateUserRequest = {
@@ -107,6 +116,7 @@ async function createUser(): Promise<void> {
     return;
   }
 
+  creating.value = true;
   try {
     await client.createUser(parsed.data);
     newUsername.value = '';
@@ -114,6 +124,7 @@ async function createUser(): Promise<void> {
     newPassword.value = '';
     newDisplayName.value = '';
     newRoleIds.value = [];
+    successMessage.value = 'User created. A confirmation email was queued for their inbox. The password was not emailed.';
     await load();
   } catch (error) {
     const zodFields = fieldErrorsFromUnknown(error);
@@ -122,15 +133,86 @@ async function createUser(): Promise<void> {
     } else {
       actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to create user.';
     }
+  } finally {
+    creating.value = false;
   }
 }
 
 function startResetPassword(user: UserSummaryDto): void {
   editingUserId.value = null;
+  editingEmailUserId.value = null;
   resettingUserId.value = user.id;
   resetPasswordValue.value = '';
   resetPasswordError.value = null;
   actionError.value = null;
+  successMessage.value = null;
+}
+
+function startEditEmail(user: UserSummaryDto): void {
+  editingUserId.value = null;
+  resettingUserId.value = null;
+  editingEmailUserId.value = user.id;
+  editEmailValue.value = user.email ?? '';
+  editEmailError.value = null;
+  actionError.value = null;
+  successMessage.value = null;
+}
+
+async function submitEditEmail(userId: string): Promise<void> {
+  actionError.value = null;
+  editEmailError.value = null;
+
+  const parsed = updateUserEmailRequestSchema.safeParse({ email: editEmailValue.value });
+  if (!parsed.success) {
+    editEmailError.value = fieldErrorsFromZodError(parsed.error).email ?? 'Enter a valid email address.';
+    return;
+  }
+
+  savingEmail.value = true;
+  try {
+    await client.updateUserEmail(userId, parsed.data);
+    editingEmailUserId.value = null;
+    editEmailValue.value = '';
+    successMessage.value = 'Email updated. Confirmation was cleared and a new verification email was queued.';
+    await load();
+  } catch (error) {
+    const zodFields = fieldErrorsFromUnknown(error);
+    if (zodFields?.email) {
+      editEmailError.value = zodFields.email;
+    } else {
+      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to update email.';
+    }
+  } finally {
+    savingEmail.value = false;
+  }
+}
+
+async function emailPasswordReset(user: UserSummaryDto): Promise<void> {
+  actionError.value = null;
+  successMessage.value = null;
+  emailingUserId.value = user.id;
+  try {
+    await client.sendUserPasswordResetEmail(user.id);
+    successMessage.value = `A password reset email was queued for ${user.email ?? user.username}.`;
+  } catch (error) {
+    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to send a reset email.';
+  } finally {
+    emailingUserId.value = null;
+  }
+}
+
+async function emailVerification(user: UserSummaryDto): Promise<void> {
+  actionError.value = null;
+  successMessage.value = null;
+  emailingUserId.value = user.id;
+  try {
+    await client.sendUserVerificationEmail(user.id);
+    successMessage.value = `A confirmation email was queued for ${user.email ?? user.username}.`;
+  } catch (error) {
+    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to send a confirmation email.';
+  } finally {
+    emailingUserId.value = null;
+  }
 }
 
 async function submitResetPassword(userId: string): Promise<void> {
@@ -164,6 +246,7 @@ async function submitResetPassword(userId: string): Promise<void> {
 
 function startEditRoles(user: UserSummaryDto): void {
   resettingUserId.value = null;
+  editingEmailUserId.value = null;
   editingUserId.value = user.id;
   editRoleIds.value = [...user.roleIds];
 }
@@ -217,8 +300,9 @@ function toggleEditRole(roleId: string, checked: boolean): void {
     <p v-if="pageState.kind === 'loading'">Loading…</p>
     <p v-else-if="pageState.kind === 'error'" role="alert" class="admin-page__error">{{ pageState.message }}</p>
     <p v-if="actionError" role="alert" class="admin-page__error">{{ actionError }}</p>
+    <p v-if="successMessage" role="status" class="admin-page__success">{{ successMessage }}</p>
 
-    <template v-else-if="pageState.kind === 'loaded'">
+    <template v-if="pageState.kind === 'loaded'">
       <section aria-labelledby="create-user-heading">
         <h2 id="create-user-heading">Create user</h2>
         <form class="admin-page__form" novalidate @submit.prevent="createUser">
@@ -292,18 +376,29 @@ function toggleEditRole(roleId: string, checked: boolean): void {
             </p>
           </fieldset>
 
-          <button type="submit">Create user</button>
+          <UiAppButton type="submit" :disabled="creating">
+            {{ creating ? 'Creating…' : 'Create user' }}
+          </UiAppButton>
         </form>
       </section>
 
       <section aria-labelledby="users-heading">
         <h2 id="users-heading">Users</h2>
-        <ul class="admin-page__list">
+        <UiEmptyState
+          v-if="pageState.users.length === 0"
+          title="No users yet"
+          description="Create the first account for this ward. Email is required and unique within the ward."
+        />
+        <ul v-else class="admin-page__list">
           <li v-for="user in pageState.users" :key="user.id">
             <div class="admin-page__user-info">
               <strong>{{ user.displayName }}</strong>
               <span class="admin-page__hint">@{{ user.username }}</span>
               <span v-if="user.email" class="admin-page__hint">{{ user.email }}</span>
+              <span v-else class="admin-page__hint">No email</span>
+              <span class="admin-page__tag" :class="{ 'admin-page__tag--ok': user.emailVerifiedAt }">
+                {{ user.email ? (user.emailVerifiedAt ? 'Email confirmed' : 'Email unconfirmed') : 'Email missing' }}
+              </span>
               <span v-if="user.disabledAt" class="admin-page__tag">Disabled</span>
               <span class="admin-page__hint">{{ user.roleNames.join(', ') }}</span>
             </div>
@@ -311,9 +406,47 @@ function toggleEditRole(roleId: string, checked: boolean): void {
               <button type="button" @click="toggleDisabled(user)">
                 {{ user.disabledAt ? 'Enable' : 'Disable' }}
               </button>
-              <button type="button" @click="startResetPassword(user)">Reset password</button>
+              <button type="button" :disabled="emailingUserId === user.id" @click="emailPasswordReset(user)">
+                Email reset link
+              </button>
+              <button
+                v-if="user.email && !user.emailVerifiedAt"
+                type="button"
+                :disabled="emailingUserId === user.id"
+                @click="emailVerification(user)"
+              >
+                Resend confirmation
+              </button>
+              <button type="button" @click="startEditEmail(user)">Change email</button>
+              <button type="button" @click="startResetPassword(user)">Set password</button>
               <button v-if="canManageRoles()" type="button" @click="startEditRoles(user)">Edit roles</button>
             </div>
+            <form
+              v-if="editingEmailUserId === user.id"
+              class="admin-page__form admin-page__form--inline"
+              novalidate
+              @submit.prevent="submitEditEmail(user.id)"
+            >
+              <UiFormField
+                :label="`Email for ${user.username}`"
+                :input-id="`edit-email-${user.id}`"
+                hint="Unique in this ward. Confirmation is cleared until the new inbox is verified."
+                :error="editEmailError ?? undefined"
+              >
+                <input
+                  :id="`edit-email-${user.id}`"
+                  v-model="editEmailValue"
+                  type="email"
+                  required
+                  autocomplete="off"
+                  :aria-invalid="editEmailError ? true : undefined"
+                />
+              </UiFormField>
+              <UiAppButton type="submit" :disabled="savingEmail">
+                {{ savingEmail ? 'Saving…' : 'Save email' }}
+              </UiAppButton>
+              <UiAppButton type="button" variant="secondary" @click="editingEmailUserId = null">Cancel</UiAppButton>
+            </form>
             <form
               v-if="resettingUserId === user.id"
               class="admin-page__form admin-page__form--inline"
@@ -323,7 +456,7 @@ function toggleEditRole(roleId: string, checked: boolean): void {
               <UiFormField
                 :label="`New password for ${user.username}`"
                 :input-id="`reset-password-${user.id}`"
-                hint="Minimum 12 characters. This user’s sessions are revoked."
+                hint="Emergency override. Prefer Email reset link so the user chooses their own password. Sessions are revoked."
                 :error="resetPasswordError ?? undefined"
               >
                 <input
@@ -336,7 +469,7 @@ function toggleEditRole(roleId: string, checked: boolean): void {
                 />
               </UiFormField>
               <button type="submit" :disabled="resetting">
-                {{ resetting ? 'Resetting…' : 'Save new password' }}
+                {{ resetting ? 'Saving…' : 'Save new password' }}
               </button>
               <button type="button" @click="resettingUserId = null">Cancel</button>
             </form>
@@ -423,6 +556,7 @@ function toggleEditRole(roleId: string, checked: boolean): void {
 
 .admin-page__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
@@ -435,15 +569,26 @@ function toggleEditRole(roleId: string, checked: boolean): void {
 .admin-page__tag {
   display: inline-block;
   font-size: 0.75rem;
+  font-weight: 600;
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
-  background: #fff8c5;
-  border: 1px solid #9a6700;
+  background: var(--color-warning-soft);
+  border: 1px solid var(--color-warning);
   width: fit-content;
 }
 
+.admin-page__tag--ok {
+  background: var(--color-success-soft);
+  border-color: var(--color-success);
+}
+
+.admin-page__success {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
 .admin-page__error {
-  color: #cf222e;
+  color: var(--color-danger);
   font-weight: 600;
 }
 </style>

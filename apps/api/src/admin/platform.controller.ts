@@ -75,6 +75,21 @@ export class PlatformWardsController {
     await this.provisioning.resetWardAdminPassword(wardId, userId, dto.password, buildContext(user, req));
   }
 
+  @Post(':wardId/admins/:userId/password-reset-email')
+  @HttpCode(204)
+  async sendAdminPasswordResetEmail(
+    @Param('wardId') wardId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<void> {
+    this.assertRateLimit(
+      `${req.ip}:platform-ward-admin-password-email`,
+      'Too many password reset attempts. Please wait and try again.',
+    );
+    await this.provisioning.sendWardAdminPasswordResetEmail(wardId, userId, buildContext(user, req));
+  }
+
   private assertRateLimit(key: string, message: string): void {
     if (!this.rateLimiter.consume(key)) {
       throw new ForbiddenException(message);

@@ -18,6 +18,7 @@ import { PasswordHasherService } from '../auth/password-hasher.service.js';
 import { UserRepository } from '../auth/repositories/user.repository.js';
 import { SessionRepository } from '../auth/repositories/session.repository.js';
 import { RoleRepository } from './repositories/role.repository.js';
+import { AccountEmailService } from '../messaging/account-email.service.js';
 
 export interface AdminActionContext {
   actorUserId: string;
@@ -35,6 +36,7 @@ export class UsersAdminService {
     @Inject(PasswordHasherService) private readonly passwordHasher: PasswordHasherService,
     @Inject(SessionRepository) private readonly sessions: SessionRepository,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(AccountEmailService) private readonly accountEmail: AccountEmailService,
   ) {}
 
   async list(wardId: string): Promise<UserListResponse> {
@@ -107,9 +109,44 @@ export class UsersAdminService {
       userAgent: context.userAgent,
     });
 
+    try {
+      await this.accountEmail.queueVerificationForUser(user.id, context);
+    } catch {
+      // User is persisted; admin can resend verification if the outbox send failed.
+    }
+
     const created = await this.users.listForWard(wardId);
     const summary = created.find((row) => row.id === user.id);
     if (!summary) throw new Error('Created user not found.');
+    return this.toSummary(summary);
+  }
+
+  async sendVerificationEmail(wardId: string, userId: string, context: AdminActionContext): Promise<void> {
+    const user = await this.users.findByIdForWard(wardId, userId);
+    if (!user) throw new NotFoundException('User not found.');
+    await this.accountEmail.queueVerificationForUser(userId, context);
+  }
+
+  async sendPasswordResetEmail(wardId: string, userId: string, context: AdminActionContext): Promise<void> {
+    const user = await this.users.findByIdForWard(wardId, userId);
+    if (!user) throw new NotFoundException('User not found.');
+    await this.accountEmail.queuePasswordResetForUser(userId, context);
+  }
+
+  async updateEmail(
+    wardId: string,
+    userId: string,
+    email: string,
+    context: AdminActionContext,
+  ): Promise<UserSummaryDto> {
+    const user = await this.users.findByIdForWard(wardId, userId);
+    if (!user) throw new NotFoundException('User not found.');
+
+    await this.accountEmail.changeEmailForUser(userId, email, context);
+
+    const rows = await this.users.listForWard(wardId);
+    const summary = rows.find((row) => row.id === userId);
+    if (!summary) throw new NotFoundException('User not found.');
     return this.toSummary(summary);
   }
 
@@ -195,6 +232,7 @@ export class UsersAdminService {
     id: string;
     username: string;
     email: string | null;
+    emailVerifiedAt: Date | null;
     displayName: string;
     disabledAt: Date | null;
     lastLoginAt: Date | null;
@@ -204,6 +242,7 @@ export class UsersAdminService {
       id: row.id,
       username: row.username,
       email: row.email,
+      emailVerifiedAt: row.emailVerifiedAt?.toISOString() ?? null,
       displayName: row.displayName,
       disabledAt: row.disabledAt?.toISOString() ?? null,
       lastLoginAt: row.lastLoginAt?.toISOString() ?? null,

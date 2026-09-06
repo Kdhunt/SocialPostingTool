@@ -11,6 +11,12 @@ import { WardCodeRepository } from '../auth/repositories/ward-code.repository.js
 import { WardProvisioningService } from './ward-provisioning.service.js';
 import { WardAdminService } from './ward-admin.service.js';
 import { UsersAdminService } from './users-admin.service.js';
+import type { AccountEmailService } from '../messaging/account-email.service.js';
+
+const noopAccountEmail = {
+  queueVerificationForUser: async (): Promise<void> => undefined,
+  queuePasswordResetForUser: async (): Promise<void> => undefined,
+} as unknown as AccountEmailService;
 import { RoleRepository } from './repositories/role.repository.js';
 import { WardRepository } from './repositories/ward.repository.js';
 
@@ -28,6 +34,13 @@ function fakeConfig(): AppConfig {
     wardCodePepper: 'fictional-pepper-value',
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    systemEmail: {
+      mode: 'simulated',
+      provider: 'sendgrid',
+      fromAddress: 'noreply@localhost',
+      sendgridApiKey: undefined,
+      smtp: undefined,
+    },
     openAiApiKey: undefined,
     aiImageMode: 'simulated',
     corsAllowedOrigins: ['http://localhost:3000'],
@@ -57,7 +70,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
   const sessions = new SessionRepository(prisma);
   const wardCodes = new WardCodeRepository(prisma);
   const wardAdmin = new WardAdminService(wardCodes, wardCodeHasher, audit);
-  const usersAdmin = new UsersAdminService(users, roles, passwordHasher, sessions, audit);
+  const usersAdmin = new UsersAdminService(users, roles, passwordHasher, sessions, audit, noopAccountEmail);
   const provisioning = new WardProvisioningService(
     prisma,
     wards,
@@ -68,6 +81,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
     wardAdmin,
     usersAdmin,
     audit,
+    noopAccountEmail,
   );
 
   let actorUserId: string;
@@ -268,6 +282,8 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
   afterEach(async () => {
     for (const wardId of createdWardIds) {
       await prisma.client.auditEvent.deleteMany({ where: { wardId } });
+      await prisma.client.outboundMessage.deleteMany({ where: { wardId } });
+      await prisma.client.userAccountToken.deleteMany({ where: { user: { wardId } } });
       await prisma.client.userSession.deleteMany({ where: { user: { wardId } } });
       await prisma.client.userRole.deleteMany({ where: { user: { wardId } } });
       await prisma.client.applicationUser.deleteMany({ where: { wardId } });

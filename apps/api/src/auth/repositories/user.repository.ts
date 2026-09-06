@@ -81,6 +81,7 @@ export class UserRepository {
       id: string;
       username: string;
       email: string | null;
+      emailVerifiedAt: Date | null;
       displayName: string;
       disabledAt: Date | null;
       lastLoginAt: Date | null;
@@ -96,6 +97,7 @@ export class UserRepository {
       id: user.id,
       username: user.username,
       email: user.email,
+      emailVerifiedAt: user.emailVerifiedAt,
       displayName: user.displayName,
       disabledAt: user.disabledAt,
       lastLoginAt: user.lastLoginAt,
@@ -170,11 +172,29 @@ export class UserRepository {
     return existing !== null;
   }
 
-  async isEmailTaken(wardId: string, email: string): Promise<boolean> {
+  async findActiveByNormalizedEmail(email: string): Promise<ApplicationUser[]> {
+    return this.prisma.client.applicationUser.findMany({
+      where: { email, archivedAt: null, disabledAt: null },
+    });
+  }
+
+  async isEmailTaken(wardId: string, email: string, excludeUserId?: string): Promise<boolean> {
     const existing = await this.prisma.client.applicationUser.findFirst({
-      where: { wardId, email, archivedAt: null },
+      where: {
+        wardId,
+        email,
+        archivedAt: null,
+        ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+      },
     });
     return existing !== null;
+  }
+
+  async updateEmail(userId: string, email: string): Promise<void> {
+    await this.prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: { email, emailVerifiedAt: null },
+    });
   }
 
   async setTotpSecretEncrypted(userId: string, totpSecretEncrypted: string): Promise<void> {

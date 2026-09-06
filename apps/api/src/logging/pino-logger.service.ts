@@ -10,6 +10,10 @@ const SENSITIVE_KEYS = [
   'accessToken',
   'refreshToken',
   'authorization',
+  'token',
+  'tokenHash',
+  'apiKey',
+  'authToken',
 ];
 
 /**

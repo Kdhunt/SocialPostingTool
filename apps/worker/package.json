@@ -6,7 +6,9 @@
   "exports": {
     "./delivery": "./src/delivery/process-delivery-recipient.ts",
     "./schedule": "./src/schedule/process-due-schedules.ts",
-    "./providers": "./src/providers/create-delivery-providers.ts"
+    "./providers": "./src/providers/create-delivery-providers.ts",
+    "./outbound": "./src/outbound/process-outbound-message.ts",
+    "./system-email": "./src/providers/email/system-email.adapter.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

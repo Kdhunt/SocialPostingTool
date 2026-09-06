@@ -57,7 +57,8 @@ implemented in Phase 4.
 - `ApplicationUser.email` is unique per ward. New accounts require a
   normalized (trimmed, lowercased) address at the application layer;
   the column stays nullable for legacy rows created before email was
-  required. Inbox confirmation is not implemented.
+  required. `emailVerifiedAt` is set after a hashed inbox token is
+  confirmed (see `docs/account-email.md`).
 - `ApplicationUser.passwordHash` stores only an Argon2id hash — never a
   readable password (AGENTS.md #1, security.mdc).
 - `failedLoginAttempts` / `lastFailedLoginAt` / `lockedUntil` support

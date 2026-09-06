@@ -80,6 +80,7 @@ Operator roles (seeded):
 - `delivery/` (API) — `DeliveryBatchRepository`, `DeliveryRecipientRepository`, `DeliveryAttemptRepository`; `DeliveryService` expands recipients (overlap + consent), creates idempotent batches, and enqueues BullMQ jobs via `DeliveryQueueService`; `DeliveryController` stays thin. See `docs/delivery.md`.
 - `delivery/` (worker) — `processDeliveryRecipient` claims a recipient, calls Email/SMS/Facebook adapters, records attempts, applies retry/dead-letter policy, and rolls up batch + campaign status. Retries never duplicate sends (claim guard + unique attempt numbers).
 - `providers/` (API + worker) — encrypted `ProviderCredential` storage (API) and channel adapters (worker) selected by `PROVIDER_MODE`. SDKs stay out of domain; see `docs/providers.md`.
+- `messaging/` (API) + `outbound/` (worker) — platform transactional email for account verification and password reset. Uses `SYSTEM_EMAIL_*` env credentials (not per-ward campaign secrets), an `OutboundMessage` outbox, hashed `UserAccountToken` rows, and the same SendGrid/SMTP transport as campaign email. Signed-in users change email/password at `/settings/account` (`PATCH /auth/email`, `POST /auth/change-password`); ward admins can change a same-ward user's email (`PATCH /users/:id/email`). See `docs/account-email.md`.
 
 ## Local development environment
 
@@ -91,7 +92,7 @@ Operator roles (seeded):
 
 - **Vitest** for unit tests across packages and apps.
 - **NestJS testing utilities** for API and worker integration tests.
-- **Playwright** for web end-to-end tests in `apps/web-e2e`: guest smoke/login plus authenticated walks of core and admin pages. Against localhost the suite starts Nuxt; set `E2E_BASE_URL` to a deployed origin to skip the local server. Authenticated tests need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE` (never commit those values). Live-site writes use generated fictional names only; ward-code rotation, admin password reset, and tenant create stay on validation-error paths.
+- **Playwright** for web end-to-end tests in `apps/web-e2e`: guest smoke/login plus authenticated walks of core and admin pages. Against localhost the suite starts Nuxt; set `E2E_BASE_URL` to a deployed origin to skip the local server. Authenticated tests need credentials **or** a gitignored `apps/web-e2e/.auth/user.json` session (never commit those values). Live-site writes use generated fictional names only; ward-code rotation, admin password reset, and tenant create stay on validation-error paths.
 - **Testcontainers or isolated Docker services** for database integration tests where practical.
 - Tests use only generated fictional data and must not depend on execution order.
 
