@@ -1,13 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { primaryNav, signIn } from './helpers/auth';
+import { fillLoginForm, primaryNav, signIn } from './helpers/auth';
 import { e2eCredentials, missingCredentialsMessage } from './helpers/env';
 
 test.describe('Login', () => {
   test('shows an error for invalid credentials', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Username').fill('not-a-real-user');
-    await page.getByLabel('Password').fill('definitely-wrong-password');
-    await page.getByLabel('Ward code').fill('not-the-ward-code');
+    await fillLoginForm(page, {
+      username: 'not-a-real-user',
+      password: 'definitely-wrong-password',
+      wardCode: 'not-the-ward-code',
+    });
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     await expect(page.getByRole('alert')).toBeVisible();

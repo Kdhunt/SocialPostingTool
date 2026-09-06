@@ -25,7 +25,27 @@ async function finishWithWardCodeIfNeeded(): Promise<{ ok: boolean; error?: stri
   return submitWardCode(code);
 }
 
-async function onLoginSubmit(): Promise<void> {
+function syncLoginFieldsFromForm(form: HTMLFormElement): void {
+  const data = new FormData(form);
+  const nextUsername = String(data.get('username') ?? '').trim();
+  const nextPassword = String(data.get('password') ?? '');
+  const nextWardCode = String(data.get('ward-code') ?? '');
+  if (nextUsername) {
+    username.value = nextUsername;
+  }
+  if (nextPassword) {
+    password.value = nextPassword;
+  }
+  if (nextWardCode) {
+    wardCode.value = nextWardCode;
+  }
+}
+
+async function onLoginSubmit(event: Event): Promise<void> {
+  if (event.target instanceof HTMLFormElement) {
+    syncLoginFieldsFromForm(event.target);
+  }
+
   errorMessage.value = null;
   submitting.value = true;
 
@@ -86,11 +106,27 @@ async function onTotpSubmit(): Promise<void> {
       @submit.prevent="onLoginSubmit"
     >
       <UiFormField label="Username" input-id="username">
-        <input id="username" v-model="username" class="form-control" type="text" autocomplete="username" required />
+        <input
+          id="username"
+          v-model="username"
+          name="username"
+          class="form-control"
+          type="text"
+          autocomplete="username"
+          required
+        />
       </UiFormField>
 
       <UiFormField label="Password" input-id="password">
-        <input id="password" v-model="password" class="form-control" type="password" autocomplete="current-password" required />
+        <input
+          id="password"
+          v-model="password"
+          name="password"
+          class="form-control"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
       </UiFormField>
 
       <UiFormField
@@ -98,7 +134,14 @@ async function onTotpSubmit(): Promise<void> {
         input-id="ward-code"
         hint="Required on this device until the current ward code has been verified."
       >
-        <input id="ward-code" v-model="wardCode" class="form-control" type="password" autocomplete="off" />
+        <input
+          id="ward-code"
+          v-model="wardCode"
+          name="ward-code"
+          class="form-control"
+          type="password"
+          autocomplete="off"
+        />
       </UiFormField>
 
       <UiAlertBanner v-if="errorMessage">{{ errorMessage }}</UiAlertBanner>

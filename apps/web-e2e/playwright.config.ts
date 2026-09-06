@@ -18,6 +18,9 @@ export default defineConfig({
     baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    launchOptions: {
+      args: ['--disable-save-password-bubble', '--disable-features=PasswordManagerOnboarding'],
+    },
   },
   projects: [
     {
