@@ -244,6 +244,17 @@ Quick summary:
 
 Do **not** set `NUXT_PUBLIC_API_BASE_URL` unless you split web and API domains.
 
+## End-to-end tests
+
+Playwright lives in `apps/web-e2e`. Guest tests cover the public login page. Authenticated tests walk core and admin pages. Against a live origin they may create fictional throwaway records; they do not rotate the real ward code, reset the signed-in admin password, or provision a tenant.
+
+```bash
+pnpm --filter @ward-comms/web-e2e exec playwright install chromium
+pnpm test:e2e
+```
+
+Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests also need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE`. Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit those values.
+
 ## Common scripts
 
 Run from the repository root; Turborepo fans these out across the workspace:
@@ -254,7 +265,7 @@ pnpm dev         # Run all apps in watch/dev mode
 pnpm lint        # Lint all apps and packages
 pnpm typecheck   # Type-check all apps and packages
 pnpm test        # Run unit and integration tests
-pnpm test:e2e    # Run Playwright smoke tests (starts Nuxt; no API/DB required for current suite)
+pnpm test:e2e    # Run Playwright browser tests (starts Nuxt unless E2E_BASE_URL is remote)
 pnpm format      # Format the repository with Prettier
 ```
 

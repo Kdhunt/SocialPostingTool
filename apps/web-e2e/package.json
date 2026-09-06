@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed --workers=1"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1"

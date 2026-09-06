@@ -91,7 +91,7 @@ Operator roles (seeded):
 
 - **Vitest** for unit tests across packages and apps.
 - **NestJS testing utilities** for API and worker integration tests.
-- **Playwright** for web end-to-end tests (added when web flows exist beyond the health page).
+- **Playwright** for web end-to-end tests in `apps/web-e2e`: guest smoke/login plus authenticated walks of core and admin pages. Against localhost the suite starts Nuxt; set `E2E_BASE_URL` to a deployed origin to skip the local server. Authenticated tests need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE` (never commit those values). Live-site writes use generated fictional names only; ward-code rotation, admin password reset, and tenant create stay on validation-error paths.
 - **Testcontainers or isolated Docker services** for database integration tests where practical.
 - Tests use only generated fictional data and must not depend on execution order.
 

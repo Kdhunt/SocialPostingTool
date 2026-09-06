@@ -71,6 +71,7 @@ CI runs the same commands and will block merges on failure.
 ## Testing expectations
 
 - Use Vitest for unit tests, NestJS testing utilities for API/worker tests, and Playwright for web end-to-end tests.
+- Playwright lives in `apps/web-e2e`. Do not commit `E2E_PASSWORD` or ward codes; use `apps/web-e2e/.env` or the environment.
 - Use only generated fictional data. Never use real member data in tests.
 - Tests must not depend on execution order.
 - Every material business rule requires automated tests.
