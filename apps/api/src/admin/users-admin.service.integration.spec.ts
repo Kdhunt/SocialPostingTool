@@ -26,6 +26,7 @@ function fakeConfig(): AppConfig {
     wardCodePepper: 'fictional-pepper-value',
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    facebook: { appId: undefined, appSecret: undefined },
     systemEmail: {
       mode: 'simulated',
       provider: 'sendgrid',
@@ -92,7 +93,7 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
 
   beforeEach(async () => {
     const ward = await prisma.client.ward.create({
-      data: { name: `Fictional Users Ward ${randomUUID()}` },
+      data: { name: `Fictional Users Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
     });
     createdWardIds.push(ward.id);
     wardId = ward.id;
@@ -185,7 +186,7 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
     expect(activeSessions).toBe(0);
 
     const otherWard = await prisma.client.ward.create({
-      data: { name: `Fictional Other Ward ${randomUUID()}` },
+      data: { name: `Fictional Other Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
     });
     createdWardIds.push(otherWard.id);
     const otherUser = await prisma.client.applicationUser.create({
@@ -245,7 +246,7 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
     ).rejects.toThrow(/email already exists/i);
 
     const otherWard = await prisma.client.ward.create({
-      data: { name: `Fictional Email Ward ${randomUUID()}` },
+      data: { name: `Fictional Email Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
     });
     createdWardIds.push(otherWard.id);
     const otherWardUser = await usersAdmin.create(
@@ -321,7 +322,7 @@ describe.skipIf(!databaseAvailable)('UsersAdminService — live PostgreSQL integ
     ).rejects.toThrow(/email already exists/i);
 
     const otherWard = await prisma.client.ward.create({
-      data: { name: `Fictional Email Update Ward ${randomUUID()}` },
+      data: { name: `Fictional Email Update Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
     });
     createdWardIds.push(otherWard.id);
     const otherUser = await prisma.client.applicationUser.create({

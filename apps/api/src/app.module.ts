@@ -11,6 +11,7 @@ import { DeliveryModule } from './delivery/delivery.module.js';
 import { ProvidersModule } from './providers/providers.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { MessagingModule } from './messaging/messaging.module.js';
+import { PublicModule } from './public/public.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { MessagingModule } from './messaging/messaging.module.js';
     DeliveryModule,
     ProvidersModule,
     AdminModule,
+    PublicModule,
   ],
 })
 export class AppModule {}

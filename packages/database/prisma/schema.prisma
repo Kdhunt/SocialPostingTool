@@ -36,6 +36,8 @@ datasource db {
 model Ward {
   id         String    @id @default(uuid())
   name       String
+  /// Public URL path (`/{publicSlug}`), distinct from the hashed login ward code.
+  publicSlug String    @unique @map("public_slug")
   timeZone   String    @default("America/Denver") @map("time_zone")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")

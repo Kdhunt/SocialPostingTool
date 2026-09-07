@@ -32,6 +32,7 @@ This document describes the threat model for the login flow implemented in
 | - | --- | --- | --- |
 | 1 | Credential stuffing / brute-force password guessing | Per-account lockout with exponential backoff after `LOCKOUT_THRESHOLD` (5) failed attempts, persisted in the database so it survives process restarts and applies across API instances; additional best-effort per-IP+username in-process rate limiting on `/auth/login` and `/auth/ward-code` | `packages/domain/src/auth/lockout-policy.ts`, `apps/api/src/auth/login-rate-limiter.service.ts` |
 | 2 | Ward code brute-force (shared secret, potentially short/memorable) | Ward code is hashed with Argon2id **combined with a server-side pepper** (`WARD_CODE_PEPPER`, never in source control), stored in a *separate* table from passwords; the same lockout/rate-limit protections apply to the `/auth/ward-code` endpoint | `apps/api/src/auth/ward-code-hasher.service.ts`, `.env.example` |
+| 2a | Public bulletin URL leaking the login ward code | `/{slug}` looks up `Ward.publicSlug` only — never the hashed login code. Operators should pick a path that is **not** the ward code. If they set the slug to the same memorable string used at login (e.g. `grangecreek`), that string is public | `packages/domain/src/wards/public-ward-slug.ts`, `apps/api/src/public/public-ward-bulletin.service.ts` |
 | 3 | Database leak exposing password hashes | Argon2id (memory-hard, GPU-resistant) hashing; hashes are never returned by any API response (`AuthUser` never includes `passwordHash`) | `apps/api/src/auth/password-hasher.service.ts`, `packages/validation/src/auth.schema.ts` |
 | 4 | Database leak exposing session/refresh tokens | Only SHA-256 *hashes* of opaque, high-entropy (256-bit) tokens are stored; the raw token is returned to the client exactly once and never persisted server-side | `apps/api/src/common/session-token.util.ts` |
 | 5 | Session hijacking via XSS reading the session token | Web session token is delivered only as an **HTTP-only** cookie (`Secure` in production, `SameSite=Lax`) — never reachable from JavaScript, never placed in localStorage/sessionStorage | `apps/api/src/auth/auth.controller.ts` (`setSessionCookie`), AGENTS.md |
@@ -54,7 +55,9 @@ This document describes the threat model for the login flow implemented in
   best-effort *global* lookup. In a deployment with multiple wards sharing
   one instance and overlapping usernames, this is ambiguous. A production
   rollout with multiple wards should add a ward-scoping field (e.g. a ward
-  slug) to the login form.
+  slug) to the login form. `Ward.publicSlug` already exists for the
+  anonymous campaign board (`/{slug}`); it is **not** used at login and
+  must stay distinct from the hashed ward code.
 - **The per-IP+username rate limiter is in-process, not distributed.** It
   resets on process restart and is not shared across horizontally scaled
   API instances. The durable, cross-instance defense is the persisted

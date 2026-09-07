@@ -47,6 +47,16 @@ export class ProviderCredentialRepository {
     });
   }
 
+  async listActiveForWardChannel(
+    wardId: string,
+    channel: CommunicationChannel,
+  ): Promise<ProviderCredential[]> {
+    return this.prisma.client.providerCredential.findMany({
+      where: { wardId, channel, revokedAt: null },
+      orderBy: { providerAccountReference: 'asc' },
+    });
+  }
+
   async revoke(wardId: string, id: string): Promise<void> {
     await this.prisma.client.providerCredential.updateMany({
       where: { id, wardId },

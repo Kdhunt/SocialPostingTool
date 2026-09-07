@@ -88,6 +88,12 @@ export function useAppNavigation(): {
         permission: 'campaigns.send',
         matchPrefix: '/admin/provider-credentials',
       });
+      items.push({
+        label: 'Facebook Page',
+        to: '/admin/facebook-page',
+        permission: 'campaigns.send',
+        matchPrefix: '/admin/facebook-page',
+      });
     }
     if (hasPermission('audit.read')) {
       items.push({ label: 'Audit log', to: '/admin/audit', permission: 'audit.read', matchPrefix: '/admin/audit' });

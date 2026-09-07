@@ -39,6 +39,13 @@ export const envSchema = z.object({
   /** `simulated` | `credentialed` | `live` — see docs/providers.md */
   PROVIDER_MODE: z.enum(['simulated', 'credentialed', 'live']).default('simulated'),
 
+  /**
+   * Optional Meta app used so each ward can OAuth-connect its own Facebook
+   * Page. Page tokens are stored per ward; the app id/secret stay platform-wide.
+   */
+  FACEBOOK_APP_ID: z.string().min(1).optional(),
+  FACEBOOK_APP_SECRET: z.string().min(1).optional(),
+
   /** Optional OpenAI key for live AI image generation. When absent, AI_IMAGE_MODE falls back to simulated. */
   OPENAI_API_KEY: z.string().optional(),
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { nextTick, onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
 import { ApiRequestError } from '@ward-comms/api-client';
 import {
@@ -33,6 +33,8 @@ const successMessage = ref<string | null>(null);
 const submitting = ref(false);
 const createdWard = ref<CreateWardResponse | null>(null);
 const fieldErrors = ref<Partial<Record<CreateWardField, string>>>({});
+const showCreateForm = ref(false);
+const expandedWardId = ref<string | null>(null);
 
 const wardName = ref('');
 const timeZone = ref('America/Denver');
@@ -41,8 +43,11 @@ const adminEmail = ref('');
 const adminDisplayName = ref('');
 const adminPassword = ref('');
 const initialWardCode = ref('');
+const publicSlug = ref('');
 const rotateCodes = ref<Record<string, string>>({});
 const resetPasswords = ref<Record<string, string>>({});
+const slugDrafts = ref<Record<string, string>>({});
+const savingSlugId = ref<string | null>(null);
 const wardActionErrors = ref<Record<string, string>>({});
 const rotatingWardId = ref<string | null>(null);
 const resettingAdminId = ref<string | null>(null);
@@ -64,10 +69,38 @@ function applyFieldErrors(errors: Record<string, string>): void {
   actionError.value = 'Fix the highlighted fields and try again.';
 }
 
+function formatCreatedAt(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso));
+}
+
+function adminNames(ward: PlatformWardSummaryDto): string {
+  if (ward.admins.length === 0) {
+    return 'No administrators';
+  }
+  return ward.admins.map((admin) => `${admin.displayName} (@${admin.username})`).join(', ');
+}
+
+async function openCreateForm(): Promise<void> {
+  showCreateForm.value = true;
+  createdWard.value = null;
+  await nextTick();
+  document.getElementById('ward-name')?.focus();
+}
+
+function cancelCreateForm(): void {
+  showCreateForm.value = false;
+  fieldErrors.value = {};
+}
+
+function toggleManage(wardId: string): void {
+  expandedWardId.value = expandedWardId.value === wardId ? null : wardId;
+}
+
 async function load(): Promise<void> {
   pageState.value = { kind: 'loading' };
   try {
     const { wards } = await client.listWards();
+    slugDrafts.value = Object.fromEntries(wards.map((ward) => [ward.id, ward.publicSlug]));
     pageState.value = { kind: 'loaded', wards };
   } catch (error) {
     pageState.value = {
@@ -105,6 +138,9 @@ async function createWard(): Promise<void> {
     adminPassword: adminPassword.value,
     initialWardCode: initialWardCode.value,
   };
+  if (publicSlug.value.trim()) {
+    payload.publicSlug = publicSlug.value.trim().toLowerCase();
+  }
 
   const parsed = createWardRequestSchema.safeParse(payload);
   if (!parsed.success) {
@@ -118,13 +154,15 @@ async function createWard(): Promise<void> {
     const result = await client.createWard(parsed.data);
 
     createdWard.value = result;
-    successMessage.value = `Ward "${result.ward.name}" was created. A confirmation email was queued for ${result.adminEmail}. Share the initial password and ward code securely — they are not emailed.`;
+    successMessage.value = `Ward "${result.ward.name}" was created. Public campaigns appear at /${result.ward.publicSlug}. A confirmation email was queued for ${result.adminEmail}. Share the initial password and ward code securely — they are not emailed.`;
     wardName.value = '';
     adminUsername.value = '';
     adminEmail.value = '';
     adminDisplayName.value = '';
     adminPassword.value = '';
     initialWardCode.value = '';
+    publicSlug.value = '';
+    showCreateForm.value = false;
     await load();
   } catch (error) {
     const zodFields = fieldErrorsFromUnknown(error);
@@ -223,40 +261,57 @@ async function emailAdminPasswordReset(wardId: string, userId: string, email: st
     emailingAdminId.value = null;
   }
 }
+
+async function savePublicSlug(wardId: string): Promise<void> {
+  actionError.value = null;
+  successMessage.value = null;
+  savingSlugId.value = wardId;
+  try {
+    const updated = await client.updateWardPublicSlug(wardId, { publicSlug: slugDrafts.value[wardId] ?? '' });
+    successMessage.value = `Public campaigns for ${updated.name} now appear at /${updated.publicSlug}.`;
+    await load();
+  } catch (error) {
+    const zodFields = fieldErrorsFromUnknown(error);
+    actionError.value =
+      zodFields?.publicSlug ??
+      (error instanceof ApiRequestError ? error.message : 'Unable to update the public page path.');
+  } finally {
+    savingSlugId.value = null;
+  }
+}
 </script>
 
 <template>
-  <main class="admin-page">
-    <h1>Ward provisioning</h1>
-    <p class="admin-page__intro">
-      Platform operators can create ward tenants, rotate any ward’s shared code, and reset ward administrator
-      passwords. Each ward gets its own admin account and hashed ward code.
-    </p>
+  <div class="wards">
+    <header class="wards__header">
+      <div>
+        <h2>Wards</h2>
+        <p class="wards__lede">
+          Each ward is a separate tenant with its own members and campaigns. Connect Facebook under Administration →
+          Facebook Page. The public site address is configured in hosting, not on this screen.
+        </p>
+      </div>
+      <UiAppButton v-if="!showCreateForm" type="button" @click="openCreateForm">New ward</UiAppButton>
+    </header>
 
-    <p v-if="pageState.kind === 'loading'">Loading…</p>
     <UiAlertBanner v-if="pageState.kind === 'error'">{{ pageState.message }}</UiAlertBanner>
     <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>
     <UiAlertBanner v-if="successMessage" tone="success">{{ successMessage }}</UiAlertBanner>
 
-    <section v-if="createdWard" class="admin-page__success" aria-live="polite">
+    <section v-if="createdWard" class="wards__notice" aria-live="polite">
       <h2>New ward created</h2>
-      <p><strong>Ward:</strong> {{ createdWard.ward.name }}</p>
-      <p><strong>Admin username:</strong> {{ createdWard.adminUsername }}</p>
-      <p><strong>Admin email:</strong> {{ createdWard.adminEmail }}</p>
-      <p class="admin-page__hint">
-        Store the password and ward code you entered in a secure channel. They cannot be retrieved from this screen.
-      </p>
+      <p><strong>{{ createdWard.ward.name }}</strong> · public page /{{ createdWard.ward.publicSlug }}</p>
+      <p>Admin {{ createdWard.adminUsername }} ({{ createdWard.adminEmail }})</p>
+      <p class="wards__hint">The password and ward code cannot be shown again. Store them in a secure channel.</p>
     </section>
 
-    <section aria-labelledby="create-ward-heading">
-      <h2 id="create-ward-heading">Create ward</h2>
-      <form class="admin-page__form" novalidate @submit.prevent="createWard">
-        <UiFormField
-          label="Ward name"
-          input-id="ward-name"
-          hint="Must be unique among active wards."
-          :error="fieldErrors.name"
-        >
+    <section v-if="showCreateForm" class="wards__panel" aria-labelledby="create-ward-heading">
+      <div class="wards__panel-head">
+        <h2 id="create-ward-heading">Create ward</h2>
+        <UiAppButton variant="ghost" type="button" @click="cancelCreateForm">Cancel</UiAppButton>
+      </div>
+      <form class="wards__form" novalidate @submit.prevent="createWard">
+        <UiFormField label="Ward name" input-id="ward-name" hint="Must be unique among active wards." :error="fieldErrors.name">
           <input
             id="ward-name"
             v-model="wardName"
@@ -269,41 +324,74 @@ async function emailAdminPasswordReset(wardId: string, userId: string, email: st
           />
         </UiFormField>
 
-        <UiFormField
-          label="Time zone"
-          input-id="ward-time-zone"
-          hint="IANA time zone, for example America/Denver."
-          :error="fieldErrors.timeZone"
-        >
-          <input
-            id="ward-time-zone"
-            v-model="timeZone"
-            class="form-control"
-            type="text"
-            required
-            autocomplete="off"
-            :aria-invalid="fieldErrors.timeZone ? true : undefined"
-            :aria-describedby="describedBy('ward-time-zone', 'timeZone', true)"
-          />
-        </UiFormField>
+        <div class="wards__form-grid">
+          <UiFormField
+            label="Time zone"
+            input-id="ward-time-zone"
+            hint="IANA time zone, for example America/Denver."
+            :error="fieldErrors.timeZone"
+          >
+            <input
+              id="ward-time-zone"
+              v-model="timeZone"
+              class="form-control"
+              type="text"
+              required
+              autocomplete="off"
+              :aria-invalid="fieldErrors.timeZone ? true : undefined"
+              :aria-describedby="describedBy('ward-time-zone', 'timeZone', true)"
+            />
+          </UiFormField>
 
-        <UiFormField label="Initial admin username" input-id="admin-username" :error="fieldErrors.adminUsername">
-          <input
-            id="admin-username"
-            v-model="adminUsername"
-            class="form-control"
-            type="text"
-            required
-            autocomplete="off"
-            :aria-invalid="fieldErrors.adminUsername ? true : undefined"
-            :aria-describedby="describedBy('admin-username', 'adminUsername', false)"
-          />
-        </UiFormField>
+          <UiFormField
+            label="Public page path (optional)"
+            input-id="public-slug"
+            hint="Letters and numbers only, for example grangecreek. Not the login ward code."
+            :error="fieldErrors.publicSlug"
+          >
+            <input
+              id="public-slug"
+              v-model="publicSlug"
+              class="form-control"
+              type="text"
+              autocomplete="off"
+              :aria-invalid="fieldErrors.publicSlug ? true : undefined"
+              :aria-describedby="describedBy('public-slug', 'publicSlug', true)"
+            />
+          </UiFormField>
+        </div>
 
+        <h3 class="wards__subhead">First administrator</h3>
+        <div class="wards__form-grid">
+          <UiFormField label="Initial admin username" input-id="admin-username" :error="fieldErrors.adminUsername">
+            <input
+              id="admin-username"
+              v-model="adminUsername"
+              class="form-control"
+              type="text"
+              required
+              autocomplete="off"
+              :aria-invalid="fieldErrors.adminUsername ? true : undefined"
+              :aria-describedby="describedBy('admin-username', 'adminUsername', false)"
+            />
+          </UiFormField>
+          <UiFormField label="Initial admin display name" input-id="admin-display-name" :error="fieldErrors.adminDisplayName">
+            <input
+              id="admin-display-name"
+              v-model="adminDisplayName"
+              class="form-control"
+              type="text"
+              required
+              autocomplete="off"
+              :aria-invalid="fieldErrors.adminDisplayName ? true : undefined"
+              :aria-describedby="describedBy('admin-display-name', 'adminDisplayName', false)"
+            />
+          </UiFormField>
+        </div>
         <UiFormField
           label="Initial admin email"
           input-id="admin-email"
-          hint="Required. Stored lowercase and unique within the new ward."
+          hint="Stored lowercase and unique within the new ward."
           :error="fieldErrors.adminEmail"
         >
           <input
@@ -317,167 +405,277 @@ async function emailAdminPasswordReset(wardId: string, userId: string, email: st
             :aria-describedby="describedBy('admin-email', 'adminEmail', true)"
           />
         </UiFormField>
+        <div class="wards__form-grid">
+          <UiFormField label="Initial admin password" input-id="admin-password" hint="Minimum 12 characters." :error="fieldErrors.adminPassword">
+            <input
+              id="admin-password"
+              v-model="adminPassword"
+              class="form-control"
+              type="password"
+              required
+              autocomplete="new-password"
+              :aria-invalid="fieldErrors.adminPassword ? true : undefined"
+              :aria-describedby="describedBy('admin-password', 'adminPassword', true)"
+            />
+          </UiFormField>
+          <UiFormField
+            label="Initial ward code"
+            input-id="initial-ward-code"
+            hint="Shared sign-in code. Stored only as a hash."
+            :error="fieldErrors.initialWardCode"
+          >
+            <input
+              id="initial-ward-code"
+              v-model="initialWardCode"
+              class="form-control"
+              type="password"
+              required
+              autocomplete="new-password"
+              :aria-invalid="fieldErrors.initialWardCode ? true : undefined"
+              :aria-describedby="describedBy('initial-ward-code', 'initialWardCode', true)"
+            />
+          </UiFormField>
+        </div>
 
-        <UiFormField
-          label="Initial admin display name"
-          input-id="admin-display-name"
-          :error="fieldErrors.adminDisplayName"
-        >
-          <input
-            id="admin-display-name"
-            v-model="adminDisplayName"
-            class="form-control"
-            type="text"
-            required
-            autocomplete="off"
-            :aria-invalid="fieldErrors.adminDisplayName ? true : undefined"
-            :aria-describedby="describedBy('admin-display-name', 'adminDisplayName', false)"
-          />
-        </UiFormField>
-
-        <UiFormField
-          label="Initial admin password"
-          input-id="admin-password"
-          hint="Minimum 12 characters."
-          :error="fieldErrors.adminPassword"
-        >
-          <input
-            id="admin-password"
-            v-model="adminPassword"
-            class="form-control"
-            type="password"
-            required
-            autocomplete="new-password"
-            :aria-invalid="fieldErrors.adminPassword ? true : undefined"
-            :aria-describedby="describedBy('admin-password', 'adminPassword', true)"
-          />
-        </UiFormField>
-
-        <UiFormField
-          label="Initial ward code"
-          input-id="initial-ward-code"
-          hint="Shared by all members of this ward. It is stored only as a hash and cannot be shown again."
-          :error="fieldErrors.initialWardCode"
-        >
-          <input
-            id="initial-ward-code"
-            v-model="initialWardCode"
-            class="form-control"
-            type="password"
-            required
-            autocomplete="new-password"
-            :aria-invalid="fieldErrors.initialWardCode ? true : undefined"
-            :aria-describedby="describedBy('initial-ward-code', 'initialWardCode', true)"
-          />
-        </UiFormField>
-
-        <UiAppButton type="submit" :disabled="submitting">
-          {{ submitting ? 'Creating…' : 'Create ward' }}
-        </UiAppButton>
+        <div class="wards__actions">
+          <UiAppButton type="submit" :disabled="submitting">
+            {{ submitting ? 'Creating…' : 'Create ward' }}
+          </UiAppButton>
+          <UiAppButton variant="secondary" type="button" :disabled="submitting" @click="cancelCreateForm">
+            Cancel
+          </UiAppButton>
+        </div>
       </form>
     </section>
 
-    <section v-if="pageState.kind === 'loaded'" aria-labelledby="wards-heading">
-      <h2 id="wards-heading">Active wards</h2>
-      <UiEmptyState v-if="pageState.wards.length === 0" title="No wards yet" description="Create the first ward using the form above." />
-      <ul v-else class="admin-page__list">
-        <li v-for="ward in pageState.wards" :key="ward.id">
-          <strong>{{ ward.name }}</strong>
-          <span class="admin-page__hint">{{ ward.timeZone }}</span>
-          <span class="admin-page__hint">Created {{ new Date(ward.createdAt).toLocaleString() }}</span>
+    <UiLoadingState v-if="pageState.kind === 'loading'" message="Loading wards…" />
 
-          <p v-if="ward.admins.length === 0" class="admin-page__hint">No WardAdmin accounts on this ward.</p>
-          <ul v-else class="admin-page__admins">
-            <li v-for="admin in ward.admins" :key="admin.id">
-              <span>{{ admin.displayName }} (@{{ admin.username }})</span>
-              <span v-if="admin.email" class="admin-page__hint">{{ admin.email }}</span>
-              <UiAppButton
-                type="button"
-                :disabled="emailingAdminId === admin.id || !admin.email"
-                @click="emailAdminPasswordReset(ward.id, admin.id, admin.email)"
-              >
-                {{ emailingAdminId === admin.id ? 'Emailing…' : 'Email reset link' }}
-              </UiAppButton>
-              <form class="admin-page__inline-form" novalidate @submit.prevent="resetAdminPassword(ward.id, admin.id)">
-                <UiFormField
-                  :label="`Set password for ${admin.username}`"
-                  :input-id="`reset-password-${admin.id}`"
-                  hint="Emergency override. Prefer Email reset link. Minimum 12 characters. Sessions are revoked."
-                  :error="wardActionErrors[`password:${admin.id}`]"
-                >
-                  <input
-                    :id="`reset-password-${admin.id}`"
-                    v-model="resetPasswords[admin.id]"
-                    class="form-control"
-                    type="password"
-                    required
-                    autocomplete="new-password"
-                    :aria-invalid="wardActionErrors[`password:${admin.id}`] ? true : undefined"
-                    :aria-describedby="
-                      wardActionErrors[`password:${admin.id}`]
-                        ? `reset-password-${admin.id}-hint reset-password-${admin.id}-error`
-                        : `reset-password-${admin.id}-hint`
-                    "
-                  />
-                </UiFormField>
-                <UiAppButton type="submit" :disabled="resettingAdminId === admin.id">
-                  {{ resettingAdminId === admin.id ? 'Saving…' : 'Set password' }}
-                </UiAppButton>
-              </form>
-            </li>
-          </ul>
-
-          <form class="admin-page__inline-form" novalidate @submit.prevent="rotateWardCode(ward.id)">
-            <UiFormField
-              label="New ward code"
-              :input-id="`rotate-code-${ward.id}`"
-              hint="At least 4 characters. Members must re-enter the code after rotation."
-              :error="wardActionErrors[`code:${ward.id}`]"
+    <section v-else-if="pageState.kind === 'loaded'" aria-labelledby="wards-heading">
+      <h2 id="wards-heading" class="wards__list-title">Active wards</h2>
+      <UiEmptyState
+        v-if="pageState.wards.length === 0"
+        title="No wards yet"
+        description="Create the first ward to start a separate tenant."
+      >
+        <template #actions>
+          <UiAppButton type="button" @click="openCreateForm">New ward</UiAppButton>
+        </template>
+      </UiEmptyState>
+      <ul v-else class="ward-list">
+        <li v-for="ward in pageState.wards" :key="ward.id" class="ward-card">
+          <div class="ward-card__summary">
+            <div>
+              <h3 class="ward-card__name">{{ ward.name }}</h3>
+              <p class="ward-card__meta">
+                {{ ward.timeZone }} · Created {{ formatCreatedAt(ward.createdAt) }}
+              </p>
+              <p class="ward-card__meta">{{ adminNames(ward) }}</p>
+              <p class="ward-card__meta">
+                Public page
+                <NuxtLink :to="`/${ward.publicSlug}`">/{{ ward.publicSlug }}</NuxtLink>
+              </p>
+            </div>
+            <UiAppButton
+              variant="secondary"
+              type="button"
+              :aria-expanded="expandedWardId === ward.id"
+              :aria-controls="`ward-manage-${ward.id}`"
+              @click="toggleManage(ward.id)"
             >
-              <input
-                :id="`rotate-code-${ward.id}`"
-                v-model="rotateCodes[ward.id]"
-                class="form-control"
-                type="password"
-                required
-                autocomplete="new-password"
-                :aria-invalid="wardActionErrors[`code:${ward.id}`] ? true : undefined"
-                :aria-describedby="
-                  wardActionErrors[`code:${ward.id}`]
-                    ? `rotate-code-${ward.id}-hint rotate-code-${ward.id}-error`
-                    : `rotate-code-${ward.id}-hint`
-                "
-              />
-            </UiFormField>
-            <UiAppButton type="submit" :disabled="rotatingWardId === ward.id">
-              {{ rotatingWardId === ward.id ? 'Rotating…' : 'Rotate ward code' }}
+              {{ expandedWardId === ward.id ? 'Close' : 'Manage' }}
             </UiAppButton>
-          </form>
+          </div>
+
+          <div v-if="expandedWardId === ward.id" :id="`ward-manage-${ward.id}`" class="ward-card__manage">
+            <form class="ward-card__row-form" novalidate @submit.prevent="savePublicSlug(ward.id)">
+              <UiFormField
+                :label="`Public page path for ${ward.name}`"
+                :input-id="`public-slug-${ward.id}`"
+                hint="Letters and numbers only. This is not the login ward code."
+              >
+                <input
+                  :id="`public-slug-${ward.id}`"
+                  v-model="slugDrafts[ward.id]"
+                  class="form-control"
+                  type="text"
+                  autocomplete="off"
+                  required
+                />
+              </UiFormField>
+              <UiAppButton type="submit" variant="secondary" :disabled="savingSlugId === ward.id">
+                {{ savingSlugId === ward.id ? 'Saving…' : 'Save path' }}
+              </UiAppButton>
+            </form>
+
+            <div v-if="ward.admins.length === 0" class="wards__hint">No WardAdmin accounts on this ward.</div>
+            <ul v-else class="admin-list">
+              <li v-for="admin in ward.admins" :key="admin.id" class="admin-list__item">
+                <div>
+                  <p class="admin-list__name">{{ admin.displayName }} <span class="wards__hint">@{{ admin.username }}</span></p>
+                  <p v-if="admin.email" class="wards__hint">{{ admin.email }}</p>
+                </div>
+                <div class="admin-list__actions">
+                  <UiAppButton
+                    variant="ghost"
+                    type="button"
+                    :disabled="emailingAdminId === admin.id || !admin.email"
+                    @click="emailAdminPasswordReset(ward.id, admin.id, admin.email)"
+                  >
+                    {{ emailingAdminId === admin.id ? 'Emailing…' : 'Email reset link' }}
+                  </UiAppButton>
+                </div>
+                <form class="ward-card__stack-form" novalidate @submit.prevent="resetAdminPassword(ward.id, admin.id)">
+                  <UiFormField
+                    :label="`Set password for ${admin.username}`"
+                    :input-id="`reset-password-${admin.id}`"
+                    hint="Emergency override. Prefer email reset. Minimum 12 characters."
+                    :error="wardActionErrors[`password:${admin.id}`]"
+                  >
+                    <input
+                      :id="`reset-password-${admin.id}`"
+                      v-model="resetPasswords[admin.id]"
+                      class="form-control"
+                      type="password"
+                      required
+                      autocomplete="new-password"
+                      :aria-invalid="wardActionErrors[`password:${admin.id}`] ? true : undefined"
+                      :aria-describedby="
+                        wardActionErrors[`password:${admin.id}`]
+                          ? `reset-password-${admin.id}-hint reset-password-${admin.id}-error`
+                          : `reset-password-${admin.id}-hint`
+                      "
+                    />
+                  </UiFormField>
+                  <UiAppButton variant="secondary" type="submit" :disabled="resettingAdminId === admin.id">
+                    {{ resettingAdminId === admin.id ? 'Saving…' : 'Set password' }}
+                  </UiAppButton>
+                </form>
+              </li>
+            </ul>
+
+            <form class="ward-card__stack-form" novalidate @submit.prevent="rotateWardCode(ward.id)">
+              <UiFormField
+                label="New ward code"
+                :input-id="`rotate-code-${ward.id}`"
+                hint="At least 4 characters. Members must re-enter the code after rotation."
+                :error="wardActionErrors[`code:${ward.id}`]"
+              >
+                <input
+                  :id="`rotate-code-${ward.id}`"
+                  v-model="rotateCodes[ward.id]"
+                  class="form-control"
+                  type="password"
+                  required
+                  autocomplete="new-password"
+                  :aria-invalid="wardActionErrors[`code:${ward.id}`] ? true : undefined"
+                  :aria-describedby="
+                    wardActionErrors[`code:${ward.id}`]
+                      ? `rotate-code-${ward.id}-hint rotate-code-${ward.id}-error`
+                      : `rotate-code-${ward.id}-hint`
+                  "
+                />
+              </UiFormField>
+              <UiAppButton variant="danger" type="submit" :disabled="rotatingWardId === ward.id">
+                {{ rotatingWardId === ward.id ? 'Rotating…' : 'Rotate ward code' }}
+              </UiAppButton>
+            </form>
+          </div>
         </li>
       </ul>
     </section>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.admin-page {
+.wards {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+
+.wards__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.wards__header h2 {
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.wards__lede,
+.wards__hint {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
   max-width: 40rem;
 }
 
-.admin-page__intro {
-  color: var(--color-text-muted);
+.wards__lede {
+  margin-top: var(--space-2);
 }
 
-.admin-page__form {
+.wards__list-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: var(--space-4);
+}
+
+.wards__subhead {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin: var(--space-2) 0 0;
+}
+
+.wards__panel,
+.wards__notice,
+.ward-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.wards__panel,
+.wards__notice {
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.admin-page__list {
+.wards__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.wards__form,
+.ward-card__stack-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.wards__form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+}
+
+.wards__actions,
+.ward-card__row-form,
+.admin-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.ward-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -486,40 +684,65 @@ async function emailAdminPasswordReset(wardId: string, userId: string, email: st
   gap: var(--space-3);
 }
 
-.admin-page__list li {
+.ward-card__summary {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
 }
 
-.admin-page__hint {
+.ward-card__name {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.ward-card__meta {
+  margin-top: var(--space-1);
   color: var(--color-text-muted);
   font-size: 0.875rem;
 }
 
-.admin-page__success {
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+.ward-card__manage {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
   background: var(--color-surface-muted);
 }
 
-.admin-page__admins {
+.ward-card__row-form {
+  align-items: stretch;
+}
+
+.ward-card__row-form :deep(.field) {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.admin-list {
   list-style: none;
-  margin: var(--space-3) 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.admin-page__inline-form {
+.admin-list__item {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin-top: var(--space-3);
+}
+
+.admin-list__name {
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .ward-card__summary {
+    flex-direction: column;
+  }
 }
 </style>

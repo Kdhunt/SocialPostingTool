@@ -4,9 +4,11 @@ import {
   createWardRequestSchema,
   resetPasswordRequestSchema,
   rotateWardCodeRequestSchema,
+  updateWardPublicSlugRequestSchema,
   type CreateWardResponse,
   type WardCodeInfoDto,
   type WardListResponse,
+  type WardSummaryDto,
 } from '@ward-comms/validation';
 import { parseBody } from '../common/parse-body.util.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -44,6 +46,18 @@ export class PlatformWardsController {
     this.assertRateLimit(`${req.ip}:platform-ward-create`, 'Too many ward creation attempts. Please wait and try again.');
     const dto = parseBody(createWardRequestSchema, body);
     return this.provisioning.create(dto, buildContext(user, req));
+  }
+
+  @Post(':wardId/public-slug')
+  async updatePublicSlug(
+    @Param('wardId') wardId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<WardSummaryDto> {
+    this.assertRateLimit(`${req.ip}:platform-ward-slug`, 'Too many public path updates. Please wait and try again.');
+    const dto = parseBody(updateWardPublicSlugRequestSchema, body);
+    return this.provisioning.updatePublicSlug(wardId, dto, buildContext(user, req));
   }
 
   @Post(':wardId/code/rotate')

@@ -20,10 +20,9 @@ export class LiveFacebookPageProviderAdapter {
     url.searchParams.set('access_token', credentials.pageAccessToken);
 
     const body: Record<string, string> = { message: request.message };
-    if (request.imageAssetId) {
-      // Image assets are stored by reference; a future phase can resolve to a public URL.
-      body.link = request.imageAssetId;
-    }
+    // Campaign images are stored by internal asset id, not a public URL.
+    // Posting that id as Graph `link` is rejected by Facebook, so text-only
+    // publish is the supported live path until assets have a public URL.
 
     const response = await fetch(url.toString(), {
       method: 'POST',

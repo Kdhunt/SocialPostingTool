@@ -26,6 +26,10 @@ export interface AppConfig {
   wardCodePepper: string;
   providerCredentialsEncryptionKey: string;
   providerMode: 'simulated' | 'credentialed' | 'live';
+  facebook: {
+    appId: string | undefined;
+    appSecret: string | undefined;
+  };
   openAiApiKey: string | undefined;
   aiImageMode: 'simulated' | 'live';
   corsAllowedOrigins: string[];
@@ -81,6 +85,10 @@ function toAppConfig(env: Env): AppConfig {
     wardCodePepper: env.WARD_CODE_PEPPER,
     providerCredentialsEncryptionKey: env.PROVIDER_CREDENTIALS_ENCRYPTION_KEY,
     providerMode: env.PROVIDER_MODE,
+    facebook: {
+      appId: env.FACEBOOK_APP_ID,
+      appSecret: env.FACEBOOK_APP_SECRET,
+    },
     openAiApiKey: env.OPENAI_API_KEY,
     aiImageMode: env.AI_IMAGE_MODE,
     corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS.split(',')
@@ -122,6 +130,14 @@ export function loadConfig(source: Record<string, string | undefined> = process.
   }
 
   const config = toAppConfig(result.data);
+  if (
+    (result.data.FACEBOOK_APP_ID && !result.data.FACEBOOK_APP_SECRET) ||
+    (!result.data.FACEBOOK_APP_ID && result.data.FACEBOOK_APP_SECRET)
+  ) {
+    throw new ConfigValidationError(
+      'Invalid environment configuration: FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set together.',
+    );
+  }
   if (config.systemEmail.mode === 'live') {
     if (!result.data.SYSTEM_EMAIL_FROM) {
       throw new ConfigValidationError(

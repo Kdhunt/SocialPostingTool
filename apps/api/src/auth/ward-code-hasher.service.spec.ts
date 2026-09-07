@@ -16,6 +16,7 @@ function fakeConfig(pepper: string): AppConfig {
     wardCodePepper: pepper,
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    facebook: { appId: undefined, appSecret: undefined },
     systemEmail: {
       mode: 'simulated',
       provider: 'sendgrid',

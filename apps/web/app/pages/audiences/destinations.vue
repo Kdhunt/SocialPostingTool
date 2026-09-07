@@ -75,8 +75,9 @@ async function archiveDestination(id: string): Promise<void> {
     <p><NuxtLink to="/audiences">&larr; Back to audiences</NuxtLink></p>
     <h1>Communication destinations</h1>
     <p class="destinations-page__hint">
-      Destinations represent where a message can be sent (an email list, an SMS number, a Facebook Page). Real
-      provider credentials are configured separately and are never shown here.
+      Destinations represent where a message can be sent (an email list, an SMS number, a Facebook Page).
+      Connect this ward’s Facebook Page under Administration → Facebook Page so the destination’s
+      <code>providerAccountReference</code> matches that Page. Credentials stay on this ward only.
     </p>
 
     <p v-if="actionError" role="alert" class="destinations-page__error">{{ actionError }}</p>

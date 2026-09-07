@@ -13,6 +13,11 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+function publicSlugFromName(name: string): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 64);
+  return slug.length >= 2 ? slug : 'ward';
+}
+
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -71,7 +76,9 @@ async function main(): Promise<void> {
   await prisma.$transaction(async (tx) => {
     let ward = await tx.ward.findFirst({ where: { name: wardName, archivedAt: null } });
     if (!ward) {
-      ward = await tx.ward.create({ data: { name: wardName, timeZone } });
+      ward = await tx.ward.create({
+        data: { name: wardName, timeZone, publicSlug: publicSlugFromName(wardName) },
+      });
     }
 
     const adminUser = await tx.applicationUser.create({

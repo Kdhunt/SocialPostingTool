@@ -34,6 +34,7 @@ function fakeConfig(): AppConfig {
     wardCodePepper: 'fictional-pepper-value',
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    facebook: { appId: undefined, appSecret: undefined },
     systemEmail: {
       mode: 'simulated',
       provider: 'sendgrid',
@@ -97,7 +98,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
 
   beforeEach(async () => {
     const actorWard = await prisma.client.ward.create({
-      data: { name: `Fictional Actor Ward ${randomUUID()}` },
+      data: { name: `Fictional Actor Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
     });
     createdWardIds.push(actorWard.id);
 
@@ -130,6 +131,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
     createdWardIds.push(result.ward.id);
 
     expect(result.ward.name).toBe(wardName);
+    expect(result.ward.publicSlug.startsWith('fictionalprovisionedward')).toBe(true);
     expect(result.adminUsername).toBe('bootstrap.admin');
     expect(result.adminEmail).toBe('bootstrap.admin@example.com');
     expect(result).not.toHaveProperty('adminPassword');

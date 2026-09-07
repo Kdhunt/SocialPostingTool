@@ -42,7 +42,9 @@ erDiagram
 Every directory, audience, and communication record is scoped to a `Ward`
 via a `wardId` foreign key. Wards are soft-archived (`archivedAt`), never
 physically deleted, because historical audit and delivery data must survive
-(AGENTS.md #12).
+(AGENTS.md #12). Each ward has a public `publicSlug` used for
+`/{slug}` campaign boards (for example `/grangecreek`). That slug is not
+the login ward code; ward codes remain hashed and secret.
 
 ### Authorization (schema only in Phase 3)
 
@@ -128,8 +130,9 @@ implemented in Phase 4.
   channels/destinations, and a destination can serve multiple audiences.
 - `CommunicationDestination` stores only a non-secret
   `providerAccountReference` and non-secret `configuration` JSON. Real
-  provider credentials belong in a managed secret store (Phase 9), never in
-  this table or source control (security.mdc, AGENTS.md #3).
+  provider credentials belong in `ProviderCredential` (encrypted, keyed by
+  `wardId + channel + providerAccountReference`). Each ward connects its
+  own Facebook Page; Ward A’s Page token is never used for Ward B.
 
 ### Audit
 

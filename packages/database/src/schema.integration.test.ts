@@ -8,6 +8,7 @@
 //   docker compose up -d postgres
 //   pnpm --filter @ward-comms/database db:migrate
 //   pnpm --filter @ward-comms/database test
+import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -34,7 +35,9 @@ describe.skipIf(!databaseAvailable)('Phase 3 schema — live PostgreSQL integrat
 
   beforeAll(async () => {
     await prisma.$connect();
-    const ward = await prisma.ward.create({ data: { name: 'Fictional Test Ward' } });
+    const ward = await prisma.ward.create({
+      data: { name: 'Fictional Test Ward', publicSlug: `w${randomUUID().replace(/-/g, '')}` },
+    });
     wardId = ward.id;
   });
 

@@ -48,7 +48,9 @@ describe.skipIf(!databaseAvailable)('processDeliveryRecipient — no duplicate s
 
   beforeAll(async () => {
     await prisma.$connect();
-    const ward = await prisma.ward.create({ data: { name: `Fictional Delivery Ward ${randomUUID()}` } });
+    const ward = await prisma.ward.create({
+      data: { name: `Fictional Delivery Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
+    });
     wardId = ward.id;
     const campaign = await prisma.campaign.create({
       data: { wardId, name: 'Fictional Delivery Campaign' },

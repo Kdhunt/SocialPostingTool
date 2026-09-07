@@ -70,6 +70,10 @@ test.describe('Full site — authenticated admin', () => {
     await expect(page.getByRole('heading', { name: 'Upsert credentials' })).toBeVisible();
     await expect(page.getByLabel('Credentials JSON')).toBeVisible();
 
+    await page.goto('/admin/facebook-page');
+    await expectPageHeading(page, 'Facebook Page');
+    await expect(page.getByRole('heading', { name: 'Connected pages for this ward' })).toBeVisible();
+
     await page.goto('/admin/audit');
     await expectPageHeading(page, 'Audit log');
     await expect(page.getByLabel('Action contains')).toBeVisible();
@@ -80,9 +84,8 @@ test.describe('Full site — authenticated admin', () => {
     ).toBeVisible({ timeout: 20_000 });
 
     await page.goto('/admin/wards');
-    if (await page.getByRole('heading', { name: 'Ward provisioning' }).isVisible()) {
-      await expect(page.getByRole('heading', { name: 'Create ward' })).toBeVisible();
-      await expect(page.getByLabel('Ward name')).toBeVisible();
+    if (await page.getByRole('heading', { name: 'Wards', exact: true }).isVisible()) {
+      await expect(page.getByRole('button', { name: 'New ward' })).toBeVisible();
     } else {
       await expect(page).not.toHaveURL(/\/login/);
     }
@@ -264,8 +267,10 @@ test.describe('Full site — authenticated admin', () => {
 
   test('create-ward validation rejects a short password without provisioning', async ({ page }) => {
     await page.goto('/admin/wards');
-    const createHeading = page.getByRole('heading', { name: 'Create ward' });
-    test.skip(!(await createHeading.isVisible()), 'This account cannot open ward provisioning.');
+    const newWard = page.getByRole('button', { name: 'New ward' });
+    test.skip(!(await newWard.isVisible()), 'This account cannot open ward provisioning.');
+    await newWard.click();
+    await expect(page.getByRole('heading', { name: 'Create ward' })).toBeVisible();
 
     const suffix = fictionalSuffix();
     await page.getByLabel('Ward name').fill(`Fictional E2E Ward ${suffix}`);

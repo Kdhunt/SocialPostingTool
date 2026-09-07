@@ -38,6 +38,7 @@ function fakeConfig(): AppConfig {
     wardCodePepper: 'fictional-pepper-value',
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    facebook: { appId: undefined, appSecret: undefined },
     systemEmail: {
       mode: 'simulated',
       provider: 'sendgrid',
@@ -94,7 +95,9 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
   });
 
   beforeEach(async () => {
-    const ward = await prisma.client.ward.create({ data: { name: `Fictional Test Ward ${randomUUID()}` } });
+    const ward = await prisma.client.ward.create({
+      data: { name: `Fictional Test Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
+    });
     wardId = ward.id;
 
     const passwordHash = await passwordHasher.hash(password);

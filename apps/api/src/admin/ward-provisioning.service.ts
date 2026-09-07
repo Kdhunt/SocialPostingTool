@@ -1,14 +1,23 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   CreateWardRequest,
   CreateWardResponse,
   PlatformWardSummaryDto,
   RotateWardCodeRequest,
+  UpdateWardPublicSlugRequest,
   WardCodeInfoDto,
   WardListResponse,
   WardSummaryDto,
 } from '@ward-comms/validation';
-import { normalizeEmail, validatePasswordStrength } from '@ward-comms/domain';
+import {
+  assertPublicWardSlug,
+  fallbackPublicWardSlug,
+  isReservedPublicWardSlug,
+  normalizeEmail,
+  publicWardSlugFromName,
+  validatePasswordStrength,
+} from '@ward-comms/domain';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordHasherService } from '../auth/password-hasher.service.js';
 import { WardCodeHasherService } from '../auth/ward-code-hasher.service.js';
@@ -84,10 +93,11 @@ export class WardProvisioningService {
 
     const passwordHash = await this.passwordHasher.hash(input.adminPassword);
     const codeHash = await this.wardCodeHasher.hash(input.initialWardCode);
+    const publicSlug = await this.allocatePublicSlug(input.publicSlug, input.name);
 
     const result = await this.prisma.client.$transaction(async (tx) => {
       const ward = await tx.ward.create({
-        data: { name: input.name, timeZone },
+        data: { name: input.name, timeZone, publicSlug },
       });
 
       const adminUser = await tx.applicationUser.create({
@@ -194,10 +204,87 @@ export class WardProvisioningService {
     await this.usersAdmin.sendPasswordResetEmail(wardId, userId, context);
   }
 
-  private toSummary(ward: { id: string; name: string; timeZone: string; createdAt: Date }): WardSummaryDto {
+  async updatePublicSlug(
+    wardId: string,
+    input: UpdateWardPublicSlugRequest,
+    context: AdminActionContext,
+  ): Promise<WardSummaryDto> {
+    const ward = await this.wards.findActiveById(wardId);
+    if (!ward) {
+      throw new NotFoundException('Ward not found.');
+    }
+
+    let publicSlug: string;
+    try {
+      publicSlug = assertPublicWardSlug(input.publicSlug);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid public page path.');
+    }
+
+    const taken = await this.wards.findByPublicSlug(publicSlug);
+    if (taken && taken.id !== ward.id) {
+      throw new ConflictException('That public page path is already in use.');
+    }
+
+    const updated = await this.wards.updatePublicSlug(ward.id, publicSlug);
+    await this.audit.record({
+      wardId: ward.id,
+      actorUserId: context.actorUserId,
+      action: 'ward.public_slug.updated',
+      entityType: 'Ward',
+      entityId: ward.id,
+      metadata: { publicSlug },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+    return this.toSummary(updated);
+  }
+
+  private async allocatePublicSlug(requested: string | undefined, wardName: string): Promise<string> {
+    let candidate: string;
+    try {
+      if (requested) {
+        candidate = assertPublicWardSlug(requested);
+      } else {
+        const fromName = publicWardSlugFromName(wardName);
+        candidate =
+          fromName.length >= 2 && !isReservedPublicWardSlug(fromName)
+            ? assertPublicWardSlug(fromName)
+            : fallbackPublicWardSlug(randomUUID());
+      }
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid public page path.');
+    }
+
+    if (!(await this.wards.findByPublicSlug(candidate))) {
+      return candidate;
+    }
+    if (requested) {
+      throw new ConflictException('That public page path is already in use.');
+    }
+
+    for (let index = 2; index < 100; index += 1) {
+      const suffix = String(index);
+      const next = `${candidate.slice(0, 64 - suffix.length)}${suffix}`;
+      if (!(await this.wards.findByPublicSlug(next))) {
+        return next;
+      }
+    }
+
+    return fallbackPublicWardSlug(randomUUID());
+  }
+
+  private toSummary(ward: {
+    id: string;
+    name: string;
+    publicSlug: string;
+    timeZone: string;
+    createdAt: Date;
+  }): WardSummaryDto {
     return {
       id: ward.id,
       name: ward.name,
+      publicSlug: ward.publicSlug,
       timeZone: ward.timeZone,
       createdAt: ward.createdAt.toISOString(),
     };

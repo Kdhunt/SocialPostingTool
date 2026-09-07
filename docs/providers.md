@@ -63,14 +63,24 @@ SMS (Twilio REST via fetch):
 { "accountSid": "...", "authToken": "...", "fromNumber": "+15555550100" }
 ```
 
-Facebook Page (Graph API feed publish via fetch; Groups are not supported):
+Facebook Page (Graph API feed publish via fetch; Groups are not supported).
+Each ward connects **its own** Page. Credentials are keyed by
+`wardId + FacebookPage + pageId`, so Ward A cannot publish with Ward B’s
+token.
 
 ```json
 { "pageAccessToken": "...", "pageId": "..." }
 ```
 
+Ward admins with `campaigns.send` can connect a Page at
+**Administration → Facebook Page** (OAuth when `FACEBOOK_APP_ID` /
+`FACEBOOK_APP_SECRET` are set, or a Page access token). Connecting creates
+an encrypted `ProviderCredential` and a Facebook Page destination for
+**that ward only**. Campaign Facebook channel text is posted to
+`/{pageId}/feed`.
+
 Wire a destination with the same `providerAccountReference` string used
-when upserting the credential.
+when upserting the credential (`pageId`).
 
 ## Outbound communication footers
 

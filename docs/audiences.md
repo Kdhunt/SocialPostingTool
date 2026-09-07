@@ -97,8 +97,9 @@ Every audience route requires `SessionAuthGuard` (authenticated) plus
   widget in the audience screen — acceptable for an MVP, worth upgrading
   later.
 - `CommunicationDestination.configuration` (a `Json?` column already in
-  the schema) is unused until Phase 9 adds provider-specific,
-  non-secret configuration (e.g. a Facebook Page id).
+  the schema) is unused for Facebook Page publishing. The Page id lives on
+  `providerAccountReference`; each ward connects its own Page under
+  Administration → Facebook Page.
 - There is no mobile UI for audience management in this phase — per
   `.cursor/rules/ui.mdc` ("keep complex administration desktop first"),
   audience/destination administration is desktop-only; mobile prioritizes

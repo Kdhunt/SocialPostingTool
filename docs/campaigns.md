@@ -185,3 +185,23 @@ roles need to see the same content.
   request with no retry, no idempotency key, and no partial-failure
   isolation between destinations — Phase 8 (delivery engine) is where all
   of that is added, per AGENTS.md #6/#9.
+
+## Public campaign board
+
+Anonymous visitors can read **Sent** campaigns for a ward at `/{publicSlug}`
+(for example `/grangecreek`). The API is
+`GET /public/wards/:slug/campaigns`. Lookup uses `Ward.publicSlug`, never
+the hashed login ward code. Results are ordered by publish date (delivery
+batch completed/created time), newest first. Drafts, approvals, cancelled,
+and archived campaigns are omitted. The payload includes campaign name,
+publish time, and public text/image URLs only — no audiences, people, or
+credentials.
+
+Set or change the path under **Administration → Wards** (PlatformAdmin).
+A name like “Grange Creek” defaults to slug `grangecreek`.
+
+**Migration:** `20260907180000_add_ward_public_slug` adds unique
+`ward.public_slug` and backfills from the ward name. Rollback: drop the
+unique index and column. Existing production wards keep working after
+migrate; set the slug to `grangecreek` if the name did not already produce
+that path.

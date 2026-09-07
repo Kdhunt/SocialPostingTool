@@ -19,6 +19,8 @@ describe('loadConfig', () => {
     expect(config.nodeEnv).toBe('test');
     expect(config.api.port).toBe(3001);
     expect(config.wardTimeZone).toBe('America/Denver');
+    expect(config.facebook.appId).toBeUndefined();
+    expect(config.facebook.appSecret).toBeUndefined();
   });
 
   it('splits and trims CORS_ALLOWED_ORIGINS into an array', () => {
@@ -100,5 +102,24 @@ describe('loadConfig', () => {
     expect(config.systemEmail.provider).toBe('resend');
     expect(config.systemEmail.resendApiKey).toBe('re-marketplace-key');
     expect(config.systemEmail.fromAddress).toBe('noreply@wardcomms.online');
+  });
+
+  it('loads optional Facebook app credentials together', () => {
+    const config = loadConfig({
+      ...validEnv,
+      FACEBOOK_APP_ID: '1234567890',
+      FACEBOOK_APP_SECRET: 'facebook-app-secret',
+    });
+    expect(config.facebook.appId).toBe('1234567890');
+    expect(config.facebook.appSecret).toBe('facebook-app-secret');
+  });
+
+  it('rejects Facebook app id without secret', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        FACEBOOK_APP_ID: '1234567890',
+      }),
+    ).toThrow(/FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set together/);
   });
 });

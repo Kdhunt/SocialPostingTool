@@ -67,6 +67,11 @@ test.describe('Authenticated app', () => {
     await expectPageHeading(page, 'Provider credentials');
   });
 
+  test('admin facebook page settings load when permitted', async ({ page }) => {
+    await page.goto('/admin/facebook-page');
+    await expectPageHeading(page, 'Facebook Page');
+  });
+
   test('admin audit log loads when permitted', async ({ page }) => {
     await page.goto('/admin/audit');
     await expectPageHeading(page, 'Audit log');
@@ -74,8 +79,8 @@ test.describe('Authenticated app', () => {
 
   test('admin wards page loads when this operator can provision tenants', async ({ page }) => {
     await page.goto('/admin/wards');
-    if (await page.getByRole('heading', { name: 'Ward provisioning' }).isVisible()) {
-      await expect(page.getByRole('heading', { name: 'Create ward' })).toBeVisible();
+    if (await page.getByRole('heading', { name: 'Wards', exact: true }).isVisible()) {
+      await expect(page.getByRole('button', { name: 'New ward' })).toBeVisible();
       return;
     }
     await expect(page).not.toHaveURL(/\/login/);

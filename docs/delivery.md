@@ -11,7 +11,8 @@ or live depending on `PROVIDER_MODE`).
 - **Recipient expansion** — merges selected audiences (deduplicating
   people across overlaps), then expands to Email/Sms contact methods
   with **Granted** consent only, plus one Facebook Page recipient per
-  resolved page destination.
+  resolved page destination **for that ward**. Each ward publishes only
+  to Facebook Pages it connected; Page tokens are never shared across wards.
 - **Idempotency** — batch key = `(campaignId, campaignVersionId)`;
   recipient key = `(channel, person, contactMethod)` or
   `(FacebookPage, destination)`. Re-starting send reuses the batch;

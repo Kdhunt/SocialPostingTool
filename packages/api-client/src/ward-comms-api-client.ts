@@ -1,5 +1,10 @@
 import { healthResponseSchema, type HealthResponse } from '@ward-comms/validation';
 import {
+  publicWardBulletinResponseSchema,
+  type PublicWardBulletinResponse,
+  type UpdateWardPublicSlugRequest,
+} from '@ward-comms/validation';
+import {
   loginResponseSchema,
   mobileTokenPairSchema,
   sessionResponseSchema,
@@ -97,6 +102,8 @@ import {
   createWardResponseSchema,
   resetPasswordRequestSchema,
   rotateWardCodeRequestSchema,
+  updateWardPublicSlugRequestSchema,
+  wardSummarySchema,
   createUserRequestSchema,
   forgotPasswordRequestSchema,
   resetPasswordWithTokenRequestSchema,
@@ -121,6 +128,7 @@ import {
   type UserSummaryDto,
   type WardCodeInfoDto,
   type WardListResponse,
+  type WardSummaryDto,
 } from '@ward-comms/validation';
 import {
   providerCredentialListResponseSchema,
@@ -129,6 +137,17 @@ import {
   type ProviderCredentialListResponse,
   type ProviderCredentialSummaryDto,
   type UpsertProviderCredentialRequest,
+  chooseFacebookPageRequestSchema,
+  connectFacebookPageRequestSchema,
+  facebookPageConnectionListResponseSchema,
+  facebookPageConnectionSchema,
+  facebookPageOauthChoicesResponseSchema,
+  facebookPageOauthStartResponseSchema,
+  type ConnectFacebookPageRequest,
+  type FacebookPageConnectionDto,
+  type FacebookPageConnectionListResponse,
+  type FacebookPageOauthChoicesResponse,
+  type FacebookPageOauthStartResponse,
 } from '@ward-comms/validation';
 import type { CommunicationChannel } from '@ward-comms/validation';
 
@@ -211,6 +230,11 @@ export class WardCommsApiClient {
   async getHealth(): Promise<HealthResponse> {
     const response = await this.request('/health');
     return healthResponseSchema.parse(await response.json());
+  }
+
+  async getPublicWardBulletin(slug: string): Promise<PublicWardBulletinResponse> {
+    const response = await this.request(`/public/wards/${encodeURIComponent(slug)}/campaigns`);
+    return publicWardBulletinResponseSchema.parse(await response.json());
   }
 
   async login(username: string, password: string, clientType: 'web' | 'mobile' = 'web'): Promise<LoginResponse> {
@@ -394,6 +418,14 @@ export class WardCommsApiClient {
     return createWardResponseSchema.parse(await response.json());
   }
 
+  async updateWardPublicSlug(wardId: string, input: UpdateWardPublicSlugRequest): Promise<WardSummaryDto> {
+    const response = await this.request(`/platform/wards/${wardId}/public-slug`, {
+      method: 'POST',
+      body: JSON.stringify(updateWardPublicSlugRequestSchema.parse(input)),
+    });
+    return wardSummarySchema.parse(await response.json());
+  }
+
   async rotateWardCodeForWard(wardId: string, newWardCode: string): Promise<WardCodeInfoDto> {
     const response = await this.request(`/platform/wards/${wardId}/code/rotate`, {
       method: 'POST',
@@ -461,6 +493,41 @@ export class WardCommsApiClient {
 
   async revokeProviderCredential(id: string): Promise<void> {
     await this.request(`/provider-credentials/${id}/revoke`, { method: 'POST' });
+  }
+
+  async listFacebookPageConnections(): Promise<FacebookPageConnectionListResponse> {
+    const response = await this.request('/facebook-page');
+    return facebookPageConnectionListResponseSchema.parse(await response.json());
+  }
+
+  async connectFacebookPage(input: ConnectFacebookPageRequest): Promise<FacebookPageConnectionDto> {
+    const response = await this.request('/facebook-page/connect', {
+      method: 'POST',
+      body: JSON.stringify(connectFacebookPageRequestSchema.parse(input)),
+    });
+    return facebookPageConnectionSchema.parse(await response.json());
+  }
+
+  async disconnectFacebookPage(pageId: string): Promise<void> {
+    await this.request(`/facebook-page/pages/${encodeURIComponent(pageId)}/disconnect`, { method: 'POST' });
+  }
+
+  async startFacebookPageOauth(): Promise<FacebookPageOauthStartResponse> {
+    const response = await this.request('/facebook-page/oauth/start');
+    return facebookPageOauthStartResponseSchema.parse(await response.json());
+  }
+
+  async listFacebookPageOauthChoices(): Promise<FacebookPageOauthChoicesResponse> {
+    const response = await this.request('/facebook-page/oauth/choices');
+    return facebookPageOauthChoicesResponseSchema.parse(await response.json());
+  }
+
+  async chooseFacebookPage(pageId: string): Promise<FacebookPageConnectionDto> {
+    const response = await this.request('/facebook-page/oauth/choose', {
+      method: 'POST',
+      body: JSON.stringify(chooseFacebookPageRequestSchema.parse({ pageId })),
+    });
+    return facebookPageConnectionSchema.parse(await response.json());
   }
 
   // --- Directory: people -----------------------------------------------------

@@ -89,7 +89,9 @@ The build maps these to `DATABASE_URL` and runs migrations + seed on deploy.
 | `BOOTSTRAP_WARD_NAME` | Optional | Default: `Ward Communications Hub` |
 | `BOOTSTRAP_ADMIN_EMAIL` | Optional | Recommended; stored lowercase |
 | `NODE_ENV` | Yes | `production` |
-| `PROVIDER_MODE` | Optional | `simulated` (default) |
+| `PROVIDER_MODE` | Optional | `simulated` (default). Set `live` to call real Email/SMS/Facebook APIs |
+| `FACEBOOK_APP_ID` | Optional | Meta app id so each ward can OAuth-connect its own Facebook Page |
+| `FACEBOOK_APP_SECRET` | Optional | Must be set together with `FACEBOOK_APP_ID` |
 | `SYSTEM_EMAIL_MODE` | Optional | `simulated` (default). Set `live` plus `SYSTEM_EMAIL_FROM` and a provider key |
 | `SYSTEM_EMAIL_PROVIDER` | Optional | `resend` (recommended), `sendgrid`, or `smtp` |
 | `SYSTEM_EMAIL_RESEND_API_KEY` | If Resend | Resend API key (`re_…`). Also accepts `RESEND_API_KEY` or `wardcomms_RESEND_API_KEY` |

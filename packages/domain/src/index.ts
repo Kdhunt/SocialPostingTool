@@ -43,3 +43,6 @@ export * from './delivery/retry-policy.js';
 export * from './delivery/batch-status.js';
 export * from './delivery/provider-adapter.js';
 export * from './delivery/queue-contract.js';
+export * from './facebook/facebook-page.js';
+export * from './wards/public-ward-slug.js';
+export * from './campaigns/public-bulletin.js';

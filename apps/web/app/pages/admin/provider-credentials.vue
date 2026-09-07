@@ -93,6 +93,8 @@ async function revoke(id: string): Promise<void> {
     <p class="admin-page__hint">
       Secrets are encrypted at rest and never returned by the API. Match
       <code>providerAccountReference</code> to your communication destination.
+      Facebook Page tokens are stored per ward — connect the Page under
+      <NuxtLink to="/admin/facebook-page">Facebook Page</NuxtLink> rather than sharing one Page across wards.
     </p>
 
     <p v-if="loading">Loading…</p>

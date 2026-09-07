@@ -79,6 +79,7 @@ Once running:
 - API health check: `http://localhost:3001/health`
 - Web health page: `http://localhost:3000`
 - Web sign-in: `http://localhost:3000/login` (after `db:seed:dev`, use `admin` / `ChangeMeNow!23`, ward code `WARD-DEV-CODE`)
+- Public campaign board: `http://localhost:3000/{publicSlug}` (dev seed uses `/fictionaldevward`). Live example: `https://www.wardcomms.online/grangecreek` after that ward’s public path is set to `grangecreek`.
 
 ### One-command bootstrap (after `pnpm install` and `.env` setup)
 
@@ -126,6 +127,7 @@ user. After upgrading, re-run `pnpm --filter @ward-comms/database db:seed` so
 ### Authentication overview
 
 - `POST /auth/login` → `{ username, password, clientType?: 'web'|'mobile' }`
+- `GET /public/wards/:slug/campaigns` → anonymous published-campaign board for `/{slug}` (not the login ward code)
 - `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (only when `/auth/login` responds `ward_code_required`)
 - `POST /auth/refresh` → `{ refreshToken }` (mobile only)
 - `POST /auth/logout`, `GET /auth/session`, `GET /auth/sessions`, `POST /auth/sessions/:id/revoke`
@@ -207,9 +209,10 @@ running (`docker compose up -d`).
 Provider credentials are stored encrypted (`POST /provider-credentials`).
 Set `PROVIDER_MODE=credentialed` to require them before simulated sends, or
 `PROVIDER_MODE=live` for real SendGrid/SMTP, Twilio, and Facebook Graph
-calls. See `docs/providers.md`. Manage credentials at
-`/admin/provider-credentials`. Facebook Page publishing only — Groups
-are not supported.
+calls. See `docs/providers.md`. Manage Email/SMS JSON at
+`/admin/provider-credentials`. Each ward connects **its own** Facebook Page
+at `/admin/facebook-page` (OAuth or Page token). Facebook Page publishing
+only — Groups are not supported.
 
 Campaign Email/SMS send through the worker when a campaign is sent
 (`PROVIDER_MODE=live` plus ward credentials). Account confirmation and
@@ -222,7 +225,7 @@ Self-service pages: `/settings/account` (signed-in email/password), `/forgot-pas
 - `/admin/users` — list/create users (email required), change email, assign ward roles, enable/disable, email a reset/confirmation link, or set a password as an emergency override
 - `/settings/account` — signed-in email, confirmation status, and password change
 - `/admin/ward-code` — view active version, rotate **this** ward’s code
-- `/admin/wards` — PlatformAdmin only: create wards, rotate any ward code, reset ward admin passwords
+- `/admin/wards` — PlatformAdmin only: create wards, set public campaign page path, rotate any ward code, reset ward admin passwords
 - `/admin/provider-credentials` — upsert/revoke encrypted provider secrets
 - `/admin/audit` — audit log viewer (`GET /audit`)
 

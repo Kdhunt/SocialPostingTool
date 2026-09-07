@@ -33,7 +33,11 @@ async function main(): Promise<void> {
   let ward = await prisma.ward.findFirst({ where: { name: DEV_WARD_NAME, archivedAt: null } });
   if (!ward) {
     ward = await prisma.ward.create({
-      data: { name: DEV_WARD_NAME, timeZone: process.env.WARD_TIME_ZONE ?? 'America/Denver' },
+      data: {
+        name: DEV_WARD_NAME,
+        publicSlug: 'fictionaldevward',
+        timeZone: process.env.WARD_TIME_ZONE ?? 'America/Denver',
+      },
     });
   }
 

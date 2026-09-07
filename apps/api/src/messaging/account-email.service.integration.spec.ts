@@ -33,6 +33,7 @@ function fakeConfig(): AppConfig {
     wardCodePepper: 'fictional-pepper-value',
     providerCredentialsEncryptionKey: 'dev-only-provider-credentials-key!!',
     providerMode: 'simulated',
+    facebook: { appId: undefined, appSecret: undefined },
     systemEmail: {
       mode: 'simulated',
       provider: 'sendgrid',
@@ -102,7 +103,7 @@ describe.skipIf(!databaseAvailable)('AccountEmailService — live PostgreSQL int
   beforeEach(async () => {
     adapter.sent.length = 0;
     const ward = await prisma.client.ward.create({
-      data: { name: `Fictional Mail Ward ${randomUUID()}` },
+      data: { name: `Fictional Mail Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
     });
     createdWardIds.push(ward.id);
     wardId = ward.id;

@@ -23,6 +23,7 @@ export class WardRepository {
     Array<{
       id: string;
       name: string;
+      publicSlug: string;
       timeZone: string;
       createdAt: Date;
       admins: Array<{ id: string; username: string; email: string | null; displayName: string }>;
@@ -43,6 +44,7 @@ export class WardRepository {
     return rows.map((ward) => ({
       id: ward.id,
       name: ward.name,
+      publicSlug: ward.publicSlug,
       timeZone: ward.timeZone,
       createdAt: ward.createdAt,
       admins: ward.users,
@@ -52,6 +54,25 @@ export class WardRepository {
   async findActiveByName(name: string): Promise<Ward | null> {
     return this.prisma.client.ward.findFirst({
       where: { name, archivedAt: null },
+    });
+  }
+
+  async findByPublicSlug(publicSlug: string): Promise<Ward | null> {
+    return this.prisma.client.ward.findUnique({
+      where: { publicSlug },
+    });
+  }
+
+  async findActiveByPublicSlug(publicSlug: string): Promise<Ward | null> {
+    return this.prisma.client.ward.findFirst({
+      where: { publicSlug, archivedAt: null },
+    });
+  }
+
+  async updatePublicSlug(id: string, publicSlug: string): Promise<Ward> {
+    return this.prisma.client.ward.update({
+      where: { id },
+      data: { publicSlug },
     });
   }
 }

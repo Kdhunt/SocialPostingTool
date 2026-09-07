@@ -55,4 +55,48 @@ export class CampaignRepository {
   async archive(id: string): Promise<void> {
     await this.prisma.client.campaign.update({ where: { id }, data: { archivedAt: new Date() } });
   }
+
+  async listPublishedForPublicBulletin(wardId: string): Promise<
+    Array<{
+      id: string;
+      name: string;
+      status: CampaignStatus;
+      archivedAt: Date | null;
+      versions: Array<{
+        baseMessage: string | null;
+        channelVersions: Array<{ channel: string; text: string }>;
+        baseImageAsset: { storageReference: string; altText: string } | null;
+      }>;
+      deliveryBatches: Array<{ createdAt: Date; completedAt: Date | null }>;
+    }>
+  > {
+    return this.prisma.client.campaign.findMany({
+      where: {
+        wardId,
+        archivedAt: null,
+        status: 'Sent',
+        deliveryBatches: { some: {} },
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        archivedAt: true,
+        versions: {
+          orderBy: { versionNumber: 'desc' },
+          take: 1,
+          select: {
+            baseMessage: true,
+            channelVersions: { select: { channel: true, text: true } },
+            baseImageAsset: { select: { storageReference: true, altText: true } },
+          },
+        },
+        deliveryBatches: {
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { createdAt: true, completedAt: true },
+        },
+      },
+    });
+  }
 }

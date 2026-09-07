@@ -20,6 +20,6 @@ import { CommunicationDestinationRepository } from './repositories/communication
     CommunicationDestinationRepository,
     PersonRepository,
   ],
-  exports: [AudiencesService],
+  exports: [AudiencesService, CommunicationDestinationRepository],
 })
 export class AudiencesModule {}

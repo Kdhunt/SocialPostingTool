@@ -85,6 +85,7 @@ export type UpdateUserEmailRequest = z.infer<typeof updateUserEmailRequestSchema
 export const wardSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
+  publicSlug: z.string(),
   timeZone: z.string(),
   createdAt: z.string().datetime(),
 });
@@ -132,6 +133,12 @@ export const createWardRequestSchema = z.object({
     .string()
     .min(4, 'Ward code must be at least 4 characters.')
     .max(255, 'Ward code must be at most 255 characters.'),
+  publicSlug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9]{2,64}$/, 'Public page path may contain only lowercase letters and numbers.')
+    .optional(),
 });
 export type CreateWardRequest = z.infer<typeof createWardRequestSchema>;
 

@@ -7,4 +7,6 @@ export * from './audience-rules.schema.js';
 export * from './campaign.schema.js';
 export * from './delivery.schema.js';
 export * from './provider.schema.js';
+export * from './facebook-page.schema.js';
+export * from './public-bulletin.schema.js';
 export * from './admin.schema.js';

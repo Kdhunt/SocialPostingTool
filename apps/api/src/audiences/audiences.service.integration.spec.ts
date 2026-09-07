@@ -51,7 +51,9 @@ describe.skipIf(!databaseAvailable)('AudiencesService — live PostgreSQL integr
   });
 
   async function setupWard(): Promise<void> {
-    const ward = await prisma.client.ward.create({ data: { name: `Fictional Audience Ward ${randomUUID()}` } });
+    const ward = await prisma.client.ward.create({
+      data: { name: `Fictional Audience Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
+    });
     wardId = ward.id;
     const user = await prisma.client.applicationUser.create({
       data: {

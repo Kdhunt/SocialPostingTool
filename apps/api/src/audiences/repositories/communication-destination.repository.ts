@@ -31,6 +31,27 @@ export class CommunicationDestinationRepository {
     return this.prisma.client.communicationDestination.findFirst({ where: { id, wardId } });
   }
 
+  async findByWardChannelReference(
+    wardId: string,
+    channel: CommunicationChannel,
+    providerAccountReference: string,
+  ): Promise<CommunicationDestination | null> {
+    return this.prisma.client.communicationDestination.findFirst({
+      where: { wardId, channel, providerAccountReference },
+    });
+  }
+
+  async findByWardName(wardId: string, name: string): Promise<CommunicationDestination | null> {
+    return this.prisma.client.communicationDestination.findFirst({ where: { wardId, name } });
+  }
+
+  async restore(id: string, name: string, providerAccountReference: string): Promise<CommunicationDestination> {
+    return this.prisma.client.communicationDestination.update({
+      where: { id },
+      data: { archivedAt: null, name, providerAccountReference },
+    });
+  }
+
   async create(input: CreateDestinationInput): Promise<CommunicationDestination> {
     return this.prisma.client.communicationDestination.create({
       data: {

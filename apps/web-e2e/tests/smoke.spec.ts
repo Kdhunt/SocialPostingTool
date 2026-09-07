@@ -49,4 +49,10 @@ test.describe('Ward Communications Hub smoke', () => {
     await page.goto('/campaigns');
     await expect(page).toHaveURL(/\/login/);
   });
+
+  test('unknown ward public page is not found', async ({ page }) => {
+    await page.goto('/thiswardpagedoesnotexistzz');
+    await expect(page.getByRole('heading', { name: 'Ward page not found' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Continue to sign in' })).toBeVisible();
+  });
 });
