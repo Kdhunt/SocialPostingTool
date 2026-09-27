@@ -311,6 +311,12 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
       (await prisma.client.role.findUnique({ where: { name: 'PlatformAdmin' } })) ??
       (await prisma.client.role.create({ data: { name: 'PlatformAdmin', description: 'Platform operator' } }));
 
+    const previousOperatorRoles = await prisma.client.userRole.findMany({
+      where: { roleId: platformRole.id },
+      select: { userId: true, roleId: true },
+    });
+    await prisma.client.userRole.deleteMany({ where: { roleId: platformRole.id } });
+
     const sharedUsername = `admin.${randomUUID().slice(0, 8)}`;
     const operatorHash = await passwordHasher.hash(password);
     const operator = await prisma.client.applicationUser.create({
@@ -339,49 +345,56 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
       data: { wardId: otherWard.id, version: 1, codeHash: otherCodeHash, activatedAt: new Date() },
     });
 
-    const platformLogin = await authService.login(sharedUsername, password, context(`device-${randomUUID()}`));
-    expect(platformLogin.status).toBe('ok');
-    if (platformLogin.status !== 'ok') throw new Error('expected platform session');
-    expect(platformLogin.user.id).toBe(operator.id);
+    const extraUserIds: string[] = [operator.id, clerk.id];
 
-    const clerkLogin = await authService.login(
-      sharedUsername,
-      password,
-      context(`device-${randomUUID()}`),
-      otherWard.publicSlug,
-    );
-    expect(clerkLogin.status).toBe('ward_code_required');
+    try {
+      const platformLogin = await authService.login(sharedUsername, password, context(`device-${randomUUID()}`));
+      expect(platformLogin.status).toBe('ok');
+      if (platformLogin.status !== 'ok') throw new Error('expected platform session');
+      expect(platformLogin.user.id).toBe(operator.id);
 
-    const hubBoundLogin = await authService.login(
-      sharedUsername,
-      password,
-      context(`device-${randomUUID()}`),
-      wardSlug,
-    );
-    expect(hubBoundLogin.status).toBe('ward_code_required');
+      const clerkDevice = context(`device-${randomUUID()}`);
+      const clerkLogin = await authService.login(
+        sharedUsername,
+        password,
+        clerkDevice,
+        otherWard.publicSlug,
+      );
+      expect(clerkLogin.status).toBe('ward_code_required');
+      if (clerkLogin.status !== 'ward_code_required') throw new Error('expected ward_code_required');
+      const clerkVerified = await authService.verifyWardCode(clerkLogin.loginTicket, wardCode, clerkDevice);
+      expect(clerkVerified.status).toBe('ok');
+      if (clerkVerified.status !== 'ok') throw new Error('expected clerk session');
+      expect(clerkVerified.user.id).toBe(clerk.id);
+      expect(clerkVerified.user.id).not.toBe(operator.id);
 
-    const clerkOnlyUsername = `clerk.${randomUUID().slice(0, 8)}`;
-    const clerkOnly = await prisma.client.applicationUser.create({
-      data: {
-        wardId: otherWard.id,
-        username: clerkOnlyUsername,
-        displayName: 'Fictional Clerk Only',
-        passwordHash: operatorHash,
-      },
-    });
-    await expect(
-      authService.login(clerkOnlyUsername, password, context(`device-${randomUUID()}`)),
-    ).rejects.toThrow(InvalidCredentialsError);
+      await expect(
+        authService.login(sharedUsername, password, context(`device-${randomUUID()}`), wardSlug),
+      ).rejects.toThrow(InvalidCredentialsError);
 
-    await prisma.client.userSession.deleteMany({
-      where: { userId: { in: [operator.id, clerk.id, clerkOnly.id] } },
-    });
-    await prisma.client.userRole.deleteMany({ where: { userId: operator.id } });
-    await prisma.client.wardCodeVersion.deleteMany({ where: { wardId: otherWard.id } });
-    await prisma.client.applicationUser.deleteMany({
-      where: { id: { in: [operator.id, clerk.id, clerkOnly.id] } },
-    });
-    await prisma.client.ward.deleteMany({ where: { id: otherWard.id } });
+      const clerkOnlyUsername = `clerk.${randomUUID().slice(0, 8)}`;
+      const clerkOnly = await prisma.client.applicationUser.create({
+        data: {
+          wardId: otherWard.id,
+          username: clerkOnlyUsername,
+          displayName: 'Fictional Clerk Only',
+          passwordHash: operatorHash,
+        },
+      });
+      extraUserIds.push(clerkOnly.id);
+      await expect(
+        authService.login(clerkOnlyUsername, password, context(`device-${randomUUID()}`)),
+      ).rejects.toThrow(InvalidCredentialsError);
+    } finally {
+      await prisma.client.userSession.deleteMany({ where: { userId: { in: extraUserIds } } });
+      await prisma.client.userRole.deleteMany({ where: { roleId: platformRole.id } });
+      if (previousOperatorRoles.length > 0) {
+        await prisma.client.userRole.createMany({ data: previousOperatorRoles, skipDuplicates: true });
+      }
+      await prisma.client.wardCodeVersion.deleteMany({ where: { wardId: otherWard.id } });
+      await prisma.client.applicationUser.deleteMany({ where: { id: { in: extraUserIds } } });
+      await prisma.client.ward.deleteMany({ where: { id: otherWard.id } });
+    }
   });
 
   it('surfaces a user permission set derived from assigned roles, never a raw hash', async () => {

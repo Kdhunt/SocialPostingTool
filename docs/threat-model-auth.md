@@ -52,9 +52,12 @@ This document describes the threat model for the login flow implemented in
 - **Username is unique per ward, not globally.** Login with a ward page
   path (`wardSlug`, e.g. `grangecreek`) looks up `(ward.publicSlug, username)`.
   The same username (including `admin`) can exist in every ward. Omitting
-  the path is **platform-operator sign-in**: exactly one active
-  `PlatformAdmin` with that username is resolved, and the ward code is not
-  required. `Ward.publicSlug` is not the hashed ward code.
+  the path is **superadmin sign-in**: there is exactly one active
+  `PlatformAdmin` (created from `BOOTSTRAP_*`), the submitted username must
+  match that account, and the ward code is not required. A PlatformAdmin
+  cannot authenticate via a ward page path; that path is only for that
+  ward's own accounts (username + ward code). `Ward.publicSlug`
+  is not the hashed ward code.
 - **The per-IP+username rate limiter is in-process, not distributed.** It
   resets on process restart and is not shared across horizontally scaled
   API instances. Keys include the ward path or `platform`. The durable,

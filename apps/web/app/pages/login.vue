@@ -108,7 +108,9 @@ async function onTotpSubmit(): Promise<void> {
 <template>
   <div class="login">
     <h1 class="login__title">Sign in</h1>
-    <p class="login__lead">Ward operators enter their ward page path. Platform operators leave it blank.</p>
+    <p class="login__lead">
+      Ward administrators enter their ward page path and ward code. Superadmin leaves both blank.
+    </p>
 
     <form
       v-if="!needsTotp"
@@ -119,7 +121,7 @@ async function onTotpSubmit(): Promise<void> {
       <UiFormField
         label="Ward page path"
         input-id="ward-slug"
-        hint="Example: grangecreek. Leave blank to sign in as a platform operator."
+        hint="Example: grangecreek. Required for a ward account. Superadmin leaves this blank."
       >
         <input
           id="ward-slug"
@@ -159,7 +161,7 @@ async function onTotpSubmit(): Promise<void> {
       <UiFormField
         label="Ward code"
         input-id="ward-code"
-        hint="Required for ward accounts on a new device. Platform operators can leave this blank."
+        hint="Required for a ward account on a new device. Superadmin leaves this blank."
       >
         <input
           id="ward-code"

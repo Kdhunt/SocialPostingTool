@@ -7,7 +7,7 @@ import {
   fictionalUserPassword,
   userRow,
 } from './helpers/account-user';
-import { fillHydratedInput, fillLoginForm, waitForNuxtApp } from './helpers/auth';
+import { fillHydratedInput, fillLoginForm, isPlatformOperatorNav, waitForNuxtApp } from './helpers/auth';
 import { e2eWardCode, isLiveAccountEmailE2e } from './helpers/env';
 import { appUrlFromEmailedLink, fictionalMailinatorInbox, waitForMailinatorLink } from './helpers/mailinator';
 
@@ -16,11 +16,13 @@ import { appUrlFromEmailedLink, fictionalMailinatorInbox, waitForMailinatorLink 
  * Fictional users only. Does not rotate the signed-in admin password or ward code.
  */
 test.describe('Account email — Mailinator', () => {
-  test.beforeEach(({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     test.skip(
       !isLiveAccountEmailE2e(),
       'Set E2E_BASE_URL to the deployed site, or E2E_LIVE_EMAIL=1 when the host sends live mail.',
     );
+    await page.goto('/');
+    test.skip(await isPlatformOperatorNav(page), 'Platform operator cannot create ward users.');
     testInfo.setTimeout(120_000);
   });
 

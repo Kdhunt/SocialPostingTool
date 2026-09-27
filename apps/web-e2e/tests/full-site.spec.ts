@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { expectPageHeading, primaryNav } from './helpers/auth';
+import { expectPageHeading, isPlatformOperatorNav, primaryNav } from './helpers/auth';
 
 /**
  * Live-site walk of every primary surface.
@@ -19,7 +19,51 @@ async function expectSettledList(page: Page): Promise<void> {
   }
 }
 
+test.describe('Full site — platform operator', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    test.skip(!(await isPlatformOperatorNav(page)), 'Signed in as a ward operator.');
+  });
+
+  test('home, account, and wards', async ({ page }) => {
+    await expectPageHeading(page, /^Welcome/);
+    await expect(page.getByRole('heading', { name: 'Wards' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tenants' })).toBeVisible();
+
+    const nav = primaryNav(page);
+    await nav.getByRole('link', { name: 'Account' }).click();
+    await expectPageHeading(page, 'Account');
+    await nav.getByRole('link', { name: 'Security' }).click();
+    await expectPageHeading(page, 'Security');
+    await nav.getByRole('link', { name: 'Wards' }).click();
+    await expectPageHeading(page, 'Wards');
+    await expect(page.getByRole('button', { name: 'New ward' })).toBeVisible();
+  });
+
+  test('create-ward validation rejects a short password without provisioning', async ({ page }) => {
+    await page.goto('/admin/wards');
+    await page.getByRole('button', { name: 'New ward' }).click();
+    await expect(page.getByRole('heading', { name: 'Create ward' })).toBeVisible();
+
+    const suffix = fictionalSuffix();
+    await page.getByLabel('Ward name').fill(`Fictional E2E Ward ${suffix}`);
+    await page.getByLabel('Time zone').fill('America/Denver');
+    await page.getByLabel('Initial admin username').fill(`admin.${suffix}`);
+    await page.getByLabel('Initial admin email').fill(`admin.${suffix}@mailinator.com`);
+    await page.getByLabel('Initial admin display name').fill('Fictional Ward Admin');
+    await page.getByLabel('Initial admin password').fill('short');
+    await page.getByLabel('Initial ward code').fill('abc');
+    await page.getByRole('button', { name: 'Create ward' }).click();
+    await expect(page.getByRole('alert').first()).toBeVisible();
+    await expect(page.getByText(/New ward created|was created/)).toHaveCount(0);
+  });
+});
+
 test.describe('Full site — authenticated admin', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    test.skip(await isPlatformOperatorNav(page), 'Signed in as the platform operator.');
+  });
   test('home, security, and primary navigation', async ({ page }) => {
     await page.goto('/');
     await expectPageHeading(page, /^Welcome/);

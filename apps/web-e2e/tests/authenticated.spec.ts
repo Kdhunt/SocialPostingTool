@@ -1,9 +1,43 @@
 import { test, expect } from '@playwright/test';
-import { expectPageHeading, primaryNav } from './helpers/auth';
+import { expectPageHeading, isPlatformOperatorNav, primaryNav } from './helpers/auth';
 
-test.describe('Authenticated app', () => {
-  test('home dashboard shows welcome and quick actions', async ({ page }) => {
+test.describe('Authenticated platform operator', () => {
+  test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    test.skip(!(await isPlatformOperatorNav(page)), 'Signed in as a ward operator.');
+  });
+
+  test('home is ward setup, not the member workspace', async ({ page }) => {
+    await expectPageHeading(page, /^Welcome/);
+    await expect(page.getByRole('heading', { name: 'Wards' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tenants' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Directory' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Recent campaigns' })).toHaveCount(0);
+    await expect(primaryNav(page).getByRole('link', { name: 'People' })).toHaveCount(0);
+    await expect(primaryNav(page).getByRole('link', { name: 'Campaigns' })).toHaveCount(0);
+  });
+
+  test('account and security remain available', async ({ page }) => {
+    await page.goto('/settings/account');
+    await expectPageHeading(page, 'Account');
+    await page.goto('/settings/security');
+    await expectPageHeading(page, 'Security');
+  });
+
+  test('wards administration loads', async ({ page }) => {
+    await page.goto('/admin/wards');
+    await expectPageHeading(page, 'Wards');
+    await expect(page.getByRole('button', { name: 'New ward' })).toBeVisible();
+  });
+});
+
+test.describe('Authenticated ward workspace', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    test.skip(await isPlatformOperatorNav(page), 'Signed in as the platform operator.');
+  });
+
+  test('home dashboard shows welcome and quick actions', async ({ page }) => {
     await expectPageHeading(page, /^Welcome/);
     await expect(page.getByRole('heading', { name: 'Directory' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Recent campaigns' })).toBeVisible();
@@ -77,17 +111,7 @@ test.describe('Authenticated app', () => {
     await expectPageHeading(page, 'Audit log');
   });
 
-  test('admin wards page loads when this operator can provision tenants', async ({ page }) => {
-    await page.goto('/admin/wards');
-    if (await page.getByRole('heading', { name: 'Wards', exact: true }).isVisible()) {
-      await expect(page.getByRole('button', { name: 'New ward' })).toBeVisible();
-      return;
-    }
-    await expect(page).not.toHaveURL(/\/login/);
-  });
-
   test('primary navigation reaches core sections', async ({ page }) => {
-    await page.goto('/');
     const nav = primaryNav(page);
 
     await nav.getByRole('link', { name: 'People' }).click();
@@ -102,5 +126,4 @@ test.describe('Authenticated app', () => {
     await nav.getByRole('link', { name: 'Home' }).click();
     await expectPageHeading(page, /^Welcome/);
   });
-
 });

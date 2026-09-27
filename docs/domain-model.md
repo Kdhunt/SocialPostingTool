@@ -58,8 +58,10 @@ implemented in Phase 4.
 
 - `ApplicationUser.username` is unique per ward (`(wardId, username)`),
   not globally. Ward-clerk sign-in includes the public page path
-  (`Ward.publicSlug`). PlatformAdmin sign-in omits that path and does
-  not bind to a ward code.
+  (`Ward.publicSlug`) and the ward code. There is exactly one
+  `PlatformAdmin`, created from `BOOTSTRAP_*`. That sign-in omits the path
+  and does not bind to a ward code, and it cannot be used interchangeably
+  with a ward-path login even when usernames match.
 - `ApplicationUser.email` is unique per ward. New accounts require a
   normalized (trimmed, lowercased) address at the application layer;
   the column stays nullable for legacy rows created before email was

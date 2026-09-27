@@ -44,7 +44,7 @@ export async function fillHydratedInput(page: Page, selector: string, value: str
 
 export async function fillLoginForm(
   page: Page,
-  credentials: { username: string; password: string; wardCode: string; wardSlug?: string },
+  credentials: { username: string; password: string; wardCode?: string; wardSlug?: string },
 ): Promise<void> {
   await waitForHydratedLoginForm(page);
   if (credentials.wardSlug) {
@@ -52,7 +52,9 @@ export async function fillLoginForm(
   }
   await fillHydratedInput(page, '#username', credentials.username);
   await fillHydratedInput(page, '#password', credentials.password);
-  await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
+  if (credentials.wardCode) {
+    await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
+  }
 }
 
 export async function signIn(page: Page, credentials: E2eCredentials): Promise<void> {
@@ -79,6 +81,11 @@ export async function signIn(page: Page, credentials: E2eCredentials): Promise<v
     const wardBindingMiss =
       /incorrect ward code|enter the ward code to finish/i.test(message) && (await page.locator('#ward-code').isVisible());
     if (wardBindingMiss) {
+      if (!credentials.wardCode) {
+        throw new Error(
+          'Sign-in failed: expected superadmin login without a ward code. Leave E2E_WARD_SLUG unset.',
+        );
+      }
       await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
       await page.getByRole('button', { name: 'Sign in' }).click();
       await expect(welcome.or(authenticator).or(alert)).toBeVisible({ timeout: 30_000 });
@@ -152,6 +159,11 @@ export async function signInViaApi(page: Page, credentials: E2eCredentials): Pro
   }
 
   if (status === 'ward_code_required') {
+    if (!credentials.wardSlug || !credentials.wardCode) {
+      throw new Error(
+        'Sign-in failed: expected superadmin login without a ward code. Leave E2E_WARD_SLUG unset.',
+      );
+    }
     const loginTicket =
       loginBody && typeof loginBody === 'object' && 'loginTicket' in loginBody && typeof loginBody.loginTicket === 'string'
         ? loginBody.loginTicket
@@ -186,4 +198,12 @@ export async function expectPageHeading(page: Page, name: string | RegExp): Prom
 
 export function primaryNav(page: Page) {
   return page.getByRole('complementary', { name: 'Primary' });
+}
+
+export async function isPlatformOperatorNav(page: Page): Promise<boolean> {
+  const nav = primaryNav(page);
+  await expect(nav).toBeVisible();
+  const hasWards = await nav.getByRole('link', { name: 'Wards' }).isVisible();
+  const hasPeople = await nav.getByRole('link', { name: 'People' }).isVisible();
+  return hasWards && !hasPeople;
 }

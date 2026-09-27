@@ -143,9 +143,36 @@ async function seedRoles(permissionIdsByKey: Map<string, string>): Promise<void>
   }
 }
 
+async function ensurePlatformAdminIsNotWardAdmin(): Promise<void> {
+  const platformAdmin = await prisma.role.findUnique({ where: { name: 'PlatformAdmin' } });
+  const wardAdmin = await prisma.role.findUnique({ where: { name: 'WardAdmin' } });
+  if (!platformAdmin || !wardAdmin) {
+    return;
+  }
+
+  const operators = await prisma.userRole.findMany({
+    where: { roleId: platformAdmin.id },
+    select: { userId: true },
+  });
+  if (operators.length === 0) {
+    return;
+  }
+
+  const removed = await prisma.userRole.deleteMany({
+    where: {
+      roleId: wardAdmin.id,
+      userId: { in: operators.map((row) => row.userId) },
+    },
+  });
+  if (removed.count > 0) {
+    console.log(`Removed WardAdmin from ${removed.count} PlatformAdmin account(s).`);
+  }
+}
+
 async function main(): Promise<void> {
   const permissionIdsByKey = await seedPermissions();
   await seedRoles(permissionIdsByKey);
+  await ensurePlatformAdminIsNotWardAdmin();
 
   const roleCount = await prisma.role.count();
   const permissionCount = await prisma.permission.count();

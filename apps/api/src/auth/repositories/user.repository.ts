@@ -30,13 +30,12 @@ export class UserRepository {
   }
 
   /**
-   * Platform operators (PlatformAdmin) may share a username with ward
-   * clerks. Sign-in without a ward path resolves only these rows.
+   * Every active PlatformAdmin. There must be at most one; env bootstrap
+   * is the only supported way to create that account.
    */
-  async findActivePlatformOperatorsByUsername(username: string): Promise<ApplicationUser[]> {
+  async findActivePlatformOperators(): Promise<ApplicationUser[]> {
     return this.prisma.client.applicationUser.findMany({
       where: {
-        username,
         archivedAt: null,
         roles: { some: { role: { name: 'PlatformAdmin' } } },
       },

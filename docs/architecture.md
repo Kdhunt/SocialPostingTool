@@ -59,8 +59,8 @@ Authorization is enforced with two composable guards: `SessionAuthGuard` establi
 
 Operator roles (seeded):
 
-- **PlatformAdmin** (`platform.wards.manage`) — the ENV-bootstrapped superadmin. Signs in **without** a ward page path (ward-agnostic). Lives in a hub ward for data; can provision tenants, rotate any ward code, and reset WardAdmin passwords. Not assignable from **Admin → Users**. Ward clerks enter the public slug so usernames can repeat across wards.
-- **WardAdmin** — full administration **inside one ward** (users, that ward’s code, directory). Does not receive `platform.*` permissions.
+- **PlatformAdmin** (`platform.wards.manage`) — the ENV-bootstrapped superadmin (`BOOTSTRAP_*`). There is only one. Signs in **without** a ward page path or ward code. The signed-in shell is **platform-only**: wards and each ward’s administrators. It does not include the member directory, households, campaigns, or a raw database editor. Lives in a hub ward for data storage only. Not assignable from **Admin → Users**. Cannot sign in through a ward page path.
+- **WardAdmin** — full administration **inside one ward** (users, that ward’s code, directory). Signs in with that ward’s public page path, username, password, and ward code. Does not receive `platform.*` permissions. The same username as the superadmin is allowed because the path selects this account.
 - Other ward roles (CommunicationsCoordinator, Contributor, Viewer) — day-to-day ward work.
 
 ## `apps/api` module structure (Phase 5)

@@ -13,6 +13,8 @@ import {
   MOBILE_ACCESS_TOKEN_TTL_MS,
   MOBILE_REFRESH_TOKEN_TTL_MS,
   requiresWardCodeVerification,
+  allowWardPathLogin,
+  pickSolePlatformOperator,
   selectLoginTenant,
   validateTotpCodeFormat,
   WEB_SESSION_TTL_MS,
@@ -180,16 +182,21 @@ export class AuthService {
   private async resolveLoginUser(username: string, wardSlug?: string): Promise<ApplicationUser | null> {
     const tenant = selectLoginTenant(wardSlug);
     if (tenant.kind === 'platform') {
-      const operators = await this.users.findActivePlatformOperatorsByUsername(username);
-      if (operators.length !== 1) {
-        return null;
-      }
-      return operators[0] ?? null;
+      const operators = await this.users.findActivePlatformOperators();
+      return pickSolePlatformOperator(operators, username);
     }
     if (!/^[a-z0-9]{2,64}$/.test(tenant.slug)) {
       return null;
     }
-    return this.users.findActiveByUsernameAndPublicSlug(tenant.slug, username);
+    const user = await this.users.findActiveByUsernameAndPublicSlug(tenant.slug, username);
+    if (!user) {
+      return null;
+    }
+    const isPlatformAdmin = await this.users.hasRole(user.id, 'PlatformAdmin');
+    if (!allowWardPathLogin(isPlatformAdmin)) {
+      return null;
+    }
+    return user;
   }
 
   async verifyTotp(loginTicket: string, code: string, context: RequestContext): Promise<LoginOutcome> {

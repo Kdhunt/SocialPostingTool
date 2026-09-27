@@ -43,7 +43,7 @@ loadEnvFile(path.join(e2eRoot, '.env'), { override: true });
 export interface E2eCredentials {
   username: string;
   password: string;
-  wardCode: string;
+  wardCode?: string;
   wardSlug?: string;
 }
 
@@ -80,20 +80,25 @@ export function isRemoteE2e(): boolean {
 }
 
 export function e2eCredentials(): E2eCredentials | null {
-  const username = process.env.E2E_USERNAME?.trim();
-  const password = process.env.E2E_PASSWORD;
+  const username = process.env.E2E_USERNAME?.trim() || process.env.BOOTSTRAP_ADMIN_USERNAME?.trim();
+  const password = process.env.E2E_PASSWORD ?? process.env.BOOTSTRAP_ADMIN_PASSWORD;
   const wardCode = process.env.E2E_WARD_CODE?.trim();
   const wardSlug = process.env.E2E_WARD_SLUG?.trim();
 
-  if (!username || !password || !wardCode) {
+  if (!username || !password) {
     return null;
   }
 
-  return { username, password, wardCode, wardSlug: wardSlug || undefined };
+  return {
+    username,
+    password,
+    wardCode: wardCode || undefined,
+    wardSlug: wardSlug || undefined,
+  };
 }
 
 export const missingCredentialsMessage =
-  'Set E2E_USERNAME, E2E_PASSWORD, and E2E_WARD_CODE, or save a gitignored session with pnpm --filter @ward-comms/web-e2e test:e2e:save-session.';
+  'Set E2E_USERNAME and E2E_PASSWORD (or BOOTSTRAP_ADMIN_USERNAME/PASSWORD) for the superadmin. Ward code is not used for platform login.';
 
 export function e2eWardCode(): string | null {
   const wardCode = process.env.E2E_WARD_CODE?.trim();

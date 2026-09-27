@@ -87,7 +87,7 @@ async function onTotpSubmit(): Promise<void> {
     </IonHeader>
     <IonContent class="ion-padding">
       <form v-if="!needsTotp" novalidate @submit.prevent="onLoginSubmit">
-        <label for="mobile-ward-slug">Ward page path</label>
+        <label for="mobile-ward-slug">Ward page path (ward accounts)</label>
         <input id="mobile-ward-slug" v-model="wardSlug" type="text" autocomplete="off" />
 
         <label for="mobile-username">Username</label>

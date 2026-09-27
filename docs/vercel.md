@@ -26,7 +26,8 @@ On every Vercel deploy (`pnpm run build:vercel`):
    Vercel provides `POSTGRES_URL_NON_POOLING`)
 4. **`db:seed`** — idempotent upsert of roles and permissions
 5. **`db:bootstrap`** — when `BOOTSTRAP_*` env vars are set, creates the first
-   admin user and ward code (skips if username already exists)
+   ward and the **only** PlatformAdmin (skips if a PlatformAdmin already exists).
+   Superadmin signs in with username and password only.
 
 You do **not** need to run migrations manually from your machine unless you
 prefer to.
@@ -83,9 +84,9 @@ The build maps these to `DATABASE_URL` and runs migrations + seed on deploy.
 | `WARD_CODE_PEPPER` | Yes | ≥16 chars |
 | `PROVIDER_CREDENTIALS_ENCRYPTION_KEY` | Yes | ≥32 chars |
 | `CRON_SECRET` | Yes | `openssl rand -base64 32` |
-| `BOOTSTRAP_ADMIN_USERNAME` | Yes (first deploy) | Your prod admin login |
+| `BOOTSTRAP_ADMIN_USERNAME` | Yes (first deploy) | The only superadmin login |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Yes (first deploy) | min 12 characters |
-| `BOOTSTRAP_WARD_CODE` | Yes (first deploy) | Ward code for sign-in |
+| `BOOTSTRAP_WARD_CODE` | Yes (first deploy) | Hub ward code (not used for PlatformAdmin sign-in) |
 | `BOOTSTRAP_WARD_NAME` | Optional | Default: `Ward Communications Hub` |
 | `BOOTSTRAP_ADMIN_EMAIL` | Optional | Recommended; stored lowercase |
 | `NODE_ENV` | Yes | `production` |
@@ -115,8 +116,9 @@ build creates the admin user once, then skips on later deploys.
    `Seeding role and permission catalog…`, and `Running production admin bootstrap…`.
 2. `https://<your-domain>/api/v1/health` → JSON health response.
 3. `https://<your-domain>/` → web app.
-4. Sign in at `/login` with your **BOOTSTRAP_** credentials (not the dev
-   `admin` / `ChangeMeNow!23` defaults unless you ran `db:seed:dev` manually).
+4. Sign in at `/login` with your **BOOTSTRAP_** username and password (leave
+   the ward page path blank). Do not use the dev `admin` / `ChangeMeNow!23`
+   ward clerk unless you ran `db:seed:dev` and filled in that ward’s page path.
 
 After bootstrap, create more wards, rotate ward codes, and reset ward administrator
 passwords via **Administration → Wards** (requires `PlatformAdmin`, assigned

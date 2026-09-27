@@ -21,6 +21,7 @@ export * from './contact-normalization.js';
 export * from './auth/password-policy.js';
 export * from './auth/lockout-policy.js';
 export * from './auth/login-tenant.js';
+export * from './auth/platform-operator-view.js';
 export * from './auth/ward-code-policy.js';
 export * from './auth/session-policy.js';
 export * from './auth/totp-policy.js';

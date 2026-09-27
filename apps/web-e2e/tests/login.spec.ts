@@ -17,7 +17,7 @@ test.describe('Login', () => {
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   });
 
-  test('signs in with configured ward admin credentials', async ({ page }) => {
+  test('signs in with configured superadmin credentials', async ({ page }) => {
     const credentials = e2eCredentials();
     test.skip(!credentials, missingCredentialsMessage);
     if (!credentials) {
@@ -26,7 +26,8 @@ test.describe('Login', () => {
 
     await signIn(page, credentials);
     await expect(primaryNav(page)).toBeVisible();
-    await expect(primaryNav(page).getByRole('link', { name: 'People' })).toBeVisible();
-    await expect(primaryNav(page).getByRole('link', { name: 'Campaigns' })).toBeVisible();
+    await expect(primaryNav(page).getByRole('link', { name: 'Wards' })).toBeVisible();
+    await expect(primaryNav(page).getByRole('link', { name: 'People' })).toHaveCount(0);
+    await expect(primaryNav(page).getByRole('link', { name: 'Campaigns' })).toHaveCount(0);
   });
 });
