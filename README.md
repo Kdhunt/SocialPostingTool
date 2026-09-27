@@ -78,7 +78,7 @@ Once running:
 
 - API health check: `http://localhost:3001/health`
 - Web health page: `http://localhost:3000`
-- Web sign-in: `http://localhost:3000/login` (after `db:seed:dev`, use `admin` / `ChangeMeNow!23`, ward code `WARD-DEV-CODE`)
+- Web sign-in: `http://localhost:3000/login`. After `db:seed:dev`, platform operator is `admin` / `ChangeMeNow!23` with the ward page path left blank. A ward clerk uses the same username plus the ward page path (for example `fictionaldevward`) and ward code `WARD-DEV-CODE`.
 - Public campaign board: `http://localhost:3000/{publicSlug}` (dev seed uses `/fictionaldevward`). Live example: `https://www.wardcomms.online/grangecreek` after that ward’s public path is set to `grangecreek`.
 
 ### One-command bootstrap (after `pnpm install` and `.env` setup)
@@ -267,7 +267,7 @@ pnpm --filter @ward-comms/web-e2e exec playwright install chromium
 pnpm test:e2e
 ```
 
-Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE`, **or** a gitignored Playwright storage state at `apps/web-e2e/.auth/user.json`. Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit passwords, ward codes, or session files.
+Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE`, **or** a gitignored Playwright storage state at `apps/web-e2e/.auth/user.json`. Leave `E2E_WARD_SLUG` unset for a platform operator; set it to the public page path for a ward clerk. Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit passwords, ward codes, or session files.
 
 To capture the session from a headed window (sign in yourself, including ward code):
 

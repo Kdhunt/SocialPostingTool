@@ -67,7 +67,7 @@ watch(slug, () => {
     <template v-else-if="notFound">
       <LayoutPageHeader title="Ward page not found" description="This public campaign page does not exist." />
       <p>
-        <NuxtLink to="/login">Continue to sign in</NuxtLink>
+        <NuxtLink :to="`/login?ward=${slug}`">Continue to sign in</NuxtLink>
       </p>
     </template>
 

@@ -44,6 +44,7 @@ export interface E2eCredentials {
   username: string;
   password: string;
   wardCode: string;
+  wardSlug?: string;
 }
 
 export const authStatePath = path.join(e2eRoot, '.auth', 'user.json');
@@ -82,12 +83,13 @@ export function e2eCredentials(): E2eCredentials | null {
   const username = process.env.E2E_USERNAME?.trim();
   const password = process.env.E2E_PASSWORD;
   const wardCode = process.env.E2E_WARD_CODE?.trim();
+  const wardSlug = process.env.E2E_WARD_SLUG?.trim();
 
   if (!username || !password || !wardCode) {
     return null;
   }
 
-  return { username, password, wardCode };
+  return { username, password, wardCode, wardSlug: wardSlug || undefined };
 }
 
 export const missingCredentialsMessage =

@@ -44,9 +44,12 @@ export async function fillHydratedInput(page: Page, selector: string, value: str
 
 export async function fillLoginForm(
   page: Page,
-  credentials: { username: string; password: string; wardCode: string },
+  credentials: { username: string; password: string; wardCode: string; wardSlug?: string },
 ): Promise<void> {
   await waitForHydratedLoginForm(page);
+  if (credentials.wardSlug) {
+    await fillHydratedInput(page, '#ward-slug', credentials.wardSlug);
+  }
   await fillHydratedInput(page, '#username', credentials.username);
   await fillHydratedInput(page, '#password', credentials.password);
   await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
@@ -126,6 +129,7 @@ export async function signInViaApi(page: Page, credentials: E2eCredentials): Pro
       username: credentials.username,
       password: credentials.password,
       clientType: 'web',
+      ...(credentials.wardSlug ? { wardSlug: credentials.wardSlug } : {}),
     },
   });
   const loginBody: unknown = await loginResponse.json().catch(() => null);

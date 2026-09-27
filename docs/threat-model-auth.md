@@ -49,22 +49,19 @@ This document describes the threat model for the login flow implemented in
 
 ## Known limitations / accepted risk (documented, not hidden)
 
-- **Username lookup is not ward-scoped.** `ApplicationUser` is only unique
-  per `(wardId, username)`, but the current login form collects only a
-  username. `UserRepository.findActiveByUsername` therefore does a
-  best-effort *global* lookup. In a deployment with multiple wards sharing
-  one instance and overlapping usernames, this is ambiguous. A production
-  rollout with multiple wards should add a ward-scoping field (e.g. a ward
-  slug) to the login form. `Ward.publicSlug` already exists for the
-  anonymous campaign board (`/{slug}`); it is **not** used at login and
-  must stay distinct from the hashed ward code.
+- **Username is unique per ward, not globally.** Login with a ward page
+  path (`wardSlug`, e.g. `grangecreek`) looks up `(ward.publicSlug, username)`.
+  The same username (including `admin`) can exist in every ward. Omitting
+  the path is **platform-operator sign-in**: exactly one active
+  `PlatformAdmin` with that username is resolved, and the ward code is not
+  required. `Ward.publicSlug` is not the hashed ward code.
 - **The per-IP+username rate limiter is in-process, not distributed.** It
   resets on process restart and is not shared across horizontally scaled
-  API instances. The durable, cross-instance defense is the persisted
-  per-account lockout (`failedLoginAttempts` / `lockedUntil`), which is
-  authoritative. A production deployment should still add a Redis-backed
-  limiter (Redis is already part of this stack for BullMQ) for defense in
-  depth.
+  API instances. Keys include the ward path or `platform`. The durable,
+  cross-instance defense is the persisted per-account lockout
+  (`failedLoginAttempts` / `lockedUntil`), which is authoritative. A
+  production deployment should still add a Redis-backed limiter (Redis is
+  already part of this stack for BullMQ) for defense in depth.
 - **Mobile refresh tokens are held only in memory in this phase's mobile
   shell**, not in platform secure storage, so signing out on app restart
   is expected until a secure-storage Capacitor plugin is integrated. See

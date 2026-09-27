@@ -9,6 +9,7 @@ const router = useRouter();
 const username = ref('');
 const password = ref('');
 const totpCode = ref('');
+const wardSlug = ref('');
 const wardCode = ref('');
 const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
@@ -37,7 +38,7 @@ async function onLoginSubmit(): Promise<void> {
   if (mobileAuthStore.state.value.kind === 'ward_code_required') {
     result = await finishWithWardCodeIfNeeded();
   } else {
-    result = await mobileAuthStore.login(username.value, password.value);
+    result = await mobileAuthStore.login(username.value, password.value, wardSlug.value);
     if (result.ok) {
       result = await finishWithWardCodeIfNeeded();
     }
@@ -86,13 +87,16 @@ async function onTotpSubmit(): Promise<void> {
     </IonHeader>
     <IonContent class="ion-padding">
       <form v-if="!needsTotp" novalidate @submit.prevent="onLoginSubmit">
+        <label for="mobile-ward-slug">Ward page path</label>
+        <input id="mobile-ward-slug" v-model="wardSlug" type="text" autocomplete="off" />
+
         <label for="mobile-username">Username</label>
         <input id="mobile-username" v-model="username" type="text" autocomplete="username" required />
 
         <label for="mobile-password">Password</label>
         <input id="mobile-password" v-model="password" type="password" autocomplete="current-password" required />
 
-        <label for="mobile-ward-code">Ward code</label>
+        <label for="mobile-ward-code">Ward code (ward accounts)</label>
         <input id="mobile-ward-code" v-model="wardCode" type="password" autocomplete="off" />
 
         <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>

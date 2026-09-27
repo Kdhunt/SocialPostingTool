@@ -1,3 +1,15 @@
+<script setup lang="ts">
+const route = useRoute();
+
+const signInTo = computed(() => {
+  const slug = route.params.wardSlug;
+  if (typeof slug === 'string' && /^[a-z0-9]{2,64}$/.test(slug)) {
+    return `/login?ward=${encodeURIComponent(slug)}`;
+  }
+  return '/login';
+});
+</script>
+
 <template>
   <div class="bulletin-layout">
     <header class="bulletin-layout__header">
@@ -5,7 +17,7 @@
         <span class="bulletin-layout__mark" aria-hidden="true">WC</span>
         <span>Ward Communications Hub</span>
       </NuxtLink>
-      <NuxtLink to="/login" class="bulletin-layout__sign-in">Sign in</NuxtLink>
+      <NuxtLink :to="signInTo" class="bulletin-layout__sign-in">Sign in</NuxtLink>
     </header>
     <main class="bulletin-layout__main">
       <slot />

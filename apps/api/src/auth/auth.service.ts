@@ -13,6 +13,7 @@ import {
   MOBILE_ACCESS_TOKEN_TTL_MS,
   MOBILE_REFRESH_TOKEN_TTL_MS,
   requiresWardCodeVerification,
+  selectLoginTenant,
   validateTotpCodeFormat,
   WEB_SESSION_TTL_MS,
 } from '@ward-comms/domain';
@@ -46,6 +47,7 @@ interface TotpTicketPayload extends Record<string, unknown> {
   purpose: 'totp';
   userId: string;
   deviceId: string;
+  skipWardBinding: boolean;
 }
 
 interface LoginTicketPayload extends Record<string, unknown> {
@@ -97,8 +99,14 @@ export class AuthService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async login(username: string, password: string, context: RequestContext): Promise<LoginOutcome> {
-    const user = await this.users.findActiveByUsername(username);
+  async login(
+    username: string,
+    password: string,
+    context: RequestContext,
+    wardSlug?: string,
+  ): Promise<LoginOutcome> {
+    const skipWardBinding = selectLoginTenant(wardSlug).kind === 'platform';
+    const user = await this.resolveLoginUser(username, wardSlug);
 
     if (!user) {
       // Generic failure — never reveal whether the username exists.
@@ -166,7 +174,22 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.continueAfterPasswordVerified(user, context);
+    return this.continueAfterPasswordVerified(user, context, skipWardBinding);
+  }
+
+  private async resolveLoginUser(username: string, wardSlug?: string): Promise<ApplicationUser | null> {
+    const tenant = selectLoginTenant(wardSlug);
+    if (tenant.kind === 'platform') {
+      const operators = await this.users.findActivePlatformOperatorsByUsername(username);
+      if (operators.length !== 1) {
+        return null;
+      }
+      return operators[0] ?? null;
+    }
+    if (!/^[a-z0-9]{2,64}$/.test(tenant.slug)) {
+      return null;
+    }
+    return this.users.findActiveByUsernameAndPublicSlug(tenant.slug, username);
   }
 
   async verifyTotp(loginTicket: string, code: string, context: RequestContext): Promise<LoginOutcome> {
@@ -226,13 +249,17 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.continueAfterTotpVerified(user, context);
+    return this.continueAfterTotpVerified(user, context, payload.skipWardBinding === true);
   }
 
-  private async continueAfterPasswordVerified(user: ApplicationUser, context: RequestContext): Promise<LoginOutcome> {
+  private async continueAfterPasswordVerified(
+    user: ApplicationUser,
+    context: RequestContext,
+    skipWardBinding: boolean,
+  ): Promise<LoginOutcome> {
     if (isTotpEnabled(user)) {
       const loginTicket = signToken<TotpTicketPayload>(
-        { purpose: 'totp', userId: user.id, deviceId: context.deviceId },
+        { purpose: 'totp', userId: user.id, deviceId: context.deviceId, skipWardBinding },
         this.config.session.secret,
         LOGIN_TICKET_TTL_MS,
       );
@@ -248,16 +275,21 @@ export class AuthService {
       return { status: 'totp_required', loginTicket };
     }
 
-    return this.continueAfterTotpVerified(user, context);
+    return this.continueAfterTotpVerified(user, context, skipWardBinding);
   }
 
-  private async continueAfterTotpVerified(user: ApplicationUser, context: RequestContext): Promise<LoginOutcome> {
+  private async continueAfterTotpVerified(
+    user: ApplicationUser,
+    context: RequestContext,
+    skipWardBinding: boolean,
+  ): Promise<LoginOutcome> {
     const activeWardCodeVersion = await this.wardCodes.findActiveVersion(user.wardId);
     if (activeWardCodeVersion) {
       const lastVerifiedSession = await this.sessions.findLatestVerifiedForDevice(user.id, context.deviceId);
       const wardCodeRequired = requiresWardCodeVerification({
         lastVerifiedWardCodeVersionId: lastVerifiedSession?.wardCodeVersionId ?? null,
         activeWardCodeVersionId: activeWardCodeVersion.id,
+        skipWardBinding,
       });
 
       if (wardCodeRequired) {

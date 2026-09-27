@@ -12,7 +12,7 @@ export type AuthState =
 export interface UseAuthReturn {
   state: ReturnType<typeof useState<AuthState>>;
   refreshSession: () => Promise<void>;
-  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (username: string, password: string, wardSlug?: string) => Promise<{ ok: boolean; error?: string }>;
   submitTotp: (code: string) => Promise<{ ok: boolean; error?: string }>;
   submitWardCode: (wardCode: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -39,9 +39,13 @@ export function useAuth(): UseAuthReturn {
     }
   }
 
-  async function login(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  async function login(
+    username: string,
+    password: string,
+    wardSlug?: string,
+  ): Promise<{ ok: boolean; error?: string }> {
     try {
-      const result = await client.login(username, password, 'web');
+      const result = await client.login(username, password, 'web', wardSlug);
       if (result.status === 'totp_required') {
         state.value = { kind: 'totp_required', loginTicket: result.loginTicket };
         return { ok: true };

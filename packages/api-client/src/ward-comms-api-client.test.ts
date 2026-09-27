@@ -61,6 +61,23 @@ describe('WardCommsApiClient', () => {
     });
   });
 
+  it('includes a ward page path when signing in as a ward clerk', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'ward_code_required', loginTicket: 'ticket-abc' }), { status: 200 }),
+    );
+    const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
+
+    await client.login('admin', 'Fictional-Password-42', 'web', 'grangecreek');
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      username: 'admin',
+      password: 'Fictional-Password-42',
+      clientType: 'web',
+      wardSlug: 'grangecreek',
+    });
+  });
+
   it('builds a directory search query string only from provided fields', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ people: [] }), { status: 200 }));
     const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });

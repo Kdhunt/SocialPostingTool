@@ -14,6 +14,7 @@ test.describe('Ward Communications Hub smoke', () => {
     await expect(page.getByRole('heading', { name: /sign in/i })).toBeVisible();
     await expect(page.getByLabel(/username/i)).toBeVisible();
     await expect(page.getByLabel(/password/i)).toBeVisible();
+    await expect(page.getByLabel(/ward page path/i)).toBeVisible();
     await expect(page.getByLabel(/ward code/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
   });

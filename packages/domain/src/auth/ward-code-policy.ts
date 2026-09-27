@@ -15,9 +15,17 @@ export interface WardCodeVerificationInput {
   lastVerifiedWardCodeVersionId: string | null;
   /** The ward's currently active (non-retired) ward code version id. */
   activeWardCodeVersionId: string;
+  /**
+   * Platform-operator sign-in (no ward page path). Superadmin is not bound
+   * to a tenant ward code.
+   */
+  skipWardBinding?: boolean;
 }
 
 export function requiresWardCodeVerification(input: WardCodeVerificationInput): boolean {
+  if (input.skipWardBinding) {
+    return false;
+  }
   return (
     input.lastVerifiedWardCodeVersionId === null ||
     input.lastVerifiedWardCodeVersionId !== input.activeWardCodeVersionId

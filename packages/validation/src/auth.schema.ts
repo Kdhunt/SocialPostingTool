@@ -12,6 +12,18 @@ export type ClientType = z.infer<typeof clientTypeSchema>;
 export const loginRequestSchema = z.object({
   username: z.string().min(1).max(255),
   password: z.string().min(1).max(512),
+  /**
+   * Public ward page path (e.g. grangecreek). Omit for platform-operator
+   * sign-in. Not the secret ward code.
+   */
+  wardSlug: z
+    .string()
+    .max(64)
+    .optional()
+    .transform((value) => {
+      const slug = value?.trim().toLowerCase() ?? '';
+      return slug.length > 0 ? slug : undefined;
+    }),
   clientType: clientTypeSchema.optional(),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;

@@ -17,15 +17,30 @@ export class UserRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /**
-   * Looks up an active (not archived) user by username. Username is not
-   * globally unique in the schema (`@@unique([wardId, username])`), so
-   * this is a best-effort global lookup for the single-ward-per-login-form
-   * MVP; a production multi-ward deployment should scope this by ward
-   * (e.g. a ward slug on the login form) to avoid ambiguity.
+   * Looks up an active (not archived) user by username inside one ward.
    */
-  async findActiveByUsername(username: string): Promise<ApplicationUser | null> {
+  async findActiveByUsernameAndPublicSlug(publicSlug: string, username: string): Promise<ApplicationUser | null> {
     return this.prisma.client.applicationUser.findFirst({
-      where: { username, archivedAt: null },
+      where: {
+        username,
+        archivedAt: null,
+        ward: { publicSlug, archivedAt: null },
+      },
+    });
+  }
+
+  /**
+   * Platform operators (PlatformAdmin) may share a username with ward
+   * clerks. Sign-in without a ward path resolves only these rows.
+   */
+  async findActivePlatformOperatorsByUsername(username: string): Promise<ApplicationUser[]> {
+    return this.prisma.client.applicationUser.findMany({
+      where: {
+        username,
+        archivedAt: null,
+        roles: { some: { role: { name: 'PlatformAdmin' } } },
+      },
+      orderBy: { createdAt: 'asc' },
     });
   }
 

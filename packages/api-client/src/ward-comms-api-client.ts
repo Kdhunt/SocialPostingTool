@@ -237,10 +237,15 @@ export class WardCommsApiClient {
     return publicWardBulletinResponseSchema.parse(await response.json());
   }
 
-  async login(username: string, password: string, clientType: 'web' | 'mobile' = 'web'): Promise<LoginResponse> {
+  async login(
+    username: string,
+    password: string,
+    clientType: 'web' | 'mobile' = 'web',
+    wardSlug?: string,
+  ): Promise<LoginResponse> {
     const response = await this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password, clientType }),
+      body: JSON.stringify({ username, password, clientType, ...(wardSlug ? { wardSlug } : {}) }),
     });
     return loginResponseSchema.parse(await response.json());
   }

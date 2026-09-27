@@ -1,16 +1,25 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'guest' });
 
+const route = useRoute();
 const { state, login, submitTotp, submitWardCode } = useAuth();
 
 const username = ref('');
 const password = ref('');
 const totpCode = ref('');
+const wardSlug = ref('');
 const wardCode = ref('');
 const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
 const needsTotp = computed(() => state.value.kind === 'totp_required');
+
+onMounted(() => {
+  const queryWard = route.query.ward;
+  if (typeof queryWard === 'string' && queryWard.trim().length > 0) {
+    wardSlug.value = queryWard.trim().toLowerCase();
+  }
+});
 
 async function finishWithWardCodeIfNeeded(): Promise<{ ok: boolean; error?: string }> {
   if (state.value.kind !== 'ward_code_required') {
@@ -29,6 +38,7 @@ function syncLoginFieldsFromForm(form: HTMLFormElement): void {
   const data = new FormData(form);
   const nextUsername = String(data.get('username') ?? '').trim();
   const nextPassword = String(data.get('password') ?? '');
+  const nextWardSlug = String(data.get('ward-slug') ?? '').trim();
   const nextWardCode = String(data.get('ward-code') ?? '');
   if (nextUsername) {
     username.value = nextUsername;
@@ -36,6 +46,7 @@ function syncLoginFieldsFromForm(form: HTMLFormElement): void {
   if (nextPassword) {
     password.value = nextPassword;
   }
+  wardSlug.value = nextWardSlug;
   if (nextWardCode) {
     wardCode.value = nextWardCode;
   }
@@ -54,7 +65,7 @@ async function onLoginSubmit(event: Event): Promise<void> {
   if (state.value.kind === 'ward_code_required') {
     result = await finishWithWardCodeIfNeeded();
   } else {
-    result = await login(username.value, password.value);
+    result = await login(username.value, password.value, wardSlug.value);
     if (result.ok) {
       result = await finishWithWardCodeIfNeeded();
     }
@@ -97,7 +108,7 @@ async function onTotpSubmit(): Promise<void> {
 <template>
   <div class="login">
     <h1 class="login__title">Sign in</h1>
-    <p class="login__lead">Use your ward account credentials to continue.</p>
+    <p class="login__lead">Ward operators enter their ward page path. Platform operators leave it blank.</p>
 
     <form
       v-if="!needsTotp"
@@ -105,6 +116,22 @@ async function onTotpSubmit(): Promise<void> {
       novalidate
       @submit.prevent="onLoginSubmit"
     >
+      <UiFormField
+        label="Ward page path"
+        input-id="ward-slug"
+        hint="Example: grangecreek. Leave blank to sign in as a platform operator."
+      >
+        <input
+          id="ward-slug"
+          v-model="wardSlug"
+          name="ward-slug"
+          class="form-control"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </UiFormField>
+
       <UiFormField label="Username" input-id="username">
         <input
           id="username"
@@ -132,7 +159,7 @@ async function onTotpSubmit(): Promise<void> {
       <UiFormField
         label="Ward code"
         input-id="ward-code"
-        hint="Required on this device until the current ward code has been verified."
+        hint="Required for ward accounts on a new device. Platform operators can leave this blank."
       >
         <input
           id="ward-code"
