@@ -37,7 +37,7 @@ Do not include real member data, credentials, or ward codes in a vulnerability r
 
 - Passwords are hashed with Argon2id via `@node-rs/argon2` (prebuilt native binding, no plaintext password ever persisted or logged).
 - The ward code is hashed **separately** from passwords, combined with a server-side pepper (`WARD_CODE_PEPPER`) before hashing, and stored in its own `ward_code_version` table so it can be rotated without touching user records.
-- The ward code must be re-verified on a device's first sign-in and again after every ward code rotation — enforced by a pure, unit-tested domain rule (`packages/domain/src/auth/ward-code-policy.ts`), not left to client behavior.
+- Every login requires the ward code along with username and password. The active code resolves the ward before the username lookup, so duplicate usernames remain tenant-scoped; a code matching multiple wards is rejected.
 - Web sessions use an HTTP-only, `SameSite=Lax` cookie (`Secure` in production); the raw session token is never placed in localStorage/sessionStorage and never readable by JavaScript.
 - Mobile clients use a short-lived (15 minute) stateless access token plus a longer-lived, rotating refresh token; refresh tokens rotate on every use so a stolen token has a bounded reuse window.
 - Only SHA-256 hashes of session/refresh tokens are stored server-side (`user_session` table); the raw values exist only transiently in the response that issues them.

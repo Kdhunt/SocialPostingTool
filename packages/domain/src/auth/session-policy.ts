@@ -10,9 +10,6 @@ export const MOBILE_ACCESS_TOKEN_TTL_MS = 15 * 60_000; // 15 minutes
 /** Mobile refresh/session token lifetime (rotated on each successful refresh). */
 export const MOBILE_REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60_000; // 30 days
 
-/** A signed "ward code required" login ticket lifetime — short by design. */
-export const LOGIN_TICKET_TTL_MS = 5 * 60_000; // 5 minutes
-
 export function isSessionExpired(expiresAt: Date, now: Date = new Date()): boolean {
   return expiresAt.getTime() <= now.getTime();
 }

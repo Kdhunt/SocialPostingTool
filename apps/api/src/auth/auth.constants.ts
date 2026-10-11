@@ -2,10 +2,8 @@
 export const SESSION_COOKIE_NAME = 'session_token';
 
 /**
- * HTTP-only, non-secret device identifier cookie. Not a credential — used
- * only to recognize "this browser has already verified the current ward
- * code" so we don't over-prompt for it (see ward-code-policy.ts). Long
- * lived by design.
+ * HTTP-only, non-secret device identifier cookie used to bind an in-progress
+ * sign-in verification to this browser. Long lived by design.
  */
 export const DEVICE_ID_COOKIE_NAME = 'device_id';
 

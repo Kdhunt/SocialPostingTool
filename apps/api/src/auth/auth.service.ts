@@ -46,7 +46,7 @@ interface AccessTokenPayload extends Record<string, unknown> {
 
 export class InvalidCredentialsError extends UnauthorizedException {
   constructor() {
-    super('Invalid username or password.');
+    super('Invalid sign-in credentials.');
   }
 }
 
@@ -65,8 +65,8 @@ export class AccountDisabledError extends ForbiddenException {
 /**
  * Orchestrates the Phase 4 authentication flows. Contains the
  * *application* logic (sequencing repositories, hashers, audit events);
- * the actual security rules it calls into (lockout thresholds, ward code
- * re-verification, session validity) are pure functions from
+ * the actual security rules it calls into (lockout thresholds and session
+ * validity) are pure functions from
  * packages/domain.
  */
 @Injectable()
