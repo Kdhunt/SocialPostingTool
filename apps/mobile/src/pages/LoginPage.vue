@@ -15,7 +15,7 @@ const submitting = ref(false);
 async function onLoginSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-  const result = await mobileAuthStore.login(username.value, password.value);
+  const result = await mobileAuthStore.login(username.value, password.value, wardCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -58,13 +58,16 @@ async function onWardCodeSubmit(): Promise<void> {
         <label for="mobile-password">Password</label>
         <input id="mobile-password" v-model="password" type="password" autocomplete="current-password" required />
 
+        <label for="mobile-ward-code">Ward code</label>
+        <input id="mobile-ward-code" v-model="wardCode" type="password" autocomplete="off" required />
+
         <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>
 
         <button type="submit" :disabled="submitting">{{ submitting ? 'Signing in…' : 'Sign in' }}</button>
       </form>
 
       <form v-else novalidate @submit.prevent="onWardCodeSubmit">
-        <p>This device needs the current ward code to finish signing in.</p>
+        <p>Enter the ward code to finish signing in.</p>
 
         <label for="mobile-ward-code">Ward code</label>
         <input id="mobile-ward-code" v-model="wardCode" type="password" autocomplete="off" required />

@@ -14,7 +14,7 @@ const submitting = ref(false);
 async function onLoginSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-  const result = await login(username.value, password.value);
+  const result = await login(username.value, password.value, wardCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -58,13 +58,16 @@ async function onWardCodeSubmit(): Promise<void> {
       <label for="password">Password</label>
       <input id="password" v-model="password" type="password" autocomplete="current-password" required />
 
+      <label for="ward-code">Ward code</label>
+      <input id="ward-code" v-model="wardCode" type="password" autocomplete="off" required />
+
       <p v-if="errorMessage" class="login-page__error" role="alert">{{ errorMessage }}</p>
 
       <button type="submit" :disabled="submitting">{{ submitting ? 'Signing in…' : 'Sign in' }}</button>
     </form>
 
     <form v-else class="login-page__form" novalidate @submit.prevent="onWardCodeSubmit">
-      <p>This device needs the current ward code to finish signing in.</p>
+      <p>Enter the ward code to finish signing in.</p>
 
       <label for="ward-code">Ward code</label>
       <input id="ward-code" v-model="wardCode" type="password" autocomplete="off" required />

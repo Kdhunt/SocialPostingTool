@@ -50,13 +50,14 @@ describe('WardCommsApiClient', () => {
     );
     const client = new WardCommsApiClient({ baseUrl: 'http://localhost:3001', fetchImpl });
 
-    const result = await client.login('jane.doe', 'Fictional-Password-42');
+    const result = await client.login('jane.doe', 'Fictional-Password-42', 'fictional-ward-code');
 
     expect(result).toEqual({ status: 'ward_code_required', loginTicket: 'ticket-abc' });
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toEqual({
       username: 'jane.doe',
       password: 'Fictional-Password-42',
+      wardCode: 'fictional-ward-code',
       clientType: 'web',
     });
   });

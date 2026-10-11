@@ -99,8 +99,8 @@ fictional dev credentials to the console. For custom users, use the
 
 ### Authentication overview
 
-- `POST /auth/login` → `{ username, password, clientType?: 'web'|'mobile' }`
-- `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (only when `/auth/login` responds `ward_code_required`)
+- `POST /auth/login` → `{ username, password, wardCode, clientType?: 'web'|'mobile' }`; the active ward code resolves the tenant before the username is looked up within that ward.
+- `POST /auth/ward-code` → legacy second-step endpoint; current login verifies the ward code as part of `/auth/login`.
 - `POST /auth/refresh` → `{ refreshToken }` (mobile only)
 - `POST /auth/logout`, `GET /auth/session`, `GET /auth/sessions`, `POST /auth/sessions/:id/revoke`
 - `POST /auth/users/:id/disable` / `.../enable` (requires the `users.manage` permission)

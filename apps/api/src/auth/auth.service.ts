@@ -8,7 +8,6 @@ import {
   LOGIN_TICKET_TTL_MS,
   MOBILE_ACCESS_TOKEN_TTL_MS,
   MOBILE_REFRESH_TOKEN_TTL_MS,
-  requiresWardCodeVerification,
   WEB_SESSION_TTL_MS,
 } from '@ward-comms/domain';
 import type { AuthUser, ClientType, MobileTokenPair } from '@ward-comms/validation';
@@ -83,15 +82,29 @@ export class AuthService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async login(username: string, password: string, context: RequestContext): Promise<LoginOutcome> {
-    const user = await this.users.findActiveByUsername(username);
+  async login(username: string, password: string, wardCode: string, context: RequestContext): Promise<LoginOutcome> {
+    const activeWardCodeVersions = await this.wardCodes.listActiveVersions();
+    let matchedWardCodeVersion: Awaited<ReturnType<WardCodeRepository['findActiveVersion']>> = null;
+    for (const version of activeWardCodeVersions) {
+      if (await this.wardCodeHasher.verify(version.codeHash, wardCode)) {
+        if (matchedWardCodeVersion) {
+          matchedWardCodeVersion = null;
+          break;
+        }
+        matchedWardCodeVersion = version;
+      }
+    }
+
+    const user = matchedWardCodeVersion
+      ? await this.users.findActiveByUsername(matchedWardCodeVersion.wardId, username)
+      : null;
 
     if (!user) {
       // Generic failure — never reveal whether the username exists.
       await this.audit.record({
         action: 'auth.login.failure',
         entityType: 'ApplicationUser',
-        metadata: { reason: 'unknown_username' },
+        metadata: { reason: 'invalid_credentials' },
         ipAddress: context.ipAddress,
         userAgent: context.userAgent,
       });
@@ -152,37 +165,16 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    const activeWardCodeVersion = await this.wardCodes.findActiveVersion(user.wardId);
-    if (activeWardCodeVersion) {
-      const lastVerifiedSession = await this.sessions.findLatestVerifiedForDevice(user.id, context.deviceId);
-      const wardCodeRequired = requiresWardCodeVerification({
-        lastVerifiedWardCodeVersionId: lastVerifiedSession?.wardCodeVersionId ?? null,
-        activeWardCodeVersionId: activeWardCodeVersion.id,
-      });
-
-      if (wardCodeRequired) {
-        const loginTicket = signToken<LoginTicketPayload>(
-          { purpose: 'ward_code', userId: user.id, deviceId: context.deviceId },
-          this.config.session.secret,
-          LOGIN_TICKET_TTL_MS,
-        );
-        await this.audit.record({
-          wardId: user.wardId,
-          actorUserId: user.id,
-          action: 'auth.login.ward_code_required',
-          entityType: 'ApplicationUser',
-          entityId: user.id,
-          ipAddress: context.ipAddress,
-          userAgent: context.userAgent,
-        });
-        return { status: 'ward_code_required', loginTicket };
-      }
-
-      return this.completeLogin(user, activeWardCodeVersion.id, context);
-    }
-
-    // No ward code has been configured for this ward yet — nothing to verify against.
-    return this.completeLogin(user, null, context);
+    await this.audit.record({
+      wardId: user.wardId,
+      actorUserId: user.id,
+      action: 'auth.login.ward_code_verified',
+      entityType: 'ApplicationUser',
+      entityId: user.id,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+    return this.completeLogin(user, matchedWardCodeVersion.id, context);
   }
 
   async verifyWardCode(loginTicket: string, wardCode: string, context: RequestContext): Promise<LoginOutcome> {

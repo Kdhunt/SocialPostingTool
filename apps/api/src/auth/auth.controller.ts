@@ -91,7 +91,7 @@ export class AuthController {
     }
 
     const context = this.buildContext(req, res, dto.clientType);
-    const outcome = await this.authService.login(dto.username, dto.password, context);
+    const outcome = await this.authService.login(dto.username, dto.password, dto.wardCode, context);
 
     if (outcome.status === 'ward_code_required') {
       return { status: 'ward_code_required', loginTicket: outcome.loginTicket };

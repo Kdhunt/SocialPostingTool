@@ -2,13 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { loginRequestSchema, loginResponseSchema, authUserSchema } from './auth.schema.js';
 
 describe('loginRequestSchema', () => {
-  it('accepts a valid username/password payload', () => {
-    const result = loginRequestSchema.parse({ username: 'jane.doe', password: 'Fictional-Password-42' });
+  it('accepts username, password, and ward code credentials', () => {
+    const result = loginRequestSchema.parse({
+      username: 'jane.doe',
+      password: 'Fictional-Password-42',
+      wardCode: 'fictional-ward-code',
+    });
     expect(result.username).toBe('jane.doe');
+    expect(result.wardCode).toBe('fictional-ward-code');
   });
 
-  it('rejects an empty username', () => {
-    expect(() => loginRequestSchema.parse({ username: '', password: 'x' })).toThrow();
+  it('requires all three credentials', () => {
+    expect(() => loginRequestSchema.parse({ username: 'jane.doe', password: 'x' })).toThrow();
+    expect(() =>
+      loginRequestSchema.parse({ username: 'jane.doe', password: 'x', wardCode: '' }),
+    ).toThrow();
   });
 });
 

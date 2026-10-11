@@ -11,7 +11,7 @@ export type AuthState =
 export interface UseAuthReturn {
   state: ReturnType<typeof useState<AuthState>>;
   refreshSession: () => Promise<void>;
-  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (username: string, password: string, wardCode: string) => Promise<{ ok: boolean; error?: string }>;
   submitWardCode: (wardCode: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
@@ -37,9 +37,9 @@ export function useAuth(): UseAuthReturn {
     }
   }
 
-  async function login(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  async function login(username: string, password: string, wardCode: string): Promise<{ ok: boolean; error?: string }> {
     try {
-      const result = await client.login(username, password, 'web');
+      const result = await client.login(username, password, wardCode, 'web');
       if (result.status === 'ward_code_required') {
         state.value = { kind: 'ward_code_required', loginTicket: result.loginTicket };
         return { ok: true };
