@@ -31,16 +31,16 @@ This document describes the threat model for the login flow implemented in
 | # | Threat | Mitigation | Where |
 | - | --- | --- | --- |
 | 1 | Credential stuffing / brute-force password guessing | Per-account lockout with exponential backoff after `LOCKOUT_THRESHOLD` (5) failed attempts, persisted in the database so it survives process restarts and applies across API instances; additional best-effort per-IP+username in-process rate limiting on `/auth/login` and `/auth/ward-code` | `packages/domain/src/auth/lockout-policy.ts`, `apps/api/src/auth/login-rate-limiter.service.ts` |
-| 2 | Ward code brute-force (shared secret, potentially short/memorable) | Ward code is hashed with Argon2id **combined with a server-side pepper** (`WARD_CODE_PEPPER`, never in source control), stored in a *separate* table from passwords; the same lockout/rate-limit protections apply to the `/auth/ward-code` endpoint | `apps/api/src/auth/ward-code-hasher.service.ts`, `.env.example` |
+| 2 | Ward code brute-force (shared secret, potentially short/memorable) | Ward code is hashed with Argon2id **combined with a server-side pepper** (`WARD_CODE_PEPPER`, never in source control), stored in a *separate* table from passwords; `/auth/login` rate-limits attempts and verifies the code before resolving the ward | `apps/api/src/auth/ward-code-hasher.service.ts`, `.env.example` |
 | 3 | Database leak exposing password hashes | Argon2id (memory-hard, GPU-resistant) hashing; hashes are never returned by any API response (`AuthUser` never includes `passwordHash`) | `apps/api/src/auth/password-hasher.service.ts`, `packages/validation/src/auth.schema.ts` |
 | 4 | Database leak exposing session/refresh tokens | Only SHA-256 *hashes* of opaque, high-entropy (256-bit) tokens are stored; the raw token is returned to the client exactly once and never persisted server-side | `apps/api/src/common/session-token.util.ts` |
 | 5 | Session hijacking via XSS reading the session token | Web session token is delivered only as an **HTTP-only** cookie (`Secure` in production, `SameSite=Lax`) — never reachable from JavaScript, never placed in localStorage/sessionStorage | `apps/api/src/auth/auth.controller.ts` (`setSessionCookie`), AGENTS.md |
 | 6 | Session replay after logout | Logout revokes the session row (`revokedAt`); every authenticated request re-validates `revokedAt IS NULL` and `expiresAt` server-side | `packages/domain/src/auth/session-policy.ts`, `apps/api/src/auth/guards/session-auth.guard.ts` |
 | 7 | Stolen mobile refresh token used indefinitely | Refresh tokens rotate on every use (`AuthService.refresh`); the previous refresh token hash is immediately invalidated, limiting the reuse window to a single request; access tokens are short-lived (15 min) and stateless, bounding the blast radius of a leaked access token | `apps/api/src/auth/auth.service.ts` |
 | 8 | Cross-site request forgery (CSRF) against cookie-authenticated endpoints | `SameSite=Lax` cookie attribute blocks the cookie from being sent on cross-site POST navigations from third-party sites; CORS is restricted to an explicit allow-list (`CORS_ALLOWED_ORIGINS`), not `*`, with `credentials: true` only for those origins | `apps/api/src/main.ts` |
-| 9 | Username enumeration via differing error messages/timing | Unknown username and wrong password both return the same generic `InvalidCredentialsError` (401) and are audited identically; no "no such user" message is ever returned | `apps/api/src/auth/auth.service.ts` |
+| 9 | Account or ward-code enumeration via differing error messages | Unknown username, wrong password, and an invalid or ambiguous ward code return the same generic `InvalidCredentialsError` (401); no account or tenant existence message is returned | `apps/api/src/auth/auth.service.ts` |
 | 10 | JWT "alg: none" / algorithm-confusion class of attacks on stateless tokens | The mobile access token and "ward code required" login ticket use a fixed HMAC-SHA256 scheme with no algorithm field to manipulate — not a general JWT library | `apps/api/src/common/signed-token.util.ts` |
-| 11 | Ward code and password not required together on every device | The ward code is required again whenever a device has not verified the *currently active* ward code version — covering both "new device" and "after rotation" — enforced as a pure, testable domain rule | `packages/domain/src/auth/ward-code-policy.ts` |
+| 11 | Login resolves the wrong tenant when usernames repeat across wards | Login requires username, password, and ward code together. The API resolves the active ward-code hash first, then looks up the username only inside that ward; ambiguous codes are rejected | `apps/api/src/auth/auth.service.ts`, `apps/api/src/auth/repositories/user.repository.ts` |
 | 12 | A disabled account continuing to act via an existing session | Disabling an account immediately revokes all of that user's active sessions in the same operation, and every subsequent request re-checks `disabledAt IS NULL` | `apps/api/src/auth/auth.service.ts` (`disableAccount`) |
 | 13 | Silent/undetectable account takeover attempts | Every login attempt (success, failure, lockout, disabled-account block), ward code attempt, refresh, logout, session revocation, and account disable/enable is recorded as an `AuditEvent` — but never with the attempted password or ward code value | `apps/api/src/audit/audit.service.ts`, calls throughout `auth.service.ts` |
 | 14 | Frontend-only authorization checks being trusted | Every protected route is guarded server-side by `SessionAuthGuard` (authentication) and, where relevant, `PermissionsGuard` + `@RequirePermission(...)` (authorization) — the client never supplies its own permission claims | `apps/api/src/auth/guards/*`, `apps/api/src/auth/decorators/require-permission.decorator.ts` |
@@ -48,13 +48,6 @@ This document describes the threat model for the login flow implemented in
 
 ## Known limitations / accepted risk (documented, not hidden)
 
-- **Username lookup is not ward-scoped.** `ApplicationUser` is only unique
-  per `(wardId, username)`, but the current login form collects only a
-  username. `UserRepository.findActiveByUsername` therefore does a
-  best-effort *global* lookup. In a deployment with multiple wards sharing
-  one instance and overlapping usernames, this is ambiguous. A production
-  rollout with multiple wards should add a ward-scoping field (e.g. a ward
-  slug) to the login form.
 - **The per-IP+username rate limiter is in-process, not distributed.** It
   resets on process restart and is not shared across horizontally scaled
   API instances. The durable, cross-instance defense is the persisted

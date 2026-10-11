@@ -16,16 +16,9 @@ export interface UserPermissions {
 export class UserRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  /**
-   * Looks up an active (not archived) user by username. Username is not
-   * globally unique in the schema (`@@unique([wardId, username])`), so
-   * this is a best-effort global lookup for the single-ward-per-login-form
-   * MVP; a production multi-ward deployment should scope this by ward
-   * (e.g. a ward slug on the login form) to avoid ambiguity.
-   */
-  async findActiveByUsername(username: string): Promise<ApplicationUser | null> {
+  async findActiveByUsername(wardId: string, username: string): Promise<ApplicationUser | null> {
     return this.prisma.client.applicationUser.findFirst({
-      where: { username, archivedAt: null },
+      where: { wardId, username, archivedAt: null },
     });
   }
 

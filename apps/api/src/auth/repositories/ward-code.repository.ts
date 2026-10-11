@@ -6,6 +6,12 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 export class WardCodeRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
+  async listActiveVersions(): Promise<WardCodeVersion[]> {
+    return this.prisma.client.wardCodeVersion.findMany({
+      where: { retiredAt: null },
+    });
+  }
+
   /** The single active (non-retired) ward code version for a ward, if any has been configured. */
   async findActiveVersion(wardId: string): Promise<WardCodeVersion | null> {
     return this.prisma.client.wardCodeVersion.findFirst({

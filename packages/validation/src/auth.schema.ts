@@ -11,6 +11,7 @@ export type ClientType = z.infer<typeof clientTypeSchema>;
 export const loginRequestSchema = z.object({
   username: z.string().min(1).max(255),
   password: z.string().min(1).max(512),
+  wardCode: z.string().min(1).max(255),
   clientType: clientTypeSchema.optional(),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
