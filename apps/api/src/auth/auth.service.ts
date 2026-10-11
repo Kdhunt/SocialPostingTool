@@ -5,7 +5,6 @@ import {
   computeLockedUntil,
   isAccountLocked,
   isSessionValid,
-  LOGIN_TICKET_TTL_MS,
   MOBILE_ACCESS_TOKEN_TTL_MS,
   MOBILE_REFRESH_TOKEN_TTL_MS,
   WEB_SESSION_TTL_MS,
@@ -99,7 +98,7 @@ export class AuthService {
       ? await this.users.findActiveByUsername(matchedWardCodeVersion.wardId, username)
       : null;
 
-    if (!user) {
+    if (!user || !matchedWardCodeVersion) {
       // Generic failure — never reveal whether the username exists.
       await this.audit.record({
         action: 'auth.login.failure',
