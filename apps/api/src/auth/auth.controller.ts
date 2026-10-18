@@ -143,10 +143,13 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
     const dto = parseBody(loginRequestSchema, body);
-    // Never key the limiter on the code itself: cycling codes must not buy fresh attempts.
+    // Two budgets: per IP+username (protects one account) and per IP alone
+    // (stops an attacker from buying fresh attempts by cycling usernames or
+    // codes while guessing a unit's sign-in code). Neither keys on the code.
     const tenantKey = dto.unitCode === undefined ? 'platform' : 'unit';
     const rateLimitKey = `${req.ip}:${tenantKey}:${dto.username}`;
-    if (!this.rateLimiter.consume(rateLimitKey)) {
+    const ipRateLimitKey = `${req.ip}:login`;
+    if (!this.rateLimiter.consume(rateLimitKey) || !this.rateLimiter.consumeAddress(ipRateLimitKey)) {
       throw new ForbiddenException('Too many sign-in attempts. Please wait and try again.');
     }
 

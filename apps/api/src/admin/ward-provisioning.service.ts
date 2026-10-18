@@ -97,11 +97,18 @@ export class WardProvisioningService {
     }
 
     const parent = units.get(parentId);
+    // One message whether the parent is missing or outside the actor's tree,
+    // so a unit admin cannot use this to confirm other units' IDs.
+    const unavailable = new BadRequestException('The selected parent unit is not available.');
     if (!parent) {
-      throw new BadRequestException('The selected parent unit does not exist.');
+      throw unavailable;
     }
     if (actor.kind === 'unit' && parent.id !== actor.unitId) {
-      await this.scope.assertBeneath(actor.unitId, parent.id);
+      try {
+        await this.scope.assertBeneath(actor.unitId, parent.id);
+      } catch {
+        throw unavailable;
+      }
     }
 
     const candidate: UnitRef = { id: unitId ?? '__new__', parentId: null, level };
@@ -110,6 +117,22 @@ export class WardProvisioningService {
       throw new BadRequestException(PARENT_PROBLEM_MESSAGES[problem](level));
     }
     return parent.id;
+  }
+
+  /**
+   * Hierarchy actions are visible in two audit logs: the unit acted on, and
+   * (for unit admins) the admin's own unit, so a stake's log shows what its
+   * admins did to the wards beneath it.
+   */
+  private async recordForActorAndTarget(
+    actor: UnitActorScope,
+    targetUnitId: string,
+    event: Omit<Parameters<AuditService['record']>[0], 'wardId'>,
+  ): Promise<void> {
+    await this.audit.record({ ...event, wardId: targetUnitId });
+    if (actor.kind === 'unit' && actor.unitId !== targetUnitId) {
+      await this.audit.record({ ...event, wardId: actor.unitId, metadata: { ...event.metadata, targetUnitId } });
+    }
   }
 
   /** Places an existing unit under a new parent (or detaches it, platform only). */
@@ -127,8 +150,7 @@ export class WardProvisioningService {
 
     const parentId = await this.resolveParent(ward.level, input.parentId, actor, unitId);
     const updated = await this.prisma.client.ward.update({ where: { id: unitId }, data: { parentId } });
-    await this.audit.record({
-      wardId: unitId,
+    await this.recordForActorAndTarget(actor, unitId, {
       actorUserId: context.actorUserId,
       action: 'unit.parent.updated',
       entityType: 'Ward',
@@ -182,8 +204,12 @@ export class WardProvisioningService {
       throw new BadRequestException('Enter a valid IANA time zone (for example, America/Denver).');
     }
 
-    if (await this.wards.findActiveByName(input.name)) {
-      throw new ConflictException('An active unit with that name already exists.');
+    if (await this.wards.findActiveByNameUnderParent(input.name, parentId)) {
+      throw new ConflictException(
+        parentId
+          ? 'A unit with that name already exists under the same parent.'
+          : 'A top-level unit with that name already exists.',
+      );
     }
 
     const wardAdminRole = await this.roles.findByName('WardAdmin');
@@ -242,8 +268,7 @@ export class WardProvisioningService {
       // Ward and admin are persisted; verification can be resent.
     }
 
-    await this.audit.record({
-      wardId: result.ward.id,
+    await this.recordForActorAndTarget(actor, result.ward.id, {
       actorUserId: context.actorUserId,
       action: actor.kind === 'platform' ? 'platform.ward.created' : 'unit.created',
       entityType: 'Ward',

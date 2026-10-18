@@ -15,7 +15,6 @@ import {
   requiresWardCodeVerification,
   allowWardPathLogin,
   pickSolePlatformOperator,
-  selectLoginTenant,
   validateTotpCodeFormat,
   WEB_SESSION_TTL_MS,
 } from '@ward-comms/domain';
@@ -112,7 +111,7 @@ export class AuthService {
     unitCode?: string,
   ): Promise<LoginOutcome> {
     const skipWardBinding = unitCode === undefined;
-    const { user, codeVersionId } = await this.resolveLoginUser(username, unitCode);
+    const { user, codeVersionId } = await this.resolveLoginUser(username, unitCode, context);
 
     if (!user) {
       // Spend the same Argon2 work a real password check would, so response
@@ -193,17 +192,32 @@ export class AuthService {
    */
   private async resolveLoginUser(
     username: string,
-    unitCode?: string,
+    unitCode: string | undefined,
+    context: RequestContext,
   ): Promise<{ user: ApplicationUser | null; codeVersionId: string | null }> {
     if (unitCode === undefined) {
       const operators = await this.users.findActivePlatformOperators();
       return { user: pickSolePlatformOperator(operators, username), codeVersionId: null };
     }
 
-    const codeVersion = await this.unitCodes.resolve(unitCode);
-    if (!codeVersion) {
+    const resolution = await this.unitCodes.resolve(unitCode);
+    if (resolution.kind === 'ambiguous') {
+      // Two units share this code (possible only for codes set before
+      // uniqueness was enforced). Refuse rather than guess, and leave a
+      // signal operators can act on. The code itself is never recorded.
+      await this.audit.record({
+        action: 'auth.login.ambiguous_unit_code',
+        entityType: 'WardCodeVersion',
+        metadata: { unitIds: resolution.unitIds },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      });
       return { user: null, codeVersionId: null };
     }
+    if (resolution.kind === 'none') {
+      return { user: null, codeVersionId: null };
+    }
+    const codeVersion = resolution.version;
     const user = await this.users.findActiveByUsernameInUnit(codeVersion.wardId, username);
     if (!user) {
       return { user: null, codeVersionId: null };
@@ -318,7 +332,16 @@ export class AuthService {
       // The code was typed at sign-in. Accept it only if it is still the
       // unit's active code (it may have been rotated during a TOTP step).
       if (activeWardCodeVersion?.id !== verifiedCodeVersionId) {
-        throw new InvalidCredentialsError();
+        await this.audit.record({
+          wardId: user.wardId,
+          actorUserId: user.id,
+          action: 'auth.login.unit_code_rotated_mid_login',
+          entityType: 'ApplicationUser',
+          entityId: user.id,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+        });
+        throw new UnauthorizedException('Your unit’s sign-in code changed. Please sign in again with the new code.');
       }
       await this.audit.record({
         wardId: user.wardId,

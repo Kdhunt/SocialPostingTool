@@ -34,15 +34,30 @@ Leaving the code blank is platform-operator (superadmin) sign-in.
 
 - Each code version stores an Argon2 hash (verified) and a pepper-keyed
   HMAC `lookup_key` (indexed) so sign-in finds the unit in one query instead
-  of Argon2-checking every unit. Rows created before the key existed are still
-  checked and get their key backfilled on first successful sign-in.
+  of Argon2-checking every unit. Rows created before the key existed are
+  checked only when the keyed lookup misses, at most
+  `LEGACY_CODE_SCAN_LIMIT` (16) per attempt, and get their key on first
+  successful sign-in or on rotation.
 - Creating or changing a code is refused if another unit's active code is the
-  same, so a code always means exactly one unit. If two ever match, sign-in
-  fails rather than guessing.
-- When nothing matches, sign-in still spends one Argon2 verify so response
-  time does not reveal whether the code or the username was wrong.
-- The login rate limit is keyed on IP + username (not on the code), so
-  cycling codes does not buy fresh attempts.
+  same, so a code always means exactly one unit. If two ever match (possible
+  only for codes set before this release), sign-in fails rather than guessing
+  and records `auth.login.ambiguous_unit_code` with the unit IDs (never the
+  code) so an operator can rotate one of them.
+- **Constant work.** Every sign-in attempt does one Argon2 verify on the code
+  (a real hash on a match, a dummy on a miss) and one on the password (real
+  or dummy), so response time does not reveal whether the code belonged to a
+  unit or whether the username existed. The legacy scan above is the one
+  exception while it lasts.
+- Two rate-limit budgets, neither keyed on the code: 10 attempts per
+  IP + username and 60 per IP per 15 minutes, so cycling usernames or codes
+  does not buy fresh guesses. The in-process limiter is per API instance;
+  see `login-rate-limiter.service.ts` for the Redis note.
+- A code that is rotated between the password step and a TOTP step is
+  rejected with "Your unit's sign-in code changed. Please sign in again"
+  (audit `auth.login.unit_code_rotated_mid_login`).
+- Anyone who can set a code can learn that a candidate is "already in use by
+  another unit". That is inherent to global uniqueness and rate-limited; the
+  follow-up is to generate codes server-side so the check never fires.
 
 ## Authorization
 
@@ -60,7 +75,13 @@ Leaving the code blank is platform-operator (superadmin) sign-in.
 
 `unit.created` (or `platform.ward.created` for operators) records level and
 parent; `unit.parent.updated` records the old and new parent;
-`ward_code.rotated` is unchanged.
+`ward_code.rotated` is unchanged. Hierarchy actions by a unit admin are
+written twice: against the unit acted on and against the admin's own unit
+(with `targetUnitId` in metadata), so a stake's audit log shows what its
+admins did to the wards beneath it.
+
+Unit names are unique among siblings only, so two stakes can each have a
+"1st Ward".
 
 ## API
 
@@ -77,6 +98,20 @@ parent; `unit.parent.updated` records the old and new parent;
 
 `POST /auth/login` now takes `unitCode` instead of `wardSlug`.
 
+## Upgrading an existing deployment
+
+1. Apply the migration and re-run the role seed (`units.manage`).
+2. Rotate each existing unit's sign-in code once from **Admin → Units** (or
+   have each unit sign in once). Until then those rows have no `lookup_key`
+   and are only found by the bounded legacy scan; beyond 16 such rows, the
+   oldest units cannot sign in until rotated.
+   `WardCodeRepository.countActiveVersionsWithoutLookupKey()` reports the
+   remaining count.
+3. If two units had the same code, one of them must be rotated; watch for
+   `auth.login.ambiguous_unit_code` in the audit log.
+4. Archiving is not yet exposed in the UI. Archiving a mid-chain unit would
+   hide its subtree from its ancestors' Units page until re-parented.
+
 ## Migration notes
 
 `20261018200000_unit_hierarchy` adds the `UnitLevel` enum, `ward.level`
@@ -85,8 +120,10 @@ itself) and `ward_code_version.lookup_key` with an index. Existing wards become
 top-level `Ward` units; no data backfill is needed. Run the seed once so the
 `units.manage` permission exists and is granted to `WardAdmin`.
 
-Rollback: drop the two indexes, the `lookup_key`, `parent_id` and `level`
-columns, and the `UnitLevel` type. Sign-in then needs the previous release,
+Rollback: drop the constraints `ward_parent_id_fkey` and
+`ward_parent_not_self`, the indexes `ward_parent_id_idx` and
+`ward_code_version_lookup_key_retired_at_idx`, the `lookup_key`, `parent_id`
+and `level` columns, and the `UnitLevel` type. Sign-in then needs the previous release,
 which used the ward page path instead of the code.
 
 ## Client changes

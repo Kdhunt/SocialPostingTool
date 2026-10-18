@@ -30,9 +30,6 @@ datasource db {
 // Tenancy
 // ---------------------------------------------------------------------------
 
-/// A single ward (congregation) tenant. All directory, audience, and
-/// communication data is scoped to a ward. Wards are archived, never
-/// deleted, because historical audit and delivery data must survive.
 /// Where a unit sits in the church hierarchy, smallest first.
 /// A unit's parent is always exactly one level above it.
 enum UnitLevel {
@@ -42,7 +39,7 @@ enum UnitLevel {
   District
 }
 
-/// An organizational unit. Despite the table name, every level of the
+/// An organizational unit (originally a single ward tenant). Despite the table name, every level of the
 /// hierarchy (ward, stake, region, district) is a row here: each has its own
 /// sign-in code, users, directory, campaigns and public page, and its admins
 /// manage the units beneath it.

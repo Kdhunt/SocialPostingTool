@@ -280,7 +280,7 @@ pnpm --filter @ward-comms/web-e2e exec playwright install chromium
 pnpm test:e2e
 ```
 
-Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests need the **superadmin** (`E2E_USERNAME` and `E2E_PASSWORD`, or `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD`), **or** a gitignored Playwright storage state at `apps/web-e2e/.auth/user.json`. Do not set `E2E_WARD_SLUG` for that account. Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit passwords, ward codes, or session files.
+Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests need the **superadmin** (`E2E_USERNAME` and `E2E_PASSWORD`, or `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD`), **or** a gitignored Playwright storage state at `apps/web-e2e/.auth/user.json`. Do not set `E2E_UNIT_CODE` for that account (a unit code signs in to a ward, stake, region or district instead). Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit passwords, ward codes, or session files.
 
 To capture the session from a headed window (sign in as the superadmin, ward page path blank):
 

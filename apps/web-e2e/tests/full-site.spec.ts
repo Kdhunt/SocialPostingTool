@@ -27,7 +27,7 @@ test.describe('Full site — platform operator', () => {
 
   test('home, account, and wards', async ({ page }) => {
     await expectPageHeading(page, /^Welcome/);
-    await expect(page.getByRole('heading', { name: 'Wards' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Units' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Tenants' })).toBeVisible();
 
     const nav = primaryNav(page);
@@ -35,8 +35,8 @@ test.describe('Full site — platform operator', () => {
     await expectPageHeading(page, 'Account');
     await nav.getByRole('link', { name: 'Security' }).click();
     await expectPageHeading(page, 'Security');
-    await nav.getByRole('link', { name: 'Wards' }).click();
-    await expectPageHeading(page, 'Wards');
+    await nav.getByRole('link', { name: 'Units' }).click();
+    await expectPageHeading(page, 'Units');
     await expect(page.getByRole('button', { name: 'New ward' })).toBeVisible();
   });
 

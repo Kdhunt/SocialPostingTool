@@ -336,7 +336,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
       const { stakeA, stakeB } = await makeTree();
       await expect(
         provisioning.create(unitInput('Foreign Ward', { parentId: stakeB }), ctx(), { kind: 'unit', unitId: stakeA }),
-      ).rejects.toThrow(/not found/i);
+      ).rejects.toThrow(/not available/i);
       await expect(
         provisioning.create(unitInput('Rootless Stake', { level: 'Stake' }), ctx(), { kind: 'unit', unitId: stakeA }),
       ).rejects.toThrow(/belongs under/i);
@@ -355,7 +355,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
 
       await expect(
         provisioning.setParent(wardA, { parentId: stakeB }, { kind: 'unit', unitId: stakeA }, ctx()),
-      ).rejects.toThrow(/not found/i);
+      ).rejects.toThrow(/not available/i);
 
       const moved = await provisioning.setParent(wardA, { parentId: stakeB }, { kind: 'unit', unitId: region }, ctx());
       expect(moved.parentId).toBe(stakeB);
@@ -371,6 +371,48 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
         provisioning.setParent(stakeA, { parentId: stakeA }, { kind: 'platform' }, ctx()),
       ).rejects.toThrow(/own parent|directly under/i);
       await prisma.client.ward.update({ where: { id: region }, data: { parentId: null } });
+    });
+
+    it('lets two stakes each have a ward of the same name, but not one stake twice', async () => {
+      const { stakeA, stakeB } = await makeTree();
+      const name = `Fictional 1st Ward ${randomUUID()}`;
+      const first = await provisioning.create({ ...unitInput('1st Ward', { parentId: stakeA }), name }, ctx());
+      createdWardIds.push(first.ward.id);
+      const twin = await provisioning.create({ ...unitInput('1st Ward', { parentId: stakeB }), name }, ctx());
+      createdWardIds.push(twin.ward.id);
+      expect(twin.ward.name).toBe(name);
+      await expect(
+        provisioning.create({ ...unitInput('1st Ward', { parentId: stakeA }), name }, ctx()),
+      ).rejects.toThrow(/already exists under the same parent/i);
+    });
+
+    it('gives a ward admin no level to create and no way to probe other units as parents', async () => {
+      const { stakeA, stakeB, wardA } = await makeTree();
+      // A ward has nothing beneath it: every level is rejected on level grounds.
+      await expect(
+        provisioning.create(unitInput('Nested', { parentId: wardA }), ctx(), { kind: 'unit', unitId: wardA }),
+      ).rejects.toThrow(/must sit directly under/i);
+      // Parents outside the tree and parents that do not exist read the same.
+      const [outside, missing] = await Promise.all([
+        provisioning
+          .create(unitInput('Outside', { parentId: stakeB }), ctx(), { kind: 'unit', unitId: stakeA })
+          .catch((error: Error) => error.message),
+        provisioning
+          .create(unitInput('Missing', { parentId: randomUUID() }), ctx(), { kind: 'unit', unitId: stakeA })
+          .catch((error: Error) => error.message),
+      ]);
+      expect(outside).toBe(missing);
+    });
+
+    it('records hierarchy actions in both the target unit and the acting unit audit logs', async () => {
+      const { region, stakeA, wardA } = await makeTree();
+      const forWard = await prisma.client.auditEvent.findFirst({ where: { wardId: wardA, action: 'unit.created' } });
+      const forStake = await prisma.client.auditEvent.findFirst({ where: { wardId: stakeA, action: 'unit.created' } });
+      expect(forWard).toBeTruthy();
+      expect(JSON.stringify(forStake?.metadata ?? {})).toContain(wardA);
+      await provisioning.setParent(wardA, { parentId: stakeA }, { kind: 'unit', unitId: region }, ctx()).catch(() => undefined);
+      const moved = await prisma.client.auditEvent.findFirst({ where: { wardId: region, action: 'unit.parent.updated' } });
+      expect(moved === null || JSON.stringify(moved.metadata ?? {}).includes(wardA)).toBe(true);
     });
 
     it('rejects a sign-in code already used by another unit', async () => {

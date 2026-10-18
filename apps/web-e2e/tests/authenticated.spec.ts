@@ -9,7 +9,7 @@ test.describe('Authenticated platform operator', () => {
 
   test('home is ward setup, not the member workspace', async ({ page }) => {
     await expectPageHeading(page, /^Welcome/);
-    await expect(page.getByRole('heading', { name: 'Wards' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Units' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Tenants' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Directory' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Recent campaigns' })).toHaveCount(0);
@@ -26,7 +26,7 @@ test.describe('Authenticated platform operator', () => {
 
   test('wards administration loads', async ({ page }) => {
     await page.goto('/admin/wards');
-    await expectPageHeading(page, 'Wards');
+    await expectPageHeading(page, 'Units');
     await expect(page.getByRole('button', { name: 'New ward' })).toBeVisible();
   });
 });

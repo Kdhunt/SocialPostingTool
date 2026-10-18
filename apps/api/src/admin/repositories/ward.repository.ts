@@ -55,9 +55,10 @@ export class WardRepository {
     }));
   }
 
-  async findActiveByName(name: string): Promise<Ward | null> {
+  /** Names only need to be unique among siblings: two stakes may each have a "1st Ward". */
+  async findActiveByNameUnderParent(name: string, parentId: string | null): Promise<Ward | null> {
     return this.prisma.client.ward.findFirst({
-      where: { name, archivedAt: null },
+      where: { name, parentId, archivedAt: null },
     });
   }
 

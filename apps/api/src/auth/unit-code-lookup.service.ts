@@ -4,10 +4,28 @@ import { WardCodeRepository } from './repositories/ward-code.repository.js';
 import { WardCodeHasherService } from './ward-code-hasher.service.js';
 
 /**
+ * How many code rows without a lookup key sign-in will still Argon2-check per
+ * attempt. Rows get their key on first successful sign-in or on rotation, so
+ * this set only exists right after upgrading; the bound keeps a bad actor from
+ * turning the scan into a CPU drain. Units past the bound must rotate their
+ * code once (docs/unit-hierarchy.md, "Upgrading").
+ */
+export const LEGACY_CODE_SCAN_LIMIT = 16;
+
+export type UnitCodeResolution =
+  | { kind: 'none' }
+  | { kind: 'one'; version: WardCodeVersion }
+  | { kind: 'ambiguous'; unitIds: string[] };
+
+/**
  * Finds which unit (ward, stake, region or district) a sign-in code belongs
  * to. Codes are matched through the indexed lookup key, then confirmed with
- * the Argon2 hash. Rows created before lookup keys existed are still checked
- * and get their key backfilled on first match, so that set shrinks to empty.
+ * the Argon2 hash. Rows created before lookup keys existed are checked only
+ * when the keyed lookup misses, up to LEGACY_CODE_SCAN_LIMIT, and get their
+ * key backfilled on first match.
+ *
+ * Every call does at least one Argon2 verify, so the time taken does not
+ * reveal whether the code belonged to a real unit.
  */
 @Injectable()
 export class UnitCodeLookupService {
@@ -20,24 +38,41 @@ export class UnitCodeLookupService {
   async findMatches(code: string): Promise<WardCodeVersion[]> {
     const lookupKey = this.hasher.lookupKey(code);
     const keyed = await this.wardCodes.findActiveByLookupKey(lookupKey);
-    const legacy = await this.wardCodes.listActiveVersionsWithoutLookupKey();
 
     const matches: WardCodeVersion[] = [];
-    for (const version of [...keyed, ...legacy]) {
+    for (const version of keyed) {
       if (await this.hasher.verify(version.codeHash, code)) {
         matches.push(version);
-        if (version.lookupKey === null) {
-          await this.wardCodes.setLookupKey(version.id, lookupKey);
-        }
       }
+    }
+    if (keyed.length > 0) {
+      return matches;
+    }
+
+    const legacy = await this.wardCodes.listActiveVersionsWithoutLookupKey(LEGACY_CODE_SCAN_LIMIT);
+    for (const version of legacy) {
+      if (await this.hasher.verify(version.codeHash, code)) {
+        matches.push(version);
+        await this.wardCodes.setLookupKey(version.id, lookupKey);
+      }
+    }
+    if (legacy.length === 0) {
+      await this.hasher.verifyAgainstDummy(code);
     }
     return matches;
   }
 
-  /** The single unit this code signs in to, or null if none or ambiguous. */
-  async resolve(code: string): Promise<WardCodeVersion | null> {
+  /** The single unit this code signs in to, or why there is none. */
+  async resolve(code: string): Promise<UnitCodeResolution> {
     const matches = await this.findMatches(code);
-    return matches.length === 1 ? (matches[0] ?? null) : null;
+    const [first] = matches;
+    if (matches.length === 1 && first) {
+      return { kind: 'one', version: first };
+    }
+    if (matches.length > 1) {
+      return { kind: 'ambiguous', unitIds: matches.map((version) => version.wardId) };
+    }
+    return { kind: 'none' };
   }
 
   /**

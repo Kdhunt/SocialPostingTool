@@ -60,9 +60,6 @@ const api = {
     isPlatform ? client.updateWardPublicSlug(unitId, { publicSlug }) : client.updateUnitPublicSlug(unitId, { publicSlug }),
 };
 
-function levelLabel(level: UnitLevelDto): string {
-  return level;
-}
 
 const pageState = ref<PageState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
@@ -253,7 +250,7 @@ async function createWard(): Promise<void> {
     const result = await api.create(parsed.data);
 
     createdWard.value = result;
-    successMessage.value = `${levelLabel(result.ward.level)} "${result.ward.name}" was created. Public campaigns appear at /${result.ward.publicSlug}. A confirmation email was queued for ${result.adminEmail}. Share the initial password and sign-in code securely — they are not emailed.`;
+    successMessage.value = `${result.ward.level} "${result.ward.name}" was created. Public campaigns appear at /${result.ward.publicSlug}. A confirmation email was queued for ${result.adminEmail}. Share the initial password and sign-in code securely — they are not emailed.`;
     wardName.value = '';
     adminUsername.value = '';
     adminEmail.value = '';

@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { descendantIds, isStrictAncestor, type UnitLevel } from '@ward-comms/domain';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -43,16 +43,5 @@ export class UnitScopeService {
       throw new NotFoundException('Unit not found.');
     }
     return target;
-  }
-
-  /** Throws unless `targetUnitId` is the actor's own unit or beneath it. */
-  async assertSelfOrBeneath(actorUnitId: string, targetUnitId: string): Promise<UnitRef> {
-    if (actorUnitId === targetUnitId) {
-      const units = await this.loadActive();
-      const self = units.get(actorUnitId);
-      if (!self) throw new ForbiddenException('Your unit is no longer active.');
-      return self;
-    }
-    return this.assertBeneath(actorUnitId, targetUnitId);
   }
 }

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { APP_CONFIG } from '../config/app-config.module.js';
 import type { AppConfig } from '@ward-comms/config';
@@ -13,7 +13,21 @@ import type { AppConfig } from '@ward-comms/config';
  */
 @Injectable()
 export class WardCodeHasherService {
+  private dummyHash: Promise<string> | null = null;
+
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
+
+  /**
+   * Spends one full Argon2 verify against a throwaway hash and always
+   * returns false, so a sign-in whose code matched no unit costs the same
+   * as one whose code did. Without this, response time would reveal which
+   * codes belong to real units.
+   */
+  async verifyAgainstDummy(wardCode: string): Promise<false> {
+    this.dummyHash ??= hash(randomBytes(32).toString('hex'));
+    await this.verify(await this.dummyHash, wardCode);
+    return false;
+  }
 
   private withPepper(wardCode: string): string {
     return `${wardCode}:${this.config.wardCodePepper}`;

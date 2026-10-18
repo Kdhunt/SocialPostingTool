@@ -14,8 +14,17 @@ export class WardCodeRepository {
   }
 
   /** Active versions created before lookup keys existed; shrinks to empty as they are backfilled. */
-  async listActiveVersionsWithoutLookupKey(): Promise<WardCodeVersion[]> {
+  async listActiveVersionsWithoutLookupKey(limit: number): Promise<WardCodeVersion[]> {
     return this.prisma.client.wardCodeVersion.findMany({
+      where: { lookupKey: null, retiredAt: null, ward: { archivedAt: null } },
+      orderBy: { activatedAt: 'desc' },
+      take: limit,
+    });
+  }
+
+  /** How many active code rows still lack a lookup key (operators should rotate those). */
+  async countActiveVersionsWithoutLookupKey(): Promise<number> {
+    return this.prisma.client.wardCodeVersion.count({
       where: { lookupKey: null, retiredAt: null, ward: { archivedAt: null } },
     });
   }

@@ -162,6 +162,27 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     expect(verifyOutcome.user.totpEnabled).toBe(true);
   });
 
+  it('tells the user to sign in again when the unit code is rotated during the TOTP step', async () => {
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    const deviceId = `device-${randomUUID()}`;
+    const { secret } = await authService.beginTotpEnrollment(user.id);
+    await authService.confirmTotpEnrollment(user.id, computeTotpCode(secret), context(deviceId));
+
+    const loginOutcome = await wardLogin(user.username, password, context(deviceId));
+    if (loginOutcome.status !== 'totp_required') throw new Error('expected totp_required');
+
+    const rotated = 'rotated-mid-login-9';
+    await wardCodes.rotate(wardId, await wardCodeHasher.hash(rotated), wardCodeHasher.lookupKey(rotated));
+
+    await expect(
+      authService.verifyTotp(loginOutcome.loginTicket, computeTotpCode(secret), context(deviceId)),
+    ).rejects.toThrow(/sign-in code changed/i);
+    const event = await prisma.client.auditEvent.findFirst({
+      where: { action: 'auth.login.unit_code_rotated_mid_login', entityId: user.id },
+    });
+    expect(event).toBeTruthy();
+  });
+
   it('rejects a wrong or missing-unit code with the same generic error', async () => {
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     await expect(
@@ -197,17 +218,21 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     const otherWard = await prisma.client.ward.create({
       data: { name: `Fictional Same Code Ward ${randomUUID()}`, publicSlug: `s${randomUUID().replace(/-/g, '')}` },
     });
+    // Both rows predate lookup keys, as a duplicate from before uniqueness was enforced would.
     await prisma.client.wardCodeVersion.create({
-      data: {
-        wardId: otherWard.id,
-        version: 1,
-        codeHash: await wardCodeHasher.hash(wardCode),
-        lookupKey: wardCodeHasher.lookupKey(wardCode),
-        activatedAt: new Date(),
-      },
+      data: { wardId: otherWard.id, version: 1, codeHash: await wardCodeHasher.hash(wardCode), activatedAt: new Date() },
     });
     try {
       await expect(wardLogin(user.username, password, context('device-dup'))).rejects.toThrow(InvalidCredentialsError);
+      // Still ambiguous once both rows have been keyed by that first attempt.
+      await expect(wardLogin(user.username, password, context('device-dup'))).rejects.toThrow(InvalidCredentialsError);
+      const signal = await prisma.client.auditEvent.findFirst({
+        where: { action: 'auth.login.ambiguous_unit_code' },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(signal).toBeTruthy();
+      expect(JSON.stringify(signal?.metadata ?? {})).toContain(otherWard.id);
+      expect(JSON.stringify(signal ?? {})).not.toContain(wardCode);
     } finally {
       await prisma.client.wardCodeVersion.deleteMany({ where: { wardId: otherWard.id } });
       await prisma.client.ward.delete({ where: { id: otherWard.id } });

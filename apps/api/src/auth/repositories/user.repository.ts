@@ -16,26 +16,15 @@ export interface UserPermissions {
 export class UserRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  /**
-   * Looks up an active (not archived) user by username inside one ward.
-   */
+  /** The unit a user belongs to, for the signed-in user payload. */
   async findUnitSummary(unitId: string): Promise<{ name: string; level: 'Ward' | 'Stake' | 'Region' | 'District' } | null> {
     return this.prisma.client.ward.findUnique({ where: { id: unitId }, select: { name: true, level: true } });
   }
 
+  /** Looks up an active (not archived) user by username inside one unit. */
   async findActiveByUsernameInUnit(unitId: string, username: string): Promise<ApplicationUser | null> {
     return this.prisma.client.applicationUser.findFirst({
       where: { username, archivedAt: null, wardId: unitId, ward: { archivedAt: null } },
-    });
-  }
-
-  async findActiveByUsernameAndPublicSlug(publicSlug: string, username: string): Promise<ApplicationUser | null> {
-    return this.prisma.client.applicationUser.findFirst({
-      where: {
-        username,
-        archivedAt: null,
-        ward: { publicSlug, archivedAt: null },
-      },
     });
   }
 
