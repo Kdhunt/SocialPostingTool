@@ -15,4 +15,10 @@ describe('PasswordHasherService', () => {
     const hasher = new PasswordHasherService();
     expect(await hasher.verify('not-a-real-hash', 'anything')).toBe(false);
   });
+
+  it('verifyAgainstDummy always fails and reuses one dummy hash', async () => {
+    const hasher = new PasswordHasherService();
+    expect(await hasher.verifyAgainstDummy('anything')).toBe(false);
+    expect(await hasher.verifyAgainstDummy('')).toBe(false);
+  });
 });

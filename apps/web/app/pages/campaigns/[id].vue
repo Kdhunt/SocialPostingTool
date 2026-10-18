@@ -284,8 +284,9 @@ async function loadDeliveryBatches(): Promise<void> {
   try {
     const { batches } = await client.listDeliveryBatches(campaignId);
     deliveryBatches.value = batches;
-    if (batches.length > 0 && !selectedBatch.value) {
-      selectedBatch.value = await client.getDeliveryBatch(campaignId, batches[0].id);
+    const firstBatch = batches[0];
+    if (firstBatch && !selectedBatch.value) {
+      selectedBatch.value = await client.getDeliveryBatch(campaignId, firstBatch.id);
     }
   } catch (error) {
     deliveryError.value = error instanceof ApiRequestError ? error.message : 'Unable to load delivery results.';
@@ -627,7 +628,7 @@ async function archiveCampaign(): Promise<void> {
                 <span class="campaign-page__tag">{{ recipient.status }}</span>
                 <span v-if="recipient.skipReason" class="campaign-page__hint">{{ recipient.skipReason }}</span>
                 <span v-if="recipient.attempts.length > 0" class="campaign-page__hint">
-                  Last: {{ recipient.attempts[recipient.attempts.length - 1].errorCode ?? 'ok' }}
+                  Last: {{ recipient.attempts.at(-1)?.errorCode ?? 'ok' }}
                 </span>
               </li>
             </ul>

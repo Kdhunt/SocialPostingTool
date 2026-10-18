@@ -162,6 +162,43 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     }
   });
 
+  it('backfills the lookup key on legacy ward code rows and finds them by key afterwards', async () => {
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    const before = await prisma.client.wardCodeVersion.findFirstOrThrow({ where: { wardId, retiredAt: null } });
+    expect(before.lookupKey).toBeNull();
+
+    const first = await authService.login(user.username, password, wardCode, context(`device-${randomUUID()}`));
+    expect(first.status).toBe('ok');
+
+    const after = await prisma.client.wardCodeVersion.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.lookupKey).toBe(wardCodeHasher.lookupKey(wardCode));
+
+    const second = await authService.login(user.username, password, wardCode, context(`device-${randomUUID()}`));
+    expect(second.status).toBe('ok');
+  });
+
+  it('refuses to pick a ward when the same code is active in two wards', async () => {
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    const otherWard = await prisma.client.ward.create({ data: { name: `Fictional Same Code Ward ${randomUUID()}` } });
+    const otherVersion = await prisma.client.wardCodeVersion.create({
+      data: {
+        wardId: otherWard.id,
+        version: 1,
+        codeHash: await wardCodeHasher.hash(wardCode),
+        lookupKey: wardCodeHasher.lookupKey(wardCode),
+        activatedAt: new Date(),
+      },
+    });
+    try {
+      await expect(authService.login(user.username, password, wardCode, context('device-dup'))).rejects.toThrow(
+        InvalidCredentialsError,
+      );
+    } finally {
+      await prisma.client.wardCodeVersion.delete({ where: { id: otherVersion.id } });
+      await prisma.client.ward.delete({ where: { id: otherWard.id } });
+    }
+  });
+
   it('rejects invalid credentials without revealing whether the username exists', async () => {
     await expect(authService.login('no-such-user', 'whatever-12345', wardCode, context('device-x'))).rejects.toThrow(
       InvalidCredentialsError,

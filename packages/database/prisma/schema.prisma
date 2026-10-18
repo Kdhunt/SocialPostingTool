@@ -203,6 +203,11 @@ model WardCodeVersion {
   /// Hash of the ward code combined with WARD_CODE_PEPPER. Never store the
   /// raw ward code.
   codeHash    String    @map("code_hash")
+  /// Keyed HMAC-SHA256 of the ward code (key: WARD_CODE_PEPPER). Lets login
+  /// find the matching ward with one indexed query instead of running an
+  /// Argon2 verify against every ward. Null on rows created before it
+  /// existed; those are backfilled on their first successful login.
+  lookupKey   String?   @map("lookup_key")
   createdAt   DateTime  @default(now()) @map("created_at")
   activatedAt DateTime? @map("activated_at")
   retiredAt   DateTime? @map("retired_at")
@@ -212,6 +217,7 @@ model WardCodeVersion {
 
   @@unique([wardId, version])
   @@index([wardId, retiredAt])
+  @@index([lookupKey, retiredAt])
   @@map("ward_code_version")
 }
 

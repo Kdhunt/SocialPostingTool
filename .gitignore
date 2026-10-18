@@ -48,3 +48,8 @@ packages/database/generated/
 
 # Misc
 *.local
+
+# Local tool output
+test-results/
+playwright-report/
+node-compile-cache/

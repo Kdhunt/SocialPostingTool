@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { createHmac } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { APP_CONFIG } from '../config/app-config.module.js';
 import type { AppConfig } from '@ward-comms/config';
@@ -20,6 +21,15 @@ export class WardCodeHasherService {
 
   async hash(wardCode: string): Promise<string> {
     return hash(this.withPepper(wardCode));
+  }
+
+  /**
+   * Deterministic, keyed lookup value for finding a ward by its code without
+   * scanning every ward. Keyed with the pepper, so a database leak alone still
+   * cannot be brute-forced; the Argon2 hash remains the value that is verified.
+   */
+  lookupKey(wardCode: string): string {
+    return createHmac('sha256', this.config.wardCodePepper).update(wardCode).digest('hex');
   }
 
   async verify(codeHash: string, wardCode: string): Promise<boolean> {

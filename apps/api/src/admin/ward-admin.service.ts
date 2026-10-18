@@ -29,7 +29,11 @@ export class WardAdminService {
     context: AdminActionContext,
   ): Promise<WardCodeInfoDto> {
     const codeHash = await this.wardCodeHasher.hash(input.newWardCode);
-    const version = await this.wardCodes.rotate(wardId, codeHash);
+    const version = await this.wardCodes.rotate(
+      wardId,
+      codeHash,
+      this.wardCodeHasher.lookupKey(input.newWardCode),
+    );
 
     await this.audit.record({
       wardId,

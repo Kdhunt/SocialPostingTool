@@ -2,17 +2,38 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
   "globalDependencies": ["**/.env"],
+  "globalPassThroughEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "POSTGRES_URL",
+    "PRISMA_DATABASE_URL",
+    "REDIS_URL",
+    "KV_URL",
+    "KV_REST_API_URL",
+    "KV_REST_API_TOKEN",
+    "KV_REST_API_READ_ONLY_TOKEN",
+    "SESSION_SECRET",
+    "REFRESH_TOKEN_SECRET",
+    "WARD_CODE_PEPPER",
+    "PROVIDER_CREDENTIALS_ENCRYPTION_KEY",
+    "CRON_SECRET",
+    "BOOTSTRAP_WARD_CODE",
+    "BOOTSTRAP_ADMIN_USERNAME",
+    "BOOTSTRAP_ADMIN_PASSWORD",
+    "SYSTEM_EMAIL_MODE",
+    "SYSTEM_EMAIL_FROM",
+    "SYSTEM_EMAIL_SENDGRID_API_KEY",
+    "RESEND_API_KEY",
+    "wardcomms_RESEND_API_KEY",
+    "wardcomms_RESEND_EMAIL_DOMAIN",
+    "FACEBOOK_APP_ID",
+    "FACEBOOK_APP_SECRET",
+    "WEB_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [
-        "dist/**",
-        ".output/**",
-        ".nuxt/**",
-        ".vercel/output/**",
-        "www/**",
-        "build/**"
-      ]
+      "outputs": ["dist/**", ".output/**", ".nuxt/**", ".vercel/output/**", "www/**", "build/**"]
     },
     "dev": {
       "cache": false,

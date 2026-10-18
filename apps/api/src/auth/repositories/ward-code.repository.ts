@@ -6,9 +6,24 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 export class WardCodeRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async listActiveVersions(): Promise<WardCodeVersion[]> {
+  /** Active versions whose lookup key matches — normally zero or one row. */
+  async findActiveByLookupKey(lookupKey: string): Promise<WardCodeVersion[]> {
     return this.prisma.client.wardCodeVersion.findMany({
-      where: { retiredAt: null },
+      where: { lookupKey, retiredAt: null },
+    });
+  }
+
+  /** Active versions created before lookup keys existed; shrinks to empty as they are backfilled. */
+  async listActiveVersionsWithoutLookupKey(): Promise<WardCodeVersion[]> {
+    return this.prisma.client.wardCodeVersion.findMany({
+      where: { lookupKey: null, retiredAt: null },
+    });
+  }
+
+  async setLookupKey(id: string, lookupKey: string): Promise<void> {
+    await this.prisma.client.wardCodeVersion.updateMany({
+      where: { id, lookupKey: null },
+      data: { lookupKey },
     });
   }
 
@@ -24,7 +39,7 @@ export class WardCodeRepository {
    * Creates the next ward code version and retires the previous active
    * one in a single transaction, so exactly one version is ever active.
    */
-  async rotate(wardId: string, codeHash: string): Promise<WardCodeVersion> {
+  async rotate(wardId: string, codeHash: string, lookupKey: string): Promise<WardCodeVersion> {
     return this.prisma.client.$transaction(async (tx) => {
       const current = await tx.wardCodeVersion.findFirst({
         where: { wardId, retiredAt: null },
@@ -40,6 +55,7 @@ export class WardCodeRepository {
           wardId,
           version: (current?.version ?? 0) + 1,
           codeHash,
+          lookupKey,
           activatedAt: new Date(),
         },
       });

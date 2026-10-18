@@ -40,4 +40,15 @@ describe('WardCodeHasherService', () => {
 
     expect(verifiedWithPepperB).toBe(false);
   });
+
+  it('derives a stable lookup key that depends on the code and the pepper', () => {
+    const hasher = new WardCodeHasherService(fakeConfig('pepper-value-one'));
+    const key = hasher.lookupKey('fictional-ward-code');
+
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    expect(hasher.lookupKey('fictional-ward-code')).toBe(key);
+    expect(hasher.lookupKey('other-code')).not.toBe(key);
+    expect(new WardCodeHasherService(fakeConfig('pepper-value-two')).lookupKey('fictional-ward-code')).not.toBe(key);
+    expect(key).not.toContain('fictional');
+  });
 });

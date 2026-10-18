@@ -1,5 +1,5 @@
 import { ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import type { ApplicationUser, UserSession } from '@prisma/client';
+import type { ApplicationUser, UserSession, WardCodeVersion } from '@prisma/client';
 import type { AppConfig } from '@ward-comms/config';
 import {
   computeLockedUntil,
@@ -82,23 +82,16 @@ export class AuthService {
   ) {}
 
   async login(username: string, password: string, wardCode: string, context: RequestContext): Promise<LoginOutcome> {
-    const activeWardCodeVersions = await this.wardCodes.listActiveVersions();
-    let matchedWardCodeVersion: Awaited<ReturnType<WardCodeRepository['findActiveVersion']>> = null;
-    for (const version of activeWardCodeVersions) {
-      if (await this.wardCodeHasher.verify(version.codeHash, wardCode)) {
-        if (matchedWardCodeVersion) {
-          matchedWardCodeVersion = null;
-          break;
-        }
-        matchedWardCodeVersion = version;
-      }
-    }
+    const matchedWardCodeVersion = await this.resolveWardCodeVersion(wardCode);
 
     const user = matchedWardCodeVersion
       ? await this.users.findActiveByUsername(matchedWardCodeVersion.wardId, username)
       : null;
 
     if (!user || !matchedWardCodeVersion) {
+      // Spend the same Argon2 work a real password check would, so timing
+      // does not reveal whether the ward code or username was the miss.
+      await this.passwordHasher.verifyAgainstDummy(password);
       // Generic failure — never reveal whether the username exists.
       await this.audit.record({
         action: 'auth.login.failure',
@@ -174,6 +167,31 @@ export class AuthService {
       userAgent: context.userAgent,
     });
     return this.completeLogin(user, matchedWardCodeVersion.id, context);
+  }
+
+  /**
+   * Finds the single active ward code version matching `wardCode`.
+   * Uses the indexed lookup key first; falls back to scanning only rows that
+   * predate lookup keys, and backfills the key when one of those matches.
+   * Returns null when nothing matches or the code is ambiguous across wards.
+   */
+  private async resolveWardCodeVersion(wardCode: string): Promise<WardCodeVersion | null> {
+    const lookupKey = this.wardCodeHasher.lookupKey(wardCode);
+    const keyed = await this.wardCodes.findActiveByLookupKey(lookupKey);
+    const legacy = await this.wardCodes.listActiveVersionsWithoutLookupKey();
+
+    let match: WardCodeVersion | null = null;
+    for (const version of [...keyed, ...legacy]) {
+      if (await this.wardCodeHasher.verify(version.codeHash, wardCode)) {
+        if (match) return null; // same code active in two wards — refuse to guess
+        match = version;
+      }
+    }
+
+    if (match && match.lookupKey === null) {
+      await this.wardCodes.setLookupKey(match.id, lookupKey);
+    }
+    return match;
   }
 
   async verifyWardCode(loginTicket: string, wardCode: string, context: RequestContext): Promise<LoginOutcome> {
