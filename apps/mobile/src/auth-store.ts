@@ -35,10 +35,10 @@ class MobileAuthStore {
   async login(
     username: string,
     password: string,
-    wardSlug?: string,
+    unitCode?: string,
   ): Promise<{ ok: boolean; error?: string }> {
     try {
-      const result = await this.client.login(username, password, 'mobile', wardSlug);
+      const result = await this.client.login(username, password, 'mobile', unitCode);
       if (result.status === 'totp_required') {
         this.state.value = { kind: 'totp_required', loginTicket: result.loginTicket };
         return { ok: true };

@@ -48,5 +48,13 @@ export default tseslint.config(
       'vue/multi-word-component-names': 'off',
     },
   },
+  {
+    // TypeScript already reports undefined identifiers, and core no-undef cannot see
+    // Nuxt auto-imports such as definePageMeta. typescript-eslint recommends disabling it.
+    files: ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts', '**/*.vue'],
+    rules: {
+      'no-undef': 'off',
+    },
+  },
   prettier,
 );

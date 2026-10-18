@@ -19,6 +19,16 @@ export class UserRepository {
   /**
    * Looks up an active (not archived) user by username inside one ward.
    */
+  async findUnitSummary(unitId: string): Promise<{ name: string; level: 'Ward' | 'Stake' | 'Region' | 'District' } | null> {
+    return this.prisma.client.ward.findUnique({ where: { id: unitId }, select: { name: true, level: true } });
+  }
+
+  async findActiveByUsernameInUnit(unitId: string, username: string): Promise<ApplicationUser | null> {
+    return this.prisma.client.applicationUser.findFirst({
+      where: { username, archivedAt: null, wardId: unitId, ward: { archivedAt: null } },
+    });
+  }
+
   async findActiveByUsernameAndPublicSlug(publicSlug: string, username: string): Promise<ApplicationUser | null> {
     return this.prisma.client.applicationUser.findFirst({
       where: {

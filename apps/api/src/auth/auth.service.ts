@@ -26,6 +26,7 @@ import { generateOpaqueToken, hashOpaqueToken } from '../common/session-token.ut
 import { InvalidSignedTokenError, signToken, verifyToken } from '../common/signed-token.util.js';
 import { PasswordHasherService } from './password-hasher.service.js';
 import { WardCodeHasherService } from './ward-code-hasher.service.js';
+import { UnitCodeLookupService } from './unit-code-lookup.service.js';
 import { SessionRepository } from './repositories/session.repository.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { WardCodeRepository } from './repositories/ward-code.repository.js';
@@ -50,6 +51,8 @@ interface TotpTicketPayload extends Record<string, unknown> {
   userId: string;
   deviceId: string;
   skipWardBinding: boolean;
+  /** Set when the user typed their unit's code at sign-in; it already proves the code. */
+  verifiedCodeVersionId?: string | null;
 }
 
 interface LoginTicketPayload extends Record<string, unknown> {
@@ -97,6 +100,7 @@ export class AuthService {
     @Inject(WardCodeRepository) private readonly wardCodes: WardCodeRepository,
     @Inject(PasswordHasherService) private readonly passwordHasher: PasswordHasherService,
     @Inject(WardCodeHasherService) private readonly wardCodeHasher: WardCodeHasherService,
+    @Inject(UnitCodeLookupService) private readonly unitCodes: UnitCodeLookupService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
@@ -105,12 +109,15 @@ export class AuthService {
     username: string,
     password: string,
     context: RequestContext,
-    wardSlug?: string,
+    unitCode?: string,
   ): Promise<LoginOutcome> {
-    const skipWardBinding = selectLoginTenant(wardSlug).kind === 'platform';
-    const user = await this.resolveLoginUser(username, wardSlug);
+    const skipWardBinding = unitCode === undefined;
+    const { user, codeVersionId } = await this.resolveLoginUser(username, unitCode);
 
     if (!user) {
+      // Spend the same Argon2 work a real password check would, so response
+      // time does not reveal whether the unit code or the username missed.
+      await this.passwordHasher.verifyAgainstDummy(password);
       // Generic failure — never reveal whether the username exists.
       await this.audit.record({
         action: 'auth.login.failure',
@@ -176,27 +183,36 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.continueAfterPasswordVerified(user, context, skipWardBinding);
+    return this.continueAfterPasswordVerified(user, context, skipWardBinding, codeVersionId);
   }
 
-  private async resolveLoginUser(username: string, wardSlug?: string): Promise<ApplicationUser | null> {
-    const tenant = selectLoginTenant(wardSlug);
-    if (tenant.kind === 'platform') {
+  /**
+   * No unit code means platform-operator sign-in. Otherwise the code alone
+   * picks the unit (ward, stake, region or district), and the username is
+   * looked up only inside that unit.
+   */
+  private async resolveLoginUser(
+    username: string,
+    unitCode?: string,
+  ): Promise<{ user: ApplicationUser | null; codeVersionId: string | null }> {
+    if (unitCode === undefined) {
       const operators = await this.users.findActivePlatformOperators();
-      return pickSolePlatformOperator(operators, username);
+      return { user: pickSolePlatformOperator(operators, username), codeVersionId: null };
     }
-    if (!/^[a-z0-9]{2,64}$/.test(tenant.slug)) {
-      return null;
+
+    const codeVersion = await this.unitCodes.resolve(unitCode);
+    if (!codeVersion) {
+      return { user: null, codeVersionId: null };
     }
-    const user = await this.users.findActiveByUsernameAndPublicSlug(tenant.slug, username);
+    const user = await this.users.findActiveByUsernameInUnit(codeVersion.wardId, username);
     if (!user) {
-      return null;
+      return { user: null, codeVersionId: null };
     }
     const isPlatformAdmin = await this.users.hasRole(user.id, 'PlatformAdmin');
     if (!allowWardPathLogin(isPlatformAdmin)) {
-      return null;
+      return { user: null, codeVersionId: null };
     }
-    return user;
+    return { user, codeVersionId: codeVersion.id };
   }
 
   async verifyTotp(loginTicket: string, code: string, context: RequestContext): Promise<LoginOutcome> {
@@ -256,17 +272,23 @@ export class AuthService {
       userAgent: context.userAgent,
     });
 
-    return this.continueAfterTotpVerified(user, context, payload.skipWardBinding === true);
+    return this.continueAfterTotpVerified(
+      user,
+      context,
+      payload.skipWardBinding === true,
+      payload.verifiedCodeVersionId ?? null,
+    );
   }
 
   private async continueAfterPasswordVerified(
     user: ApplicationUser,
     context: RequestContext,
     skipWardBinding: boolean,
+    verifiedCodeVersionId: string | null,
   ): Promise<LoginOutcome> {
     if (isTotpEnabled(user)) {
       const loginTicket = signToken<TotpTicketPayload>(
-        { purpose: 'totp', userId: user.id, deviceId: context.deviceId, skipWardBinding },
+        { purpose: 'totp', userId: user.id, deviceId: context.deviceId, skipWardBinding, verifiedCodeVersionId },
         this.config.session.secret,
         LOGIN_TICKET_TTL_MS,
       );
@@ -282,15 +304,33 @@ export class AuthService {
       return { status: 'totp_required', loginTicket };
     }
 
-    return this.continueAfterTotpVerified(user, context, skipWardBinding);
+    return this.continueAfterTotpVerified(user, context, skipWardBinding, verifiedCodeVersionId);
   }
 
   private async continueAfterTotpVerified(
     user: ApplicationUser,
     context: RequestContext,
     skipWardBinding: boolean,
+    verifiedCodeVersionId: string | null = null,
   ): Promise<LoginOutcome> {
     const activeWardCodeVersion = await this.wardCodes.findActiveVersion(user.wardId);
+    if (verifiedCodeVersionId !== null) {
+      // The code was typed at sign-in. Accept it only if it is still the
+      // unit's active code (it may have been rotated during a TOTP step).
+      if (activeWardCodeVersion?.id !== verifiedCodeVersionId) {
+        throw new InvalidCredentialsError();
+      }
+      await this.audit.record({
+        wardId: user.wardId,
+        actorUserId: user.id,
+        action: 'auth.login.ward_code_verified',
+        entityType: 'ApplicationUser',
+        entityId: user.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      });
+      return this.completeLogin(user, verifiedCodeVersionId, context);
+    }
     if (activeWardCodeVersion) {
       const lastVerifiedSession = await this.sessions.findLatestVerifiedForDevice(user.id, context.deviceId);
       const wardCodeRequired = requiresWardCodeVerification({
@@ -382,8 +422,7 @@ export class AuthService {
   ): Promise<LoginOutcome> {
     await this.users.recordSuccessfulLogin(user.id);
 
-    const permissionKeys = await this.users.getPermissionKeys(user.id);
-    const authUser = this.toAuthUser(user, permissionKeys);
+    const authUser = await this.buildAuthUser(user);
 
     if (context.clientType === 'mobile') {
       const refreshToken = generateOpaqueToken();
@@ -527,10 +566,20 @@ export class AuthService {
       throw new UnauthorizedException('This account is no longer active.');
     }
 
-    const permissionKeys = await this.users.getPermissionKeys(user.id);
     return {
-      user: this.toAuthUser(user, permissionKeys),
+      user: await this.buildAuthUser(user),
       session,
+    };
+  }
+
+  private async buildAuthUser(user: ApplicationUser): Promise<AuthUser> {
+    const [permissionKeys, unit] = await Promise.all([
+      this.users.getPermissionKeys(user.id),
+      this.users.findUnitSummary(user.wardId),
+    ]);
+    return {
+      ...this.toAuthUser(user, permissionKeys),
+      ...(unit ? { unitName: unit.name, unitLevel: unit.level } : {}),
     };
   }
 

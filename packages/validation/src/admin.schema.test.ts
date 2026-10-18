@@ -68,7 +68,7 @@ describe('createWardRequestSchema', () => {
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(fieldErrorsFromZodError(result.error).name).toBe('Ward name is required.');
+    expect(fieldErrorsFromZodError(result.error).name).toBe('Name is required.');
   });
 
   it('requires and normalizes the initial admin email', () => {

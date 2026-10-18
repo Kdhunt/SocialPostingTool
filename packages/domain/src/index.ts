@@ -23,6 +23,7 @@ export * from './auth/lockout-policy.js';
 export * from './auth/login-tenant.js';
 export * from './auth/platform-operator-view.js';
 export * from './auth/ward-code-policy.js';
+export * from './units/unit-hierarchy.js';
 export * from './auth/session-policy.js';
 export * from './auth/totp-policy.js';
 export * from './auth/account-token-policy.js';

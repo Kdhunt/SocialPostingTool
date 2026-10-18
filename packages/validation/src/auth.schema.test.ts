@@ -15,25 +15,25 @@ describe('loginRequestSchema', () => {
   it('accepts a valid username/password payload', () => {
     const result = loginRequestSchema.parse({ username: 'jane.doe', password: 'Fictional-Password-42' });
     expect(result.username).toBe('jane.doe');
-    expect(result.wardSlug).toBeUndefined();
+    expect(result.unitCode).toBeUndefined();
   });
 
-  it('treats a blank ward path as platform login', () => {
+  it('treats a blank unit code as platform login', () => {
     const result = loginRequestSchema.parse({
       username: 'admin',
       password: 'Fictional-Password-42',
-      wardSlug: '  ',
+      unitCode: '  ',
     });
-    expect(result.wardSlug).toBeUndefined();
+    expect(result.unitCode).toBeUndefined();
   });
 
-  it('normalizes a ward page path', () => {
+  it('trims the unit code but keeps its case', () => {
     const result = loginRequestSchema.parse({
       username: 'admin',
       password: 'Fictional-Password-42',
-      wardSlug: ' GrangeCreek ',
+      unitCode: ' Denver-North-7 ',
     });
-    expect(result.wardSlug).toBe('grangecreek');
+    expect(result.unitCode).toBe('Denver-North-7');
   });
 
   it('rejects an empty username', () => {

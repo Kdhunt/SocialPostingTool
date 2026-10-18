@@ -98,6 +98,9 @@ import {
   userSummarySchema,
   wardCodeInfoSchema,
   wardListResponseSchema,
+  setUnitParentRequestSchema,
+  unitTreeResponseSchema,
+  type UnitTreeResponse,
   createWardRequestSchema,
   createWardResponseSchema,
   resetPasswordRequestSchema,
@@ -241,11 +244,12 @@ export class WardCommsApiClient {
     username: string,
     password: string,
     clientType: 'web' | 'mobile' = 'web',
-    wardSlug?: string,
+    unitCode?: string,
   ): Promise<LoginResponse> {
+    const code = unitCode?.trim();
     const response = await this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password, clientType, ...(wardSlug ? { wardSlug } : {}) }),
+      body: JSON.stringify({ username, password, clientType, ...(code ? { unitCode: code } : {}) }),
     });
     return loginResponseSchema.parse(await response.json());
   }
@@ -467,6 +471,65 @@ export class WardCommsApiClient {
       body: JSON.stringify(updateUserEmailRequestSchema.parse(input)),
     });
     return userSummarySchema.parse(await response.json());
+  }
+
+  /** Platform operators: place a unit under a parent one level up, or detach it with null. */
+  async setUnitParent(unitId: string, parentId: string | null): Promise<WardSummaryDto> {
+    const response = await this.request(`/platform/wards/${unitId}/parent`, {
+      method: 'POST',
+      body: JSON.stringify(setUnitParentRequestSchema.parse({ parentId })),
+    });
+    return wardSummarySchema.parse(await response.json());
+  }
+
+  // --- Unit hierarchy (stake / region / district admins, scoped beneath their own unit) ---
+
+  async listUnits(): Promise<UnitTreeResponse> {
+    const response = await this.request('/admin/units');
+    return unitTreeResponseSchema.parse(await response.json());
+  }
+
+  async createUnit(input: CreateWardRequest): Promise<CreateWardResponse> {
+    const response = await this.request('/admin/units', {
+      method: 'POST',
+      body: JSON.stringify(createWardRequestSchema.parse(input)),
+    });
+    return createWardResponseSchema.parse(await response.json());
+  }
+
+  async moveUnit(unitId: string, parentId: string): Promise<WardSummaryDto> {
+    const response = await this.request(`/admin/units/${unitId}/parent`, {
+      method: 'POST',
+      body: JSON.stringify(setUnitParentRequestSchema.parse({ parentId })),
+    });
+    return wardSummarySchema.parse(await response.json());
+  }
+
+  async updateUnitPublicSlug(unitId: string, input: UpdateWardPublicSlugRequest): Promise<WardSummaryDto> {
+    const response = await this.request(`/admin/units/${unitId}/public-slug`, {
+      method: 'POST',
+      body: JSON.stringify(updateWardPublicSlugRequestSchema.parse(input)),
+    });
+    return wardSummarySchema.parse(await response.json());
+  }
+
+  async rotateUnitCode(unitId: string, newWardCode: string): Promise<WardCodeInfoDto> {
+    const response = await this.request(`/admin/units/${unitId}/code/rotate`, {
+      method: 'POST',
+      body: JSON.stringify(rotateWardCodeRequestSchema.parse({ newWardCode })),
+    });
+    return wardCodeInfoSchema.parse(await response.json());
+  }
+
+  async resetUnitAdminPassword(unitId: string, userId: string, password: string): Promise<void> {
+    await this.request(`/admin/units/${unitId}/admins/${userId}/password`, {
+      method: 'POST',
+      body: JSON.stringify(resetPasswordRequestSchema.parse({ password })),
+    });
+  }
+
+  async sendUnitAdminPasswordResetEmail(unitId: string, userId: string): Promise<void> {
+    await this.request(`/admin/units/${unitId}/admins/${userId}/password-reset-email`, { method: 'POST' });
   }
 
   async sendWardAdminPasswordResetEmail(wardId: string, userId: string): Promise<void> {

@@ -5,12 +5,18 @@ import type {
   CreateWardResponse,
   PlatformWardSummaryDto,
   RotateWardCodeRequest,
+  SetUnitParentRequest,
+  UnitTreeResponse,
   UpdateWardPublicSlugRequest,
   WardCodeInfoDto,
   WardListResponse,
   WardSummaryDto,
 } from '@ward-comms/validation';
 import {
+  checkParentAssignment,
+  parentLevelOf,
+  unitNoun,
+  type UnitLevel,
   assertPublicWardSlug,
   fallbackPublicWardSlug,
   isReservedPublicWardSlug,
@@ -29,6 +35,21 @@ import type { AdminActionContext } from './users-admin.service.js';
 import { UsersAdminService } from './users-admin.service.js';
 import { AccountEmailService } from '../messaging/account-email.service.js';
 import { WardAdminService } from './ward-admin.service.js';
+import { UnitCodeLookupService } from '../auth/unit-code-lookup.service.js';
+import { UnitScopeService, type UnitRef } from './unit-scope.service.js';
+
+/**
+ * Who is creating or moving a unit. Platform operators may place units
+ * anywhere; a unit admin may only work strictly beneath their own unit.
+ */
+export type UnitActorScope = { kind: 'platform' } | { kind: 'unit'; unitId: string };
+
+const PARENT_PROBLEM_MESSAGES = {
+  wrong_level: (level: UnitLevel) =>
+    `A ${unitNoun(level)} must sit directly under a ${unitNoun(parentLevelOf(level) ?? level)}.`,
+  self: () => 'A unit cannot be its own parent.',
+  cycle: () => 'A unit cannot be placed beneath one of its own units.',
+} as const;
 
 function isValidTimeZone(timeZone: string): boolean {
   try {
@@ -52,7 +73,72 @@ export class WardProvisioningService {
     @Inject(UsersAdminService) private readonly usersAdmin: UsersAdminService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(AccountEmailService) private readonly accountEmail: AccountEmailService,
+    @Inject(UnitCodeLookupService) private readonly unitCodes: UnitCodeLookupService,
+    @Inject(UnitScopeService) private readonly scope: UnitScopeService,
   ) {}
+
+  /**
+   * Validates placing a unit of `level` (optionally an existing unit, `unitId`)
+   * under `parentId`, within what `actor` is allowed to touch.
+   */
+  private async resolveParent(
+    level: UnitLevel,
+    parentId: string | null | undefined,
+    actor: UnitActorScope,
+    unitId: string | null,
+  ): Promise<string | null> {
+    const units = await this.scope.loadActive();
+
+    if (!parentId) {
+      if (actor.kind === 'unit') {
+        throw new BadRequestException('Choose which unit this belongs under.');
+      }
+      return null;
+    }
+
+    const parent = units.get(parentId);
+    if (!parent) {
+      throw new BadRequestException('The selected parent unit does not exist.');
+    }
+    if (actor.kind === 'unit' && parent.id !== actor.unitId) {
+      await this.scope.assertBeneath(actor.unitId, parent.id);
+    }
+
+    const candidate: UnitRef = { id: unitId ?? '__new__', parentId: null, level };
+    const problem = checkParentAssignment(candidate, parent, units);
+    if (problem) {
+      throw new BadRequestException(PARENT_PROBLEM_MESSAGES[problem](level));
+    }
+    return parent.id;
+  }
+
+  /** Places an existing unit under a new parent (or detaches it, platform only). */
+  async setParent(
+    unitId: string,
+    input: SetUnitParentRequest,
+    actor: UnitActorScope,
+    context: AdminActionContext,
+  ): Promise<WardSummaryDto> {
+    const ward = await this.wards.findActiveById(unitId);
+    if (!ward) throw new NotFoundException('Unit not found.');
+    if (actor.kind === 'unit') {
+      await this.scope.assertBeneath(actor.unitId, unitId);
+    }
+
+    const parentId = await this.resolveParent(ward.level, input.parentId, actor, unitId);
+    const updated = await this.prisma.client.ward.update({ where: { id: unitId }, data: { parentId } });
+    await this.audit.record({
+      wardId: unitId,
+      actorUserId: context.actorUserId,
+      action: 'unit.parent.updated',
+      entityType: 'Ward',
+      entityId: unitId,
+      metadata: { fromParentId: ward.parentId, toParentId: parentId },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
+    return this.toSummary(updated);
+  }
 
   async list(): Promise<WardListResponse> {
     const rows = await this.wards.listActiveWithAdmins();
@@ -66,7 +152,26 @@ export class WardProvisioningService {
     };
   }
 
-  async create(input: CreateWardRequest, context: AdminActionContext): Promise<CreateWardResponse> {
+  /** The actor's own unit and every active unit beneath it, with their admins. */
+  async listBeneath(unitId: string): Promise<UnitTreeResponse> {
+    const own = await this.wards.findActiveById(unitId);
+    if (!own) throw new NotFoundException('Unit not found.');
+    const ids = await this.scope.descendantsOf(unitId);
+    const rows = ids.length > 0 ? await this.wards.listActiveWithAdmins(ids) : [];
+    return {
+      unit: this.toSummary(own),
+      units: rows.map((row): PlatformWardSummaryDto => ({ ...this.toSummary(row), admins: row.admins })),
+    };
+  }
+
+  async create(
+    input: CreateWardRequest,
+    context: AdminActionContext,
+    actor: UnitActorScope = { kind: 'platform' },
+  ): Promise<CreateWardResponse> {
+    const level: UnitLevel = input.level ?? 'Ward';
+    const parentId = await this.resolveParent(level, input.parentId, actor, null);
+
     const passwordCheck = validatePasswordStrength(input.adminPassword);
     if (!passwordCheck.valid) {
       throw new BadRequestException(passwordCheck.errors.join(' '));
@@ -78,7 +183,7 @@ export class WardProvisioningService {
     }
 
     if (await this.wards.findActiveByName(input.name)) {
-      throw new ConflictException('An active ward with that name already exists.');
+      throw new ConflictException('An active unit with that name already exists.');
     }
 
     const wardAdminRole = await this.roles.findByName('WardAdmin');
@@ -91,13 +196,16 @@ export class WardProvisioningService {
       throw new BadRequestException('Enter a valid email address.');
     }
 
+    const unitCode = input.initialWardCode.trim();
+    await this.unitCodes.assertAvailable(unitCode, null);
+
     const passwordHash = await this.passwordHasher.hash(input.adminPassword);
-    const codeHash = await this.wardCodeHasher.hash(input.initialWardCode);
+    const codeHash = await this.wardCodeHasher.hash(unitCode);
     const publicSlug = await this.allocatePublicSlug(input.publicSlug, input.name);
 
     const result = await this.prisma.client.$transaction(async (tx) => {
       const ward = await tx.ward.create({
-        data: { name: input.name, timeZone, publicSlug },
+        data: { name: input.name, timeZone, publicSlug, level, parentId },
       });
 
       const adminUser = await tx.applicationUser.create({
@@ -120,6 +228,7 @@ export class WardProvisioningService {
           wardId: ward.id,
           version: 1,
           codeHash,
+          lookupKey: this.wardCodeHasher.lookupKey(unitCode),
           activatedAt: new Date(),
         },
       });
@@ -136,11 +245,13 @@ export class WardProvisioningService {
     await this.audit.record({
       wardId: result.ward.id,
       actorUserId: context.actorUserId,
-      action: 'platform.ward.created',
+      action: actor.kind === 'platform' ? 'platform.ward.created' : 'unit.created',
       entityType: 'Ward',
       entityId: result.ward.id,
       metadata: {
         wardName: result.ward.name,
+        level,
+        parentId,
         adminUsername: result.adminUser.username,
         adminEmail: result.adminUser.email,
         adminUserId: result.adminUser.id,
@@ -277,6 +388,8 @@ export class WardProvisioningService {
   private toSummary(ward: {
     id: string;
     name: string;
+    level: UnitLevel;
+    parentId: string | null;
     publicSlug: string;
     timeZone: string;
     createdAt: Date;
@@ -284,6 +397,8 @@ export class WardProvisioningService {
     return {
       id: ward.id,
       name: ward.name,
+      level: ward.level,
+      parentId: ward.parentId,
       publicSlug: ward.publicSlug,
       timeZone: ward.timeZone,
       createdAt: ward.createdAt.toISOString(),

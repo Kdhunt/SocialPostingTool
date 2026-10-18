@@ -1,55 +1,28 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'guest' });
 
-const route = useRoute();
-const { state, login, submitTotp, submitWardCode } = useAuth();
+const { state, login, submitTotp } = useAuth();
 
+const unitCode = ref('');
 const username = ref('');
 const password = ref('');
 const totpCode = ref('');
-const wardSlug = ref('');
-const wardCode = ref('');
 const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
 const needsTotp = computed(() => state.value.kind === 'totp_required');
 
-onMounted(() => {
-  const queryWard = route.query.ward;
-  if (typeof queryWard === 'string' && queryWard.trim().length > 0) {
-    wardSlug.value = queryWard.trim().toLowerCase();
-  }
-});
-
-async function finishWithWardCodeIfNeeded(): Promise<{ ok: boolean; error?: string }> {
-  if (state.value.kind !== 'ward_code_required') {
-    return { ok: true };
-  }
-
-  const code = wardCode.value.trim();
-  if (!code) {
-    return { ok: false, error: 'Enter the ward code to finish signing in.' };
-  }
-
-  return submitWardCode(code);
-}
-
 function syncLoginFieldsFromForm(form: HTMLFormElement): void {
   const data = new FormData(form);
   const nextUsername = String(data.get('username') ?? '').trim();
   const nextPassword = String(data.get('password') ?? '');
-  const nextWardSlug = String(data.get('ward-slug') ?? '').trim();
-  const nextWardCode = String(data.get('ward-code') ?? '');
   if (nextUsername) {
     username.value = nextUsername;
   }
   if (nextPassword) {
     password.value = nextPassword;
   }
-  wardSlug.value = nextWardSlug;
-  if (nextWardCode) {
-    wardCode.value = nextWardCode;
-  }
+  unitCode.value = String(data.get('unit-code') ?? '');
 }
 
 async function onLoginSubmit(event: Event): Promise<void> {
@@ -59,18 +32,7 @@ async function onLoginSubmit(event: Event): Promise<void> {
 
   errorMessage.value = null;
   submitting.value = true;
-
-  let result: { ok: boolean; error?: string };
-
-  if (state.value.kind === 'ward_code_required') {
-    result = await finishWithWardCodeIfNeeded();
-  } else {
-    result = await login(username.value, password.value, wardSlug.value);
-    if (result.ok) {
-      result = await finishWithWardCodeIfNeeded();
-    }
-  }
-
+  const result = await login(username.value, password.value, unitCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -86,12 +48,7 @@ async function onLoginSubmit(event: Event): Promise<void> {
 async function onTotpSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-
-  let result = await submitTotp(totpCode.value);
-  if (result.ok) {
-    result = await finishWithWardCodeIfNeeded();
-  }
-
+  const result = await submitTotp(totpCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -109,7 +66,7 @@ async function onTotpSubmit(): Promise<void> {
   <div class="login">
     <h1 class="login__title">Sign in</h1>
     <p class="login__lead">
-      Ward administrators enter their ward page path and ward code. Superadmin leaves both blank.
+      Enter your unit code (from your ward, stake, region or district), then your username and password.
     </p>
 
     <form
@@ -119,16 +76,16 @@ async function onTotpSubmit(): Promise<void> {
       @submit.prevent="onLoginSubmit"
     >
       <UiFormField
-        label="Ward page path"
-        input-id="ward-slug"
-        hint="Example: grangecreek. Required for a ward account. Superadmin leaves this blank."
+        label="Unit code"
+        input-id="unit-code"
+        hint="Your ward, stake, region or district code. Superadmin leaves this blank."
       >
         <input
-          id="ward-slug"
-          v-model="wardSlug"
-          name="ward-slug"
+          id="unit-code"
+          v-model="unitCode"
+          name="unit-code"
           class="form-control"
-          type="text"
+          type="password"
           autocomplete="off"
           spellcheck="false"
         />
@@ -155,21 +112,6 @@ async function onTotpSubmit(): Promise<void> {
           type="password"
           autocomplete="current-password"
           required
-        />
-      </UiFormField>
-
-      <UiFormField
-        label="Ward code"
-        input-id="ward-code"
-        hint="Required for a ward account on a new device. Superadmin leaves this blank."
-      >
-        <input
-          id="ward-code"
-          v-model="wardCode"
-          name="ward-code"
-          class="form-control"
-          type="password"
-          autocomplete="off"
         />
       </UiFormField>
 

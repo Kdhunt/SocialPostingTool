@@ -143,14 +143,15 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
     const dto = parseBody(loginRequestSchema, body);
-    const tenantKey = dto.wardSlug ?? 'platform';
+    // Never key the limiter on the code itself: cycling codes must not buy fresh attempts.
+    const tenantKey = dto.unitCode === undefined ? 'platform' : 'unit';
     const rateLimitKey = `${req.ip}:${tenantKey}:${dto.username}`;
     if (!this.rateLimiter.consume(rateLimitKey)) {
       throw new ForbiddenException('Too many sign-in attempts. Please wait and try again.');
     }
 
     const context = this.buildContext(req, res, dto.clientType);
-    const outcome = await this.authService.login(dto.username, dto.password, context, dto.wardSlug);
+    const outcome = await this.authService.login(dto.username, dto.password, context, dto.unitCode);
 
     if (outcome.status === 'totp_required') {
       return { status: 'totp_required', loginTicket: outcome.loginTicket };

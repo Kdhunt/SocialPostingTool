@@ -82,9 +82,15 @@ export const updateUserEmailRequestSchema = z.object({
 });
 export type UpdateUserEmailRequest = z.infer<typeof updateUserEmailRequestSchema>;
 
+/** Church hierarchy level, smallest first. Mirrors UNIT_LEVELS in @ward-comms/domain. */
+export const unitLevelSchema = z.enum(['Ward', 'Stake', 'Region', 'District']);
+export type UnitLevelDto = z.infer<typeof unitLevelSchema>;
+
 export const wardSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
+  level: unitLevelSchema,
+  parentId: z.string().nullable(),
   publicSlug: z.string(),
   timeZone: z.string(),
   createdAt: z.string().datetime(),
@@ -110,7 +116,11 @@ export const wardListResponseSchema = z.object({
 export type WardListResponse = z.infer<typeof wardListResponseSchema>;
 
 export const createWardRequestSchema = z.object({
-  name: z.string().min(1, 'Ward name is required.').max(255, 'Ward name must be at most 255 characters.'),
+  name: z.string().min(1, 'Name is required.').max(255, 'Name must be at most 255 characters.'),
+  /** Defaults to Ward. */
+  level: unitLevelSchema.optional(),
+  /** The unit directly above, which must be exactly one level up. */
+  parentId: z.string().min(1).optional(),
   timeZone: z
     .string()
     .min(1, 'Enter a valid IANA time zone (for example, America/Denver).')
@@ -141,6 +151,19 @@ export const createWardRequestSchema = z.object({
     .optional(),
 });
 export type CreateWardRequest = z.infer<typeof createWardRequestSchema>;
+
+export const setUnitParentRequestSchema = z.object({
+  /** null removes the unit from the hierarchy (platform operators only). */
+  parentId: z.string().min(1).nullable(),
+});
+export type SetUnitParentRequest = z.infer<typeof setUnitParentRequestSchema>;
+
+/** GET /admin/units: the caller's own unit plus every unit beneath it. */
+export const unitTreeResponseSchema = z.object({
+  unit: wardSummarySchema,
+  units: z.array(platformWardSummarySchema),
+});
+export type UnitTreeResponse = z.infer<typeof unitTreeResponseSchema>;
 
 export function fieldErrorsFromZodError(error: z.ZodError): Record<string, string> {
   const fieldErrors: Record<string, string> = {};

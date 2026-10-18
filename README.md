@@ -104,12 +104,17 @@ fictional dev credentials to the console. For custom users, use the
 New accounts require a unique (per ward) email address — format is
 validated and the value is stored trimmed and lowercased.
 
-### Provisioning additional wards
+### Provisioning units (wards, stakes, regions, districts)
+
+Wards sit under stakes, stakes under regions, and regions under districts.
+Every level is a full unit with its own sign-in code, administrators, directory
+and campaigns, and a unit's administrators manage the units beneath it
+(**Admin → Units**). See `docs/unit-hierarchy.md`.
 
 Superadmin is the ENV-bootstrapped `PlatformAdmin` user (`BOOTSTRAP_*` variables;
 see `docs/vercel.md`). There is only one. That operator can:
 
-- Create ward tenants from **Admin → Wards** (`/admin/wards`) or `POST /platform/wards`
+- Create units at any level from **Admin → Units** (`/admin/wards`) or `POST /platform/wards`, and place them under a parent (`POST /platform/wards/:wardId/parent`)
 - Rotate **any** ward’s shared code (`POST /platform/wards/:wardId/code/rotate`)
 - Reset **any** ward administrator password (`POST /platform/wards/:wardId/admins/:userId/password`)
 
@@ -134,9 +139,9 @@ platform role is stripped from the fictional `admin` user. Re-run
 
 ### Authentication overview
 
-- `POST /auth/login` → `{ username, password, wardSlug?: string, clientType?: 'web'|'mobile' }` (omit `wardSlug` for the sole PlatformAdmin)
+- `POST /auth/login` → `{ username, password, unitCode?: string, clientType?: 'web'|'mobile' }` (the unit code alone picks the ward, stake, region or district; omit it for the sole PlatformAdmin)
 - `GET /public/wards/:slug/campaigns` → anonymous published-campaign board for `/{slug}` (not the login ward code)
-- `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (only when `/auth/login` responds `ward_code_required`)
+- `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (legacy; sign-in with `unitCode` no longer returns `ward_code_required`)
 - `POST /auth/refresh` → `{ refreshToken }` (mobile only)
 - `POST /auth/logout`, `GET /auth/session`, `GET /auth/sessions`, `POST /auth/sessions/:id/revoke`
 - `PATCH /auth/email`, `POST /auth/change-password`, `POST /auth/verification-email` (signed-in account management)

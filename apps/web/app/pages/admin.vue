@@ -5,8 +5,8 @@ const { adminItems, isPlatformOperator } = useAppNavigation();
 
 const description = computed(() =>
   isPlatformOperator.value
-    ? 'Create wards and manage each ward’s administrators. Directory and campaigns stay in each ward login.'
-    : 'Manage users, ward access, provider credentials, and audit history.',
+    ? 'Create wards, stakes, regions and districts, and manage each unit’s administrators. Directory and campaigns stay in each unit’s login.'
+    : 'Manage users, sign-in code, the units beneath yours, provider credentials, and audit history.',
 );
 </script>
 
