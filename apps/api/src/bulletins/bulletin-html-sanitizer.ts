@@ -17,10 +17,16 @@ const OPTIONS: sanitizeHtml.IOptions = {
   nonTextTags: ['script', 'style', 'textarea', 'option', 'noscript', 'iframe', 'object', 'embed'],
   disallowedTagsMode: 'discard',
   transformTags: {
-    a: (_tagName, attribs) => ({
-      tagName: 'a',
-      attribs: { href: attribs.href ?? '', rel: 'noopener noreferrer', target: '_blank' },
-    }),
+    // Only absolute links with an allowed scheme survive; relative and
+    // protocol-relative hrefs are dropped (allowedSchemes ignores them).
+    a: (_tagName, attribs) => {
+      const href = (attribs.href ?? '').trim();
+      const allowed = new RegExp(`^(${BULLETIN_ALLOWED_LINK_SCHEMES.join('|')}):`, 'i').test(href);
+      return {
+        tagName: 'a',
+        attribs: { ...(allowed ? { href } : {}), rel: 'noopener noreferrer', target: '_blank' },
+      };
+    },
   },
 };
 

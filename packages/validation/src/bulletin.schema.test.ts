@@ -57,4 +57,17 @@ describe('saveBulletinRequestSchema', () => {
     );
     expect(saveBulletinRequestSchema.safeParse({ ...base, language: 'pt-BR' }).success).toBe(true);
   });
+
+  it('rejects dates that do not exist instead of rolling them over', () => {
+    const base = { title: 'Stake News', template: 'Newsletter', language: 'en', sections: [] };
+    expect(saveBulletinRequestSchema.safeParse({ ...base, issueDate: '2026-02-31' }).success).toBe(
+      false,
+    );
+    expect(saveBulletinRequestSchema.safeParse({ ...base, issueDate: '2026-13-01' }).success).toBe(
+      false,
+    );
+    expect(saveBulletinRequestSchema.safeParse({ ...base, issueDate: '2028-02-29' }).success).toBe(
+      true,
+    );
+  });
 });

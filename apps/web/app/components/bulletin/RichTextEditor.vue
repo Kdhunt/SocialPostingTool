@@ -10,16 +10,22 @@ import { TableKit } from '@tiptap/extension-table';
  * bulletin allowlist (packages/domain bulletin-content.ts); the API
  * sanitizes again on save.
  */
-const props = defineProps<{
-  modelValue: string;
-  /** id of the visible label, for screen readers. */
-  labelledBy: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: string;
+    /** id of the visible label, for screen readers. */
+    labelledBy: string;
+    /** False shows the text read-only (a disabled fieldset does not reach a contenteditable area). */
+    editable?: boolean;
+  }>(),
+  { editable: true },
+);
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
 const editor = useEditor({
   content: props.modelValue,
+  editable: props.editable,
   extensions: [
     StarterKit.configure({
       heading: { levels: [3, 4] },
@@ -58,6 +64,11 @@ watch(
   },
 );
 
+watch(
+  () => props.editable,
+  (editable) => editor.value?.setEditable(editable, false),
+);
+
 onBeforeUnmount(() => editor.value?.destroy());
 
 function setLink(): void {
@@ -86,7 +97,7 @@ const inTable = (): boolean => editor.value?.isActive('table') ?? false;
 
 <template>
   <div class="rte">
-    <div v-if="editor" class="rte__toolbar" role="toolbar" aria-label="Formatting">
+    <div v-if="editor && editable" class="rte__toolbar" role="toolbar" aria-label="Formatting">
       <button
         type="button"
         class="rte__tool"

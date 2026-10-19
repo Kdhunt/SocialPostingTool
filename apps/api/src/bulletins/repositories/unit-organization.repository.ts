@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma, UnitOrganization } from '@prisma/client';
-import { DEFAULT_UNIT_ORGANIZATIONS } from '@ward-comms/domain';
+import { DEFAULT_UNIT_ORGANIZATIONS, sameOrganizationName } from '@ward-comms/domain';
 import { PrismaService } from '../../prisma/prisma.service.js';
+
+/** An active organization in the unit already has that name. */
+export class OrganizationNameConflictError extends Error {}
 
 @Injectable()
 export class UnitOrganizationRepository {
@@ -28,12 +31,24 @@ export class UnitOrganizationRepository {
     return new Set(rows.map((row) => row.id));
   }
 
-  async create(wardId: string, name: string, sortOrder: number): Promise<UnitOrganization> {
-    return this.prisma.client.unitOrganization.create({ data: { wardId, name, sortOrder } });
-  }
-
-  async rename(id: string, name: string): Promise<UnitOrganization> {
-    return this.prisma.client.unitOrganization.update({ where: { id }, data: { name } });
+  /**
+   * Creates (no `id`) or renames an organization, refusing a name another
+   * active organization in the unit already has. Serialized per unit so two
+   * simultaneous requests cannot both pass the check.
+   */
+  async saveUniqueName(wardId: string, name: string, id: string | null): Promise<UnitOrganization> {
+    return this.prisma.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`unit-organizations:${wardId}`}))`;
+      const active = await tx.unitOrganization.findMany({ where: { wardId, archivedAt: null } });
+      if (active.some((row) => row.id !== id && sameOrganizationName(row.name, name))) {
+        throw new OrganizationNameConflictError();
+      }
+      if (id) {
+        return tx.unitOrganization.update({ where: { id }, data: { name } });
+      }
+      const sortOrder = active.reduce((max, row) => Math.max(max, row.sortOrder), -1) + 1;
+      return tx.unitOrganization.create({ data: { wardId, name, sortOrder } });
+    });
   }
 
   async archive(id: string): Promise<void> {

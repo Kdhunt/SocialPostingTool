@@ -7,7 +7,10 @@ import { DEFAULT_UNIT_ORGANIZATIONS } from '@ward-comms/domain';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { WardRepository } from '../admin/repositories/ward.repository.js';
-import { BulletinRepository } from './repositories/bulletin.repository.js';
+import {
+  BulletinRepository,
+  BulletinVersionConflictError,
+} from './repositories/bulletin.repository.js';
 import { UnitOrganizationRepository } from './repositories/unit-organization.repository.js';
 import { BulletinsService, type BulletinActionContext } from './bulletins.service.js';
 import { UnitOrganizationsService } from './unit-organizations.service.js';
@@ -288,5 +291,103 @@ describe.skipIf(!databaseAvailable)('BulletinsService — live PostgreSQL integr
     expect(
       (await organizations.list(wardId)).organizations.some((org) => org.id === elders.id),
     ).toBe(false);
+  });
+
+  it('refuses a save over a newer version, including one published in between', async () => {
+    const created = await bulletins.create(wardId, {}, editor());
+    const body = {
+      title: 'Stake News',
+      issueDate: '2026-10-15',
+      template: 'Newsletter' as const,
+      language: 'en',
+      sections: [section()],
+    };
+    const first = await bulletins.save(
+      wardId,
+      created.id,
+      { ...body, expectedUpdatedAt: created.updatedAt },
+      editor(),
+    );
+    // A second editor still holding the original version is refused.
+    await expect(
+      bulletins.save(
+        wardId,
+        created.id,
+        { ...body, title: 'Stale', expectedUpdatedAt: created.updatedAt },
+        editor(),
+      ),
+    ).rejects.toThrow(/changed or published since you opened it/i);
+
+    // The repository guard also holds when the version moves between the check and the write.
+    await bulletins.publish(wardId, created.id, publisher());
+    await expect(
+      new BulletinRepository(prisma).save(
+        {
+          id: created.id,
+          wardId,
+          rootId: created.id,
+          expectedUpdatedAt: new Date(first.updatedAt),
+        },
+        {
+          title: 'Sneaky',
+          kicker: null,
+          issueDate: new Date('2026-10-15T00:00:00Z'),
+          template: 'Newsletter',
+          language: 'en',
+        },
+        [],
+      ),
+    ).rejects.toBeInstanceOf(BulletinVersionConflictError);
+    expect((await bulletins.get(wardId, created.id)).title).toBe('Stake News');
+  });
+
+  it('keeps one edition per language, on save and under concurrent copies', async () => {
+    const created = await bulletins.create(wardId, {}, editor());
+    const spanish = await bulletins.copyAsLanguage(wardId, created.id, 'es', editor());
+    await expect(
+      bulletins.save(
+        wardId,
+        spanish.id,
+        {
+          title: 'T',
+          issueDate: '2026-10-15',
+          template: 'Newsletter',
+          language: 'en',
+          sections: [],
+        },
+        editor(),
+      ),
+    ).rejects.toThrow(/already has an edition in that language/i);
+
+    const results = await Promise.allSettled([
+      bulletins.copyAsLanguage(wardId, created.id, 'pt', editor()),
+      bulletins.copyAsLanguage(wardId, created.id, 'pt', editor()),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  });
+
+  it('allows one organization name per unit even when two requests race', async () => {
+    const results = await Promise.allSettled([
+      organizations.create(wardId, 'Activities', editor()),
+      organizations.create(wardId, 'activities', editor()),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  });
+
+  it('keeps section column choices when the single-column layout is used', async () => {
+    const created = await bulletins.create(wardId, {}, editor());
+    const saved = await bulletins.save(
+      wardId,
+      created.id,
+      {
+        title: 'T',
+        issueDate: '2026-10-15',
+        template: 'SingleColumn',
+        language: 'en',
+        sections: [section({ column: 'Side' })],
+      },
+      editor(),
+    );
+    expect(saved.sections[0]?.column).toBe('Side');
   });
 });

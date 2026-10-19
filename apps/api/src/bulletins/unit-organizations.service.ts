@@ -5,11 +5,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { normalizeOrganizationName, sameOrganizationName } from '@ward-comms/domain';
+import { normalizeOrganizationName } from '@ward-comms/domain';
 import type { UnitOrganizationDto, UnitOrganizationListResponse } from '@ward-comms/validation';
 import { AuditService } from '../audit/audit.service.js';
 import type { BulletinActionContext } from './bulletins.service.js';
-import { UnitOrganizationRepository } from './repositories/unit-organization.repository.js';
+import {
+  OrganizationNameConflictError,
+  UnitOrganizationRepository,
+} from './repositories/unit-organization.repository.js';
 
 /** The named organizations (Relief Society, Primary, ...) a unit files bulletin sections under. */
 @Injectable()
@@ -30,12 +33,7 @@ export class UnitOrganizationsService {
     context: BulletinActionContext,
   ): Promise<UnitOrganizationDto> {
     const name = this.normalize(rawName);
-    const existing = await this.organizations.listActive(wardId);
-    if (existing.some((row) => sameOrganizationName(row.name, name))) {
-      throw new ConflictException('An organization with that name already exists.');
-    }
-    const sortOrder = existing.reduce((max, row) => Math.max(max, row.sortOrder), -1) + 1;
-    const created = await this.organizations.create(wardId, name, sortOrder);
+    const created = await this.unique(() => this.organizations.saveUniqueName(wardId, name, null));
     await this.record(wardId, context, 'organization.created', created.id, { name });
     return this.toDto(created);
   }
@@ -49,11 +47,7 @@ export class UnitOrganizationsService {
     const name = this.normalize(rawName);
     const target = await this.organizations.findForWard(wardId, id);
     if (!target || target.archivedAt) throw new NotFoundException('Organization not found.');
-    const existing = await this.organizations.listActive(wardId);
-    if (existing.some((row) => row.id !== id && sameOrganizationName(row.name, name))) {
-      throw new ConflictException('An organization with that name already exists.');
-    }
-    const updated = await this.organizations.rename(id, name);
+    const updated = await this.unique(() => this.organizations.saveUniqueName(wardId, name, id));
     await this.record(wardId, context, 'organization.renamed', id, { from: target.name, to: name });
     return this.toDto(updated);
   }
@@ -64,6 +58,17 @@ export class UnitOrganizationsService {
     if (!target || target.archivedAt) throw new NotFoundException('Organization not found.');
     await this.organizations.archive(id);
     await this.record(wardId, context, 'organization.archived', id, { name: target.name });
+  }
+
+  private async unique<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof OrganizationNameConflictError) {
+        throw new ConflictException('An organization with that name already exists.');
+      }
+      throw error;
+    }
   }
 
   private normalize(rawName: string): string {

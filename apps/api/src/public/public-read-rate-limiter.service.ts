@@ -13,9 +13,23 @@ interface Window {
 export class PublicReadRateLimiterService {
   private readonly windows = new Map<string, Window>();
   private readonly maxAttempts = 120;
+  /**
+   * Bulletin pages are opened from printed QR codes, often by a whole
+   * congregation on one chapel network or carrier address, so they get a far
+   * larger per-address budget. Responses are also CDN-cached for a minute.
+   */
+  private readonly maxBulletinReads = 2_000;
   private readonly windowMs = 15 * 60_000;
 
   consume(key: string, now: Date = new Date()): boolean {
+    return this.take(key, this.maxAttempts, now);
+  }
+
+  consumeBulletinRead(key: string, now: Date = new Date()): boolean {
+    return this.take(key, this.maxBulletinReads, now);
+  }
+
+  private take(key: string, max: number, now: Date): boolean {
     const existing = this.windows.get(key);
 
     if (!existing || now.getTime() - existing.windowStartedAt > this.windowMs) {
@@ -23,7 +37,7 @@ export class PublicReadRateLimiterService {
       return true;
     }
 
-    if (existing.count >= this.maxAttempts) {
+    if (existing.count >= max) {
       return false;
     }
 

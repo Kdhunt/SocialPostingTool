@@ -98,7 +98,6 @@ watch(
                 class="bulletin-doc__image"
                 :src="section.imageUrl"
                 :alt="section.imageAltText ?? ''"
-                loading="lazy"
               />
               <!-- eslint-disable-next-line vue/no-v-html -- sanitized to the bulletin allowlist by the API -->
               <div v-if="section.bodyHtml" class="bulletin-doc__body" v-html="section.bodyHtml" />
@@ -136,7 +135,6 @@ watch(
               class="bulletin-doc__image"
               :src="section.imageUrl"
               :alt="section.imageAltText ?? ''"
-              loading="lazy"
             />
             <!-- eslint-disable-next-line vue/no-v-html -- sanitized to the bulletin allowlist by the API -->
             <div v-if="section.bodyHtml" class="bulletin-doc__body" v-html="section.bodyHtml" />

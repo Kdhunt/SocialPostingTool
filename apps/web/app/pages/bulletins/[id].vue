@@ -81,6 +81,8 @@ const canEdit = computed(() => permissions().includes('campaigns.create'));
 const canPublish = computed(() => permissions().includes('campaigns.send'));
 const isPublished = computed(() => saved.value?.status === 'Published');
 const readOnly = computed(() => !canEdit.value || (isPublished.value && !canPublish.value));
+/** Also locked while a request is running, so nothing typed meanwhile is overwritten by the response. */
+const editingLocked = computed(() => readOnly.value || busy.value !== null);
 
 function toDraft(bulletin: BulletinDetailDto): BulletinDraft {
   return {
@@ -113,7 +115,8 @@ function toRequest(value: BulletinDraft): SaveBulletinRequest {
     language: value.language,
     sections: value.sections.map((section) => ({
       organizationId: section.organizationId,
-      column: value.template === 'Newsletter' ? section.column : 'Main',
+      // Kept even in the single-column layout, so switching back restores it.
+      column: section.column,
       heading: section.heading,
       subheading: section.subheading,
       bodyHtml: section.bodyHtml,
@@ -241,7 +244,12 @@ async function save(): Promise<boolean> {
   }
   busy.value = 'save';
   try {
-    adopt(await client.saveBulletin(bulletinId.value, request));
+    adopt(
+      await client.saveBulletin(bulletinId.value, {
+        ...request,
+        expectedUpdatedAt: saved.value?.updatedAt,
+      }),
+    );
     notice.value = 'Saved.';
     return true;
   } catch (error) {
@@ -431,7 +439,7 @@ onMounted(async () => {
 
       <div class="editor">
         <form class="editor__form" novalidate @submit.prevent="save">
-          <fieldset class="editor__panel" :disabled="readOnly">
+          <fieldset class="editor__panel" :disabled="editingLocked">
             <legend class="editor__legend">Header</legend>
             <UiFormField label="Title" input-id="bulletin-title">
               <input
@@ -488,7 +496,7 @@ onMounted(async () => {
             v-for="(section, index) in draft.sections"
             :key="section.key"
             class="editor__panel editor__section"
-            :disabled="readOnly"
+            :disabled="editingLocked"
           >
             <legend class="editor__legend">
               Section {{ index + 1 }}<span v-if="section.heading">: {{ section.heading }}</span>
@@ -573,6 +581,7 @@ onMounted(async () => {
                 <BulletinRichTextEditor
                   v-model="section.bodyHtml"
                   :labelled-by="`section-body-label-${section.key}`"
+                  :editable="!editingLocked"
                 />
               </ClientOnly>
             </div>

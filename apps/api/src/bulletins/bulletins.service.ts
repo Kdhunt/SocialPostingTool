@@ -27,7 +27,9 @@ import { AuditService } from '../audit/audit.service.js';
 import { WardRepository } from '../admin/repositories/ward.repository.js';
 import { sanitizeBulletinHtml } from './bulletin-html-sanitizer.js';
 import {
+  BulletinLanguageConflictError,
   BulletinRepository,
+  BulletinVersionConflictError,
   type BulletinFields,
   type BulletinSectionRow,
   type BulletinWithSections,
@@ -49,7 +51,13 @@ export interface SaveBulletinInput {
   template: 'Newsletter' | 'SingleColumn';
   language: string;
   sections: BulletinSectionInputParsed[];
+  /** `updatedAt` the editor loaded; omitted by older clients. */
+  expectedUpdatedAt?: string;
 }
+
+const STALE_MESSAGE =
+  'This bulletin was changed or published since you opened it. Reload to see the latest version, then make your changes again.';
+const LANGUAGE_TAKEN_MESSAGE = 'This bulletin already has an edition in that language.';
 
 const PUBLISH_PERMISSION = 'campaigns.send';
 
@@ -135,6 +143,12 @@ export class BulletinsService {
         'This bulletin is live. Ask someone who can publish to make changes, or to unpublish it.',
       );
     }
+    if (
+      input.expectedUpdatedAt &&
+      new Date(input.expectedUpdatedAt).getTime() !== existing.updatedAt.getTime()
+    ) {
+      throw new ConflictException(STALE_MESSAGE);
+    }
 
     const sections = await this.buildSections(wardId, input.sections);
     const fields: BulletinFields = {
@@ -144,7 +158,22 @@ export class BulletinsService {
       template: input.template,
       language: input.language,
     };
-    await this.bulletins.save(id, fields, sections);
+    try {
+      // Guarded on the version read above, so a publish that lands between the
+      // permission check and this write cannot be overwritten by a drafter.
+      await this.bulletins.save(
+        {
+          id,
+          wardId,
+          rootId: existing.translationOfId ?? existing.id,
+          expectedUpdatedAt: existing.updatedAt,
+        },
+        fields,
+        sections,
+      );
+    } catch (error) {
+      throw this.mapConflict(error);
+    }
     await this.record(wardId, context, 'bulletin.updated', id, {
       sectionCount: sections.length,
       live: existing.status === 'Published',
@@ -197,35 +226,35 @@ export class BulletinsService {
     const source = await this.bulletins.findForWard(wardId, id);
     if (!source) throw new NotFoundException('Bulletin not found.');
     const rootId = source.translationOfId ?? source.id;
-    const editions = await this.bulletins.listEditions(rootId);
-    if (editions.some((edition) => edition.language === language)) {
-      throw new ConflictException('This bulletin already has an edition in that language.');
+    let copy: Bulletin;
+    try {
+      copy = await this.bulletins.createEdition(
+        wardId,
+        rootId,
+        {
+          title: source.title,
+          kicker: source.kicker,
+          issueDate: source.issueDate,
+          template: source.template,
+          language,
+          createdByUserId: context.actorUserId,
+        },
+        source.sections.map((section) => ({
+          organizationId: section.organizationId,
+          column: section.column,
+          sortOrder: section.sortOrder,
+          heading: section.heading,
+          subheading: section.subheading,
+          bodyHtml: section.bodyHtml,
+          imageUrl: section.imageUrl,
+          imageAltText: section.imageAltText,
+          linkUrl: section.linkUrl,
+          linkLabel: section.linkLabel,
+        })),
+      );
+    } catch (error) {
+      throw this.mapConflict(error);
     }
-
-    const copy = await this.bulletins.create(
-      wardId,
-      {
-        title: source.title,
-        kicker: source.kicker,
-        issueDate: source.issueDate,
-        template: source.template,
-        language,
-        translationOfId: rootId,
-        createdByUserId: context.actorUserId,
-      },
-      source.sections.map((section) => ({
-        organizationId: section.organizationId,
-        column: section.column,
-        sortOrder: section.sortOrder,
-        heading: section.heading,
-        subheading: section.subheading,
-        bodyHtml: section.bodyHtml,
-        imageUrl: section.imageUrl,
-        imageAltText: section.imageAltText,
-        linkUrl: section.linkUrl,
-        linkLabel: section.linkLabel,
-      })),
-    );
     await this.record(wardId, context, 'bulletin.edition_created', copy.id, {
       fromBulletinId: id,
       language,
@@ -264,7 +293,10 @@ export class BulletinsService {
   async getPublic(wardId: string, id: string): Promise<PublicBulletinDto> {
     const bulletin = await this.bulletins.findPublished(wardId, id);
     if (!bulletin || !bulletin.publishedAt) throw new NotFoundException('Bulletin not found.');
-    const editions = await this.bulletins.listEditions(bulletin.translationOfId ?? bulletin.id);
+    const editions = await this.bulletins.listEditions(
+      wardId,
+      bulletin.translationOfId ?? bulletin.id,
+    );
     return {
       id: bulletin.id,
       unitName: bulletin.ward.name,
@@ -352,7 +384,10 @@ export class BulletinsService {
   }
 
   private async toDetail(bulletin: BulletinWithSections): Promise<BulletinDetailDto> {
-    const editions = await this.bulletins.listEditions(bulletin.translationOfId ?? bulletin.id);
+    const editions = await this.bulletins.listEditions(
+      bulletin.wardId,
+      bulletin.translationOfId ?? bulletin.id,
+    );
     return {
       ...this.toSummary(bulletin, bulletin.sections.length),
       kicker: bulletin.kicker,
@@ -365,6 +400,13 @@ export class BulletinsService {
       unitName: bulletin.ward.name,
       unitSlug: bulletin.ward.publicSlug,
     };
+  }
+
+  private mapConflict(error: unknown): unknown {
+    if (error instanceof BulletinVersionConflictError) return new ConflictException(STALE_MESSAGE);
+    if (error instanceof BulletinLanguageConflictError)
+      return new ConflictException(LANGUAGE_TAKEN_MESSAGE);
+    return error;
   }
 
   private async record(

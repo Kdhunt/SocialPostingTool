@@ -10,7 +10,13 @@ export const bulletinStatusSchema = z.enum(['Draft', 'Published']);
 export type BulletinStatusDto = z.infer<typeof bulletinStatusSchema>;
 
 /** Calendar date, YYYY-MM-DD. */
-export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-15.');
+export const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-15.')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, 'That date does not exist.');
 
 /** BCP 47 language tag such as "en", "es" or "pt-BR". */
 export const bulletinLanguageSchema = z
@@ -108,6 +114,8 @@ export const saveBulletinRequestSchema = z.object({
   template: bulletinTemplateSchema,
   language: bulletinLanguageSchema,
   sections: z.array(bulletinSectionInputSchema).max(40, 'A bulletin can have at most 40 sections.'),
+  /** `updatedAt` of the version being edited; a save over a newer version is refused. */
+  expectedUpdatedAt: z.string().datetime().optional(),
 });
 export type SaveBulletinRequest = z.input<typeof saveBulletinRequestSchema>;
 

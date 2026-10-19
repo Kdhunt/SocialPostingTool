@@ -27,4 +27,16 @@ describe('sanitizeBulletinHtml', () => {
       'href="mailto:clerk@example.org"',
     );
   });
+
+  it('drops relative and protocol-relative links', () => {
+    expect(sanitizeBulletinHtml('<a href="/login?ward=x">x</a>')).toBe(
+      '<a rel="noopener noreferrer" target="_blank">x</a>',
+    );
+    expect(sanitizeBulletinHtml('<a href="//evil.example">x</a>')).toBe(
+      '<a rel="noopener noreferrer" target="_blank">x</a>',
+    );
+    expect(sanitizeBulletinHtml('<a href=" tel:+15555550100 ">Call</a>')).toContain(
+      'href="tel:+15555550100"',
+    );
+  });
 });

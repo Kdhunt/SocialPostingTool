@@ -36,8 +36,9 @@ Section bodies are stored as HTML limited to the allowlist in
 `bulletin-content.ts` (paragraphs, h3/h4, bold/italic/underline/strike,
 lists, blockquote, links, tables). The API runs every body through
 `sanitize-html` on save; scripts, styles, event handlers, iframes and images
-are removed, links are limited to http, https, mailto and tel and always open
-in a new tab with `rel="noopener noreferrer"`. Image and "more information"
+are removed, links must be absolute http, https, mailto or tel links (relative
+and protocol-relative ones are dropped) and always open in a new tab with
+`rel="noopener noreferrer"`. Image and "more information"
 links must be absolute http(s) URLs. The public page renders only stored,
 sanitized HTML.
 
@@ -54,6 +55,34 @@ sanitized HTML.
 Everything is scoped to the signed-in user's unit; another unit's bulletin
 reads as "not found". The public endpoints look a unit up by public slug
 only (never the sign-in code) and return published bulletins only.
+
+## Concurrency
+
+- Saves carry the `updatedAt` the editor loaded (`expectedUpdatedAt`). A save
+  over a newer version, including one published in between, returns 409
+  ("changed or published since you opened it"). The repository also guards
+  the write on the version it read, so a drafter can never overwrite a
+  bulletin that became live after the permission check.
+- One edition per language per bulletin, enforced in a transaction with a
+  per-edition-set advisory lock (copying and changing an edition's language).
+- Organization names are unique per unit (case-insensitive), enforced the
+  same way. Both use advisory locks rather than partial indexes, which Prisma
+  Migrate cannot represent.
+- The editor locks its fields while a request runs, so text typed meanwhile
+  is never replaced by the response.
+
+## Public reads
+
+- Successful public reads are sent with
+  `Cache-Control: public, max-age=60, s-maxage=60, stale-while-revalidate=300`,
+  so after unpublishing, a bulletin can stay visible for up to a minute (a
+  few more minutes from stale CDN copies). Not-found responses are never
+  cacheable, so a newly published bulletin appears immediately.
+- Bulletin reads have their own per-address budget (2,000 per 15 minutes),
+  separate from the campaign board's 120, because a whole congregation may
+  scan the QR code from one chapel network or carrier address.
+- Request bodies up to 2 MB are accepted (a full 40-section bulletin can
+  exceed Express's 100 KB default).
 
 ## Audit
 
@@ -106,6 +135,9 @@ Rollback: drop `bulletin_section`, `bulletin`, `unit_organization` (in that
 order) and the three enums. No existing table is altered.
 
 ## Known limits / follow-ups
+
+- Printing relies on CSS `:has()` (Chrome 105+, Safari 15.4+, Firefox 121+).
+  Older browsers print the whole page instead of only the bulletin.
 
 - Images are added by link; there is no upload yet (needs file storage such
   as Vercel Blob). AI-generated image links from OpenAI expire, so they must
