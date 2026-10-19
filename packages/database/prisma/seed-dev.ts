@@ -20,6 +20,9 @@ const DEV_WARD_CODE = 'WARD-DEV-CODE';
 const DEV_DISPLAY_NAME = 'Dev Ward Admin';
 const PLATFORM_ADMIN_ROLE = 'PlatformAdmin';
 
+/** Must match DEFAULT_UNIT_ORGANIZATIONS in packages/domain/src/bulletins/organizations.ts. */
+const DEFAULT_UNIT_ORGANIZATIONS = ['General', 'Relief Society', 'Priesthood', 'Young Women', 'Youth', 'Primary'];
+
 function withPepper(wardCode: string): string {
   const pepper = process.env.WARD_CODE_PEPPER;
   if (!pepper || pepper.length < 16) {
@@ -46,6 +49,9 @@ async function main(): Promise<void> {
         publicSlug: 'fictionaldevward',
         timeZone: process.env.WARD_TIME_ZONE ?? 'America/Denver',
       },
+    });
+    await prisma.unitOrganization.createMany({
+      data: DEFAULT_UNIT_ORGANIZATIONS.map((name, sortOrder) => ({ wardId: ward!.id, name, sortOrder })),
     });
   }
 

@@ -37,6 +37,7 @@ import { AccountEmailService } from '../messaging/account-email.service.js';
 import { WardAdminService } from './ward-admin.service.js';
 import { UnitCodeLookupService } from '../auth/unit-code-lookup.service.js';
 import { UnitScopeService, type UnitRef } from './unit-scope.service.js';
+import { UnitOrganizationRepository } from '../bulletins/repositories/unit-organization.repository.js';
 
 /**
  * Who is creating or moving a unit. Platform operators may place units
@@ -248,6 +249,8 @@ export class WardProvisioningService {
       await tx.userRole.create({
         data: { userId: adminUser.id, roleId: wardAdminRole.id },
       });
+
+      await UnitOrganizationRepository.createDefaults(tx, ward.id);
 
       await tx.wardCodeVersion.create({
         data: {

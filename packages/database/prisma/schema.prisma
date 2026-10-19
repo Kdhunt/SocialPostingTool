@@ -69,6 +69,8 @@ model Ward {
   providerCredentials       ProviderCredential[]
   auditEvents               AuditEvent[]
   outboundMessages          OutboundMessage[]
+  organizations             UnitOrganization[]
+  bulletins                 Bulletin[]
 
   @@index([parentId])
   @@map("ward")
@@ -172,6 +174,7 @@ model ApplicationUser {
   recordedConsents        ContactConsent[]
   addedAudienceMembers    AudienceGroupMember[]
   createdCampaigns        Campaign[]            @relation("CampaignCreatedBy")
+  createdBulletins        Bulletin[]            @relation("BulletinCreatedBy")
   createdCampaignVersions CampaignVersion[]     @relation("CampaignVersionCreatedBy")
   campaignApprovals       CampaignApproval[]    @relation("CampaignApprovalApprover")
   campaignSchedules       CampaignSchedule[]    @relation("CampaignScheduleCreatedBy")
@@ -1008,4 +1011,105 @@ enum OutboundMessageStatus {
   Sending
   Sent
   Failed
+}
+
+// ---------------------------------------------------------------------------
+// Bulletins (newsletters published at /{publicSlug}/{bulletinId})
+// ---------------------------------------------------------------------------
+
+/// A named organization inside a unit (Relief Society, Primary, Youth...)
+/// that bulletin sections are filed under. Every unit starts with the
+/// defaults in packages/domain/src/bulletins/organizations.ts and may
+/// rename, add or archive its own.
+model UnitOrganization {
+  id         String    @id @default(uuid())
+  wardId     String    @map("ward_id")
+  name       String
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  ward     Ward              @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  sections BulletinSection[]
+
+  @@index([wardId, archivedAt])
+  @@map("unit_organization")
+}
+
+/// A newsletter-style communication: a header plus ordered sections laid
+/// out by a template. Drafts are private to the unit; published bulletins
+/// are readable anonymously at /{publicSlug}/{id} and printable to PDF.
+model Bulletin {
+  id              String           @id @default(uuid())
+  wardId          String           @map("ward_id")
+  title           String
+  /// Small line printed above the title (for example the church name).
+  kicker          String?
+  issueDate       DateTime         @map("issue_date") @db.Date
+  /// BCP 47 language tag of this edition, e.g. "en" or "es".
+  language        String           @default("en")
+  template        BulletinTemplate @default(Newsletter)
+  status          BulletinStatus   @default(Draft)
+  publishedAt     DateTime?        @map("published_at")
+  /// Set on a translated edition; points at the original bulletin.
+  translationOfId String?          @map("translation_of_id")
+  createdByUserId String?          @map("created_by_user_id")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  archivedAt      DateTime?        @map("archived_at")
+
+  ward          Ward              @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  translationOf Bulletin?         @relation("BulletinTranslations", fields: [translationOfId], references: [id], onDelete: SetNull)
+  translations  Bulletin[]        @relation("BulletinTranslations")
+  createdBy     ApplicationUser?  @relation("BulletinCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  sections      BulletinSection[]
+
+  @@index([wardId, status, archivedAt])
+  @@index([translationOfId])
+  @@map("bulletin")
+}
+
+/// One block of a bulletin, filed under an organization. `bodyHtml` holds
+/// sanitized rich text (allowlist in packages/domain/src/bulletins).
+model BulletinSection {
+  id             String         @id @default(uuid())
+  bulletinId     String         @map("bulletin_id")
+  organizationId String?        @map("organization_id")
+  column         BulletinColumn @default(Main)
+  sortOrder      Int            @map("sort_order")
+  heading        String
+  subheading     String?
+  bodyHtml       String         @default("") @map("body_html")
+  imageUrl       String?        @map("image_url")
+  imageAltText   String?        @map("image_alt_text")
+  /// Optional "more info" link; printed with a QR code.
+  linkUrl        String?        @map("link_url")
+  linkLabel      String?        @map("link_label")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  bulletin     Bulletin          @relation(fields: [bulletinId], references: [id], onDelete: Cascade)
+  organization UnitOrganization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([bulletinId, sortOrder])
+  @@index([organizationId])
+  @@map("bulletin_section")
+}
+
+enum BulletinStatus {
+  Draft
+  Published
+}
+
+/// Layouts a bulletin can be rendered with. Newsletter = header plus a main
+/// and a side column; SingleColumn = one column, suited to email and phones.
+enum BulletinTemplate {
+  Newsletter
+  SingleColumn
+}
+
+enum BulletinColumn {
+  Main
+  Side
 }

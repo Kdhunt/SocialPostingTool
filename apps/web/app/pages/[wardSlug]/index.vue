@@ -2,7 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from '#imports';
 import { ApiRequestError } from '@ward-comms/api-client';
-import type { PublicWardBulletinResponse } from '@ward-comms/validation';
+import type { PublicBulletinListResponse, PublicWardBulletinResponse } from '@ward-comms/validation';
+import { bulletinLanguageName } from '~/utils/bulletin-languages';
 import { useApiClient } from '~/composables/useApiClient';
 
 definePageMeta({ layout: 'bulletin' });
@@ -15,6 +16,11 @@ const loading = ref(true);
 const notFound = ref(false);
 const errorMessage = ref<string | null>(null);
 const bulletin = ref<PublicWardBulletinResponse | null>(null);
+const newsletters = ref<PublicBulletinListResponse['bulletins']>([]);
+
+function formatIssueDate(isoDate: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${isoDate}T00:00:00Z`));
+}
 
 function formatPublishedAt(iso: string, timeZone: string): string {
   try {
@@ -39,7 +45,12 @@ async function load(): Promise<void> {
     return;
   }
   try {
-    bulletin.value = await client.getPublicWardBulletin(slug.value);
+    const [board, list] = await Promise.all([
+      client.getPublicWardBulletin(slug.value),
+      client.listPublicBulletins(slug.value).catch(() => ({ bulletins: [] })),
+    ]);
+    bulletin.value = board;
+    newsletters.value = list.bulletins;
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {
       notFound.value = true;
@@ -82,6 +93,18 @@ watch(slug, () => {
         description="Published campaigns, newest first. This page does not include drafts or member contact information."
       />
 
+      <section v-if="newsletters.length > 0" class="newsletters" aria-labelledby="newsletters-heading">
+        <h2 id="newsletters-heading" class="newsletters__heading">Bulletins</h2>
+        <ul class="newsletters__list">
+          <li v-for="item in newsletters" :key="item.id">
+            <NuxtLink :to="`/${slug}/${item.id}`">{{ item.title }}</NuxtLink>
+            <span class="newsletters__meta">
+              {{ formatIssueDate(item.issueDate) }}<template v-if="item.language !== 'en'">, {{ bulletinLanguageName(item.language) }}</template>
+            </span>
+          </li>
+        </ul>
+      </section>
+
       <UiEmptyState
         v-if="bulletin.campaigns.length === 0"
         title="No published campaigns yet"
@@ -108,6 +131,42 @@ watch(slug, () => {
 </template>
 
 <style scoped>
+.newsletters {
+  margin-bottom: var(--space-6);
+}
+
+.newsletters__heading {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: var(--space-3);
+}
+
+.newsletters__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.newsletters__list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.newsletters__list li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.newsletters__meta {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
 .bulletin-list {
   list-style: none;
   margin: 0;

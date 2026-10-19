@@ -14,15 +14,21 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@tiptap/extension-table": "3.31.4",
+    "@tiptap/pm": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
+    "@tiptap/vue-3": "3.31.4",
     "@ward-comms/api-client": "workspace:*",
     "@ward-comms/ui": "workspace:*",
     "@ward-comms/validation": "workspace:*",
     "nuxt": "4.0.3",
+    "qrcode": "1.5.4",
     "vue": "^3.4.38",
     "vue-router": "^4.4.3"
   },
   "devDependencies": {
     "@nuxt/test-utils": "^3.14.1",
+    "@types/qrcode": "1.5.6",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
   }

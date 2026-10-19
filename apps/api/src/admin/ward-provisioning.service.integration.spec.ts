@@ -323,6 +323,9 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
 
       const code = await prisma.client.wardCodeVersion.findFirstOrThrow({ where: { wardId: wardA, retiredAt: null } });
       expect(code.lookupKey).toMatch(/^[0-9a-f]{64}$/);
+
+      const orgs = await prisma.client.unitOrganization.findMany({ where: { wardId: stakeA }, orderBy: { sortOrder: 'asc' } });
+      expect(orgs.map((org) => org.name)).toEqual(['General', 'Relief Society', 'Priesthood', 'Young Women', 'Youth', 'Primary']);
     });
 
     it('rejects a parent that is not exactly one level up', async () => {
@@ -443,6 +446,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
       await prisma.client.userRole.deleteMany({ where: { user: { wardId } } });
       await prisma.client.applicationUser.deleteMany({ where: { wardId } });
       await prisma.client.wardCodeVersion.deleteMany({ where: { wardId } });
+      await prisma.client.unitOrganization.deleteMany({ where: { wardId } });
       await prisma.client.ward.deleteMany({ where: { id: wardId } });
     }
     createdWardIds.length = 0;

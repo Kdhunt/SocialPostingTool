@@ -84,6 +84,7 @@ export function useAppNavigation(): {
         label: 'Messaging',
         items: [
           { label: 'Campaigns', to: '/campaigns', matchPrefix: '/campaigns' },
+          { label: 'Bulletins', to: '/bulletins', matchPrefix: '/bulletins' },
           {
             label: 'Audiences',
             to: '/audiences',
@@ -120,6 +121,14 @@ export function useAppNavigation(): {
         to: '/admin/ward-code',
         permission: 'ward.manage',
         matchPrefix: '/admin/ward-code',
+      });
+    }
+    if (hasPermission('ward.manage')) {
+      items.push({
+        label: 'Organizations',
+        to: '/admin/organizations',
+        permission: 'ward.manage',
+        matchPrefix: '/admin/organizations',
       });
     }
     if (hasPermission('campaigns.send')) {

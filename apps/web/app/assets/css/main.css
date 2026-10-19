@@ -90,3 +90,57 @@ textarea {
   white-space: nowrap;
   border: 0;
 }
+
+/* Text for screen readers only. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Printing a page that contains `.print-root` prints only that element, so
+ * "Save as PDF" in the browser gives just the bulletin, without app chrome.
+ */
+@page {
+  size: letter;
+  margin: 0.5in;
+}
+
+@media print {
+  /* Remove everything that is neither the print root, inside it, nor one of its ancestors... */
+  body:has(.print-root) *:not(.print-root, .print-root *, :has(.print-root)) {
+    display: none;
+  }
+
+  /* ...and flatten the ancestors so only the bulletin's own layout remains. */
+  body:has(.print-root) :has(.print-root),
+  body:has(.print-root) .print-root {
+    display: block;
+    position: static;
+    width: auto;
+    max-width: none;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: #ffffff;
+    overflow: visible;
+    zoom: 1;
+  }
+
+  html:has(.print-root),
+  body:has(.print-root) {
+    min-height: 0;
+    background: #ffffff;
+  }
+}
