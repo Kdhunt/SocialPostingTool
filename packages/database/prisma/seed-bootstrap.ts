@@ -28,6 +28,9 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/** Must match DEFAULT_UNIT_ORGANIZATIONS in packages/domain/src/bulletins/organizations.ts. */
+const DEFAULT_UNIT_ORGANIZATIONS = ['General', 'Relief Society', 'Priesthood', 'Young Women', 'Youth', 'Primary'];
+
 function withPepper(wardCode: string): string {
   const pepper = process.env.WARD_CODE_PEPPER;
   if (!pepper || pepper.length < 16) {
@@ -104,6 +107,9 @@ async function main(): Promise<void> {
     if (!ward) {
       ward = await tx.ward.create({
         data: { name: wardName, timeZone, publicSlug: publicSlugFromName(wardName) },
+      });
+      await tx.unitOrganization.createMany({
+        data: DEFAULT_UNIT_ORGANIZATIONS.map((name, sortOrder) => ({ wardId: ward!.id, name, sortOrder })),
       });
     }
 

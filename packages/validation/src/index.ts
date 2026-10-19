@@ -10,3 +10,4 @@ export * from './provider.schema.js';
 export * from './facebook-page.schema.js';
 export * from './public-bulletin.schema.js';
 export * from './admin.schema.js';
+export * from './bulletin.schema.js';

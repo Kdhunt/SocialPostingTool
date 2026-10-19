@@ -137,6 +137,13 @@ platform role is stripped from the fictional `admin` user. Re-run
 `pnpm --filter @ward-comms/database db:seed` so `WardAdmin` no longer receives
 `platform.wards.manage`.
 
+### Bulletins
+
+Units publish newsletter-style bulletins with a section per organization,
+rich text with tables, a two-column or single-column layout, QR codes, other
+language editions, and a public page at `/{publicSlug}/{bulletinId}` that
+prints or saves as a PDF. See `docs/bulletins.md`.
+
 ### Authentication overview
 
 - `POST /auth/login` → `{ username, password, unitCode?: string, clientType?: 'web'|'mobile' }` (the unit code alone picks the ward, stake, region or district; omit it for the sole PlatformAdmin)

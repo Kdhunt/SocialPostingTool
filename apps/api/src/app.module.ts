@@ -11,6 +11,7 @@ import { DeliveryModule } from './delivery/delivery.module.js';
 import { ProvidersModule } from './providers/providers.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { MessagingModule } from './messaging/messaging.module.js';
+import { BulletinsModule } from './bulletins/bulletins.module.js';
 import { PublicModule } from './public/public.module.js';
 
 @Module({
@@ -27,6 +28,7 @@ import { PublicModule } from './public/public.module.js';
     DeliveryModule,
     ProvidersModule,
     AdminModule,
+    BulletinsModule,
     PublicModule,
   ],
 })

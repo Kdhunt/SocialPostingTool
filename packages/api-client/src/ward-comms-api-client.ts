@@ -5,6 +5,26 @@ import {
   type UpdateWardPublicSlugRequest,
 } from '@ward-comms/validation';
 import {
+  bulletinDetailSchema,
+  bulletinListResponseSchema,
+  copyBulletinAsLanguageRequestSchema,
+  createBulletinRequestSchema,
+  publicBulletinListResponseSchema,
+  publicBulletinSchema,
+  saveBulletinRequestSchema,
+  saveUnitOrganizationRequestSchema,
+  unitOrganizationListResponseSchema,
+  unitOrganizationSchema,
+  type BulletinDetailDto,
+  type BulletinListResponse,
+  type CreateBulletinRequest,
+  type PublicBulletinDto,
+  type PublicBulletinListResponse,
+  type SaveBulletinRequest,
+  type UnitOrganizationDto,
+  type UnitOrganizationListResponse,
+} from '@ward-comms/validation';
+import {
   loginResponseSchema,
   mobileTokenPairSchema,
   sessionResponseSchema,
@@ -981,5 +1001,92 @@ export class WardCommsApiClient {
   async cancelCampaign(id: string): Promise<CampaignDetailDto> {
     const response = await this.request(`/campaigns/${id}/cancel`, { method: 'POST' });
     return campaignDetailSchema.parse(await response.json());
+  }
+
+  // --- Bulletins ---------------------------------------------------------------
+
+  async listBulletins(): Promise<BulletinListResponse> {
+    const response = await this.request('/bulletins');
+    return bulletinListResponseSchema.parse(await response.json());
+  }
+
+  async getBulletin(id: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}`);
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async createBulletin(input: CreateBulletinRequest = {}): Promise<BulletinDetailDto> {
+    const response = await this.request('/bulletins', {
+      method: 'POST',
+      body: JSON.stringify(createBulletinRequestSchema.parse(input)),
+    });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async saveBulletin(id: string, input: SaveBulletinRequest): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(saveBulletinRequestSchema.parse(input)),
+    });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async publishBulletin(id: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}/publish`, { method: 'POST' });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async unpublishBulletin(id: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}/unpublish`, { method: 'POST' });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async copyBulletinAsLanguage(id: string, language: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}/editions`, {
+      method: 'POST',
+      body: JSON.stringify(copyBulletinAsLanguageRequestSchema.parse({ language })),
+    });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async deleteBulletin(id: string): Promise<void> {
+    await this.request(`/bulletins/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async listUnitOrganizations(): Promise<UnitOrganizationListResponse> {
+    const response = await this.request('/organizations');
+    return unitOrganizationListResponseSchema.parse(await response.json());
+  }
+
+  async createUnitOrganization(name: string): Promise<UnitOrganizationDto> {
+    const response = await this.request('/organizations', {
+      method: 'POST',
+      body: JSON.stringify(saveUnitOrganizationRequestSchema.parse({ name })),
+    });
+    return unitOrganizationSchema.parse(await response.json());
+  }
+
+  async renameUnitOrganization(id: string, name: string): Promise<UnitOrganizationDto> {
+    const response = await this.request(`/organizations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(saveUnitOrganizationRequestSchema.parse({ name })),
+    });
+    return unitOrganizationSchema.parse(await response.json());
+  }
+
+  async archiveUnitOrganization(id: string): Promise<void> {
+    await this.request(`/organizations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async listPublicBulletins(slug: string): Promise<PublicBulletinListResponse> {
+    const response = await this.request(`/public/wards/${encodeURIComponent(slug)}/bulletins`);
+    return publicBulletinListResponseSchema.parse(await response.json());
+  }
+
+  async getPublicBulletin(slug: string, id: string): Promise<PublicBulletinDto> {
+    const response = await this.request(
+      `/public/wards/${encodeURIComponent(slug)}/bulletins/${encodeURIComponent(id)}`,
+    );
+    return publicBulletinSchema.parse(await response.json());
   }
 }
