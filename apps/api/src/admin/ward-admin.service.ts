@@ -3,6 +3,7 @@ import type { RotateWardCodeRequest, WardCodeInfoDto } from '@ward-comms/validat
 import { AuditService } from '../audit/audit.service.js';
 import { WardCodeHasherService } from '../auth/ward-code-hasher.service.js';
 import { WardCodeRepository } from '../auth/repositories/ward-code.repository.js';
+import { UnitCodeLookupService } from '../auth/unit-code-lookup.service.js';
 import type { AdminActionContext } from './users-admin.service.js';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class WardAdminService {
   constructor(
     @Inject(WardCodeRepository) private readonly wardCodes: WardCodeRepository,
     @Inject(WardCodeHasherService) private readonly wardCodeHasher: WardCodeHasherService,
+    @Inject(UnitCodeLookupService) private readonly unitCodes: UnitCodeLookupService,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
@@ -28,8 +30,10 @@ export class WardAdminService {
     input: RotateWardCodeRequest,
     context: AdminActionContext,
   ): Promise<WardCodeInfoDto> {
-    const codeHash = await this.wardCodeHasher.hash(input.newWardCode);
-    const version = await this.wardCodes.rotate(wardId, codeHash);
+    const code = input.newWardCode.trim();
+    await this.unitCodes.assertAvailable(code, wardId);
+    const codeHash = await this.wardCodeHasher.hash(code);
+    const version = await this.wardCodes.rotate(wardId, codeHash, this.wardCodeHasher.lookupKey(code));
 
     await this.audit.record({
       wardId,

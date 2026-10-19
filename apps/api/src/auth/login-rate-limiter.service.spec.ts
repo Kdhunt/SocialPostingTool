@@ -46,4 +46,13 @@ describe('LoginRateLimiterService', () => {
     const later = new Date(start.getTime() + 20 * 60_000);
     expect(limiter.consume('ip:user', later)).toBe(true);
   });
+
+  it('gives a bare address a larger budget than an address+username pair', () => {
+    const limiter = new LoginRateLimiterService();
+    for (let i = 0; i < 10; i += 1) expect(limiter.consume('203.0.113.5:unit:alice')).toBe(true);
+    expect(limiter.consume('203.0.113.5:unit:alice')).toBe(false);
+
+    for (let i = 0; i < 60; i += 1) expect(limiter.consumeAddress('203.0.113.5:login')).toBe(true);
+    expect(limiter.consumeAddress('203.0.113.5:login')).toBe(false);
+  });
 });

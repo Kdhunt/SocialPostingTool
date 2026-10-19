@@ -4,6 +4,7 @@ import {
   createWardRequestSchema,
   resetPasswordRequestSchema,
   rotateWardCodeRequestSchema,
+  setUnitParentRequestSchema,
   updateWardPublicSlugRequestSchema,
   type CreateWardResponse,
   type WardCodeInfoDto,
@@ -58,6 +59,18 @@ export class PlatformWardsController {
     this.assertRateLimit(`${req.ip}:platform-ward-slug`, 'Too many public path updates. Please wait and try again.');
     const dto = parseBody(updateWardPublicSlugRequestSchema, body);
     return this.provisioning.updatePublicSlug(wardId, dto, buildContext(user, req));
+  }
+
+  @Post(':wardId/parent')
+  async setParent(
+    @Param('wardId') wardId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<WardSummaryDto> {
+    this.assertRateLimit(`${req.ip}:platform-unit-parent`, 'Too many hierarchy changes. Please wait and try again.');
+    const dto = parseBody(setUnitParentRequestSchema, body);
+    return this.provisioning.setParent(wardId, dto, { kind: 'platform' }, buildContext(user, req));
   }
 
   @Post(':wardId/code/rotate')

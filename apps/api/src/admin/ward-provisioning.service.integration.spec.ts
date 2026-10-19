@@ -8,6 +8,8 @@ import { WardCodeHasherService } from '../auth/ward-code-hasher.service.js';
 import { UserRepository } from '../auth/repositories/user.repository.js';
 import { SessionRepository } from '../auth/repositories/session.repository.js';
 import { WardCodeRepository } from '../auth/repositories/ward-code.repository.js';
+import { UnitCodeLookupService } from '../auth/unit-code-lookup.service.js';
+import { UnitScopeService } from './unit-scope.service.js';
 import { WardProvisioningService } from './ward-provisioning.service.js';
 import { WardAdminService } from './ward-admin.service.js';
 import { UsersAdminService } from './users-admin.service.js';
@@ -70,7 +72,9 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
   const users = new UserRepository(prisma);
   const sessions = new SessionRepository(prisma);
   const wardCodes = new WardCodeRepository(prisma);
-  const wardAdmin = new WardAdminService(wardCodes, wardCodeHasher, audit);
+  const unitCodes = new UnitCodeLookupService(wardCodes, wardCodeHasher);
+  const scope = new UnitScopeService(prisma);
+  const wardAdmin = new WardAdminService(wardCodes, wardCodeHasher, unitCodes, audit);
   const usersAdmin = new UsersAdminService(users, roles, passwordHasher, sessions, audit, noopAccountEmail);
   const provisioning = new WardProvisioningService(
     prisma,
@@ -83,6 +87,8 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
     usersAdmin,
     audit,
     noopAccountEmail,
+    unitCodes,
+    scope,
   );
 
   let actorUserId: string;
@@ -273,6 +279,153 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
     ).rejects.toThrow(/valid email/i);
   });
 
+  describe('unit hierarchy', () => {
+    const ctx = (): { actorUserId: string; ipAddress: null; userAgent: null } => ({
+      actorUserId,
+      ipAddress: null,
+      userAgent: null,
+    });
+    const unitInput = (
+      label: string,
+      extra: { level?: 'Ward' | 'Stake' | 'Region' | 'District'; parentId?: string } = {},
+    ): Parameters<typeof provisioning.create>[0] => ({
+      name: `Fictional ${label} ${randomUUID()}`,
+      adminUsername: `admin.${label.toLowerCase().replace(/\s+/g, '.')}`,
+      adminEmail: `${randomUUID().slice(0, 8)}@example.com`,
+      adminDisplayName: `${label} Admin`,
+      adminPassword: 'Fictional-Bootstrap-42',
+      initialWardCode: `fictional-${randomUUID()}`,
+      ...extra,
+    });
+
+    async function makeTree(): Promise<{ region: string; stakeA: string; stakeB: string; wardA: string }> {
+      const region = (await provisioning.create(unitInput('Region', { level: 'Region' }), ctx())).ward.id;
+      createdWardIds.push(region);
+      const stakeA = (await provisioning.create(unitInput('Stake A', { level: 'Stake', parentId: region }), ctx())).ward.id;
+      createdWardIds.push(stakeA);
+      const stakeB = (await provisioning.create(unitInput('Stake B', { level: 'Stake', parentId: region }), ctx())).ward.id;
+      createdWardIds.push(stakeB);
+      const wardA = (
+        await provisioning.create(unitInput('Ward A', { parentId: stakeA }), ctx(), { kind: 'unit', unitId: stakeA })
+      ).ward.id;
+      createdWardIds.push(wardA);
+      return { region, stakeA, stakeB, wardA };
+    }
+
+    it('creates each level under the level directly above it', async () => {
+      const { region, stakeA, wardA } = await makeTree();
+      const ward = await prisma.client.ward.findUniqueOrThrow({ where: { id: wardA } });
+      const stake = await prisma.client.ward.findUniqueOrThrow({ where: { id: stakeA } });
+      expect(ward.level).toBe('Ward');
+      expect(ward.parentId).toBe(stakeA);
+      expect(stake.level).toBe('Stake');
+      expect(stake.parentId).toBe(region);
+
+      const code = await prisma.client.wardCodeVersion.findFirstOrThrow({ where: { wardId: wardA, retiredAt: null } });
+      expect(code.lookupKey).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('rejects a parent that is not exactly one level up', async () => {
+      const { region } = await makeTree();
+      await expect(provisioning.create(unitInput('Skipped Ward', { parentId: region }), ctx())).rejects.toThrow(
+        /ward must sit directly under a stake/i,
+      );
+    });
+
+    it('lets a stake admin create wards only beneath their own stake', async () => {
+      const { stakeA, stakeB } = await makeTree();
+      await expect(
+        provisioning.create(unitInput('Foreign Ward', { parentId: stakeB }), ctx(), { kind: 'unit', unitId: stakeA }),
+      ).rejects.toThrow(/not available/i);
+      await expect(
+        provisioning.create(unitInput('Rootless Stake', { level: 'Stake' }), ctx(), { kind: 'unit', unitId: stakeA }),
+      ).rejects.toThrow(/belongs under/i);
+    });
+
+    it('lets a region admin see and move units beneath it, but not a stake admin across stakes', async () => {
+      const { region, stakeA, stakeB, wardA } = await makeTree();
+
+      const tree = await provisioning.listBeneath(region);
+      expect(tree.unit.id).toBe(region);
+      expect(tree.units.map((unit) => unit.id).sort()).toEqual([stakeA, stakeB, wardA].sort());
+      expect(tree.units.find((unit) => unit.id === wardA)?.admins).toHaveLength(1);
+
+      const stakeTree = await provisioning.listBeneath(stakeA);
+      expect(stakeTree.units.map((unit) => unit.id)).toEqual([wardA]);
+
+      await expect(
+        provisioning.setParent(wardA, { parentId: stakeB }, { kind: 'unit', unitId: stakeA }, ctx()),
+      ).rejects.toThrow(/not available/i);
+
+      const moved = await provisioning.setParent(wardA, { parentId: stakeB }, { kind: 'unit', unitId: region }, ctx());
+      expect(moved.parentId).toBe(stakeB);
+      expect((await provisioning.listBeneath(stakeA)).units).toHaveLength(0);
+    });
+
+    it('refuses to place a unit beneath itself', async () => {
+      const { region, stakeA } = await makeTree();
+      const district = (await provisioning.create(unitInput('District', { level: 'District' }), ctx())).ward.id;
+      createdWardIds.push(district);
+      await provisioning.setParent(region, { parentId: district }, { kind: 'platform' }, ctx());
+      await expect(
+        provisioning.setParent(stakeA, { parentId: stakeA }, { kind: 'platform' }, ctx()),
+      ).rejects.toThrow(/own parent|directly under/i);
+      await prisma.client.ward.update({ where: { id: region }, data: { parentId: null } });
+    });
+
+    it('lets two stakes each have a ward of the same name, but not one stake twice', async () => {
+      const { stakeA, stakeB } = await makeTree();
+      const name = `Fictional 1st Ward ${randomUUID()}`;
+      const first = await provisioning.create({ ...unitInput('1st Ward', { parentId: stakeA }), name }, ctx());
+      createdWardIds.push(first.ward.id);
+      const twin = await provisioning.create({ ...unitInput('1st Ward', { parentId: stakeB }), name }, ctx());
+      createdWardIds.push(twin.ward.id);
+      expect(twin.ward.name).toBe(name);
+      await expect(
+        provisioning.create({ ...unitInput('1st Ward', { parentId: stakeA }), name }, ctx()),
+      ).rejects.toThrow(/already exists under the same parent/i);
+    });
+
+    it('gives a ward admin no level to create and no way to probe other units as parents', async () => {
+      const { stakeA, stakeB, wardA } = await makeTree();
+      // A ward has nothing beneath it: every level is rejected on level grounds.
+      await expect(
+        provisioning.create(unitInput('Nested', { parentId: wardA }), ctx(), { kind: 'unit', unitId: wardA }),
+      ).rejects.toThrow(/must sit directly under/i);
+      // Parents outside the tree and parents that do not exist read the same.
+      const [outside, missing] = await Promise.all([
+        provisioning
+          .create(unitInput('Outside', { parentId: stakeB }), ctx(), { kind: 'unit', unitId: stakeA })
+          .catch((error: Error) => error.message),
+        provisioning
+          .create(unitInput('Missing', { parentId: randomUUID() }), ctx(), { kind: 'unit', unitId: stakeA })
+          .catch((error: Error) => error.message),
+      ]);
+      expect(outside).toBe(missing);
+    });
+
+    it('records hierarchy actions in both the target unit and the acting unit audit logs', async () => {
+      const { region, stakeA, wardA } = await makeTree();
+      const forWard = await prisma.client.auditEvent.findFirst({ where: { wardId: wardA, action: 'unit.created' } });
+      const forStake = await prisma.client.auditEvent.findFirst({ where: { wardId: stakeA, action: 'unit.created' } });
+      expect(forWard).toBeTruthy();
+      expect(JSON.stringify(forStake?.metadata ?? {})).toContain(wardA);
+      await provisioning.setParent(wardA, { parentId: stakeA }, { kind: 'unit', unitId: region }, ctx()).catch(() => undefined);
+      const moved = await prisma.client.auditEvent.findFirst({ where: { wardId: region, action: 'unit.parent.updated' } });
+      expect(moved === null || JSON.stringify(moved.metadata ?? {}).includes(wardA)).toBe(true);
+    });
+
+    it('rejects a sign-in code already used by another unit', async () => {
+      const { stakeA } = await makeTree();
+      const first = unitInput('Code Owner', { parentId: stakeA });
+      const created = await provisioning.create(first, ctx());
+      createdWardIds.push(created.ward.id);
+      await expect(
+        provisioning.create({ ...unitInput('Code Copier', { parentId: stakeA }), initialWardCode: first.initialWardCode }, ctx()),
+      ).rejects.toThrow(/already in use/i);
+    });
+  });
+
   it('does not grant platform.wards.manage to the WardAdmin role', async () => {
     const wardAdminRole = await prisma.client.role.findUniqueOrThrow({
       where: { name: 'WardAdmin' },
@@ -282,7 +435,7 @@ describe.skipIf(!databaseAvailable)('WardProvisioningService — live PostgreSQL
   });
 
   afterEach(async () => {
-    for (const wardId of createdWardIds) {
+    for (const wardId of [...createdWardIds].reverse()) {
       await prisma.client.auditEvent.deleteMany({ where: { wardId } });
       await prisma.client.outboundMessage.deleteMany({ where: { wardId } });
       await prisma.client.userAccountToken.deleteMany({ where: { user: { wardId } } });

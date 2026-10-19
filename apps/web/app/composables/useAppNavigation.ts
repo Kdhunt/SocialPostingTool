@@ -30,6 +30,11 @@ export function useAppNavigation(): {
     return authState.value.user.permissions;
   }
 
+  /** The signed-in user's unit level; older sessions without it are treated as a ward. */
+  function unitLevel(): 'Ward' | 'Stake' | 'Region' | 'District' {
+    return authState.value.kind === 'authenticated' ? (authState.value.user.unitLevel ?? 'Ward') : 'Ward';
+  }
+
   function hasPermission(key: string): boolean {
     return permissionKeys().includes(key);
   }
@@ -96,7 +101,7 @@ export function useAppNavigation(): {
     const items: NavItem[] = [];
     if (isPlatformOperator.value) {
       items.push({
-        label: 'Wards',
+        label: 'Units',
         to: '/admin/wards',
         permission: 'platform.wards.manage',
         matchPrefix: '/admin/wards',
@@ -106,8 +111,16 @@ export function useAppNavigation(): {
     if (hasPermission('users.manage')) {
       items.push({ label: 'Users', to: '/admin/users', permission: 'users.manage', matchPrefix: '/admin/users' });
     }
+    if (hasPermission('units.manage') && unitLevel() !== 'Ward') {
+      items.push({ label: 'Units', to: '/admin/units', permission: 'units.manage', matchPrefix: '/admin/units' });
+    }
     if (hasPermission('ward.manage')) {
-      items.push({ label: 'Ward code', to: '/admin/ward-code', permission: 'ward.manage', matchPrefix: '/admin/ward-code' });
+      items.push({
+        label: `${unitLevel()} code`,
+        to: '/admin/ward-code',
+        permission: 'ward.manage',
+        matchPrefix: '/admin/ward-code',
+      });
     }
     if (hasPermission('campaigns.send')) {
       items.push({

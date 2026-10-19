@@ -30,12 +30,25 @@ datasource db {
 // Tenancy
 // ---------------------------------------------------------------------------
 
-/// A single ward (congregation) tenant. All directory, audience, and
-/// communication data is scoped to a ward. Wards are archived, never
-/// deleted, because historical audit and delivery data must survive.
+/// Where a unit sits in the church hierarchy, smallest first.
+/// A unit's parent is always exactly one level above it.
+enum UnitLevel {
+  Ward
+  Stake
+  Region
+  District
+}
+
+/// An organizational unit (originally a single ward tenant). Despite the table name, every level of the
+/// hierarchy (ward, stake, region, district) is a row here: each has its own
+/// sign-in code, users, directory, campaigns and public page, and its admins
+/// manage the units beneath it.
 model Ward {
   id         String    @id @default(uuid())
   name       String
+  level      UnitLevel @default(Ward)
+  /// The unit directly above this one, if it has been placed in the hierarchy.
+  parentId   String?   @map("parent_id")
   /// Public URL path (`/{publicSlug}`), distinct from the hashed login ward code.
   publicSlug String    @unique @map("public_slug")
   timeZone   String    @default("America/Denver") @map("time_zone")
@@ -43,6 +56,8 @@ model Ward {
   updatedAt  DateTime  @updatedAt @map("updated_at")
   archivedAt DateTime? @map("archived_at")
 
+  parent                    Ward?                      @relation("UnitHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children                  Ward[]                     @relation("UnitHierarchy")
   users                     ApplicationUser[]
   wardCodeVersions          WardCodeVersion[]
   people                    Person[]
@@ -55,6 +70,7 @@ model Ward {
   auditEvents               AuditEvent[]
   outboundMessages          OutboundMessage[]
 
+  @@index([parentId])
   @@map("ward")
 }
 
@@ -221,6 +237,10 @@ model WardCodeVersion {
   /// Hash of the ward code combined with WARD_CODE_PEPPER. Never store the
   /// raw ward code.
   codeHash    String    @map("code_hash")
+  /// Keyed HMAC-SHA256 of the code (key: WARD_CODE_PEPPER). Sign-in uses it
+  /// to find the unit with one indexed query instead of an Argon2 verify per
+  /// unit. Null on rows created before it existed; backfilled on first use.
+  lookupKey   String?   @map("lookup_key")
   createdAt   DateTime  @default(now()) @map("created_at")
   activatedAt DateTime? @map("activated_at")
   retiredAt   DateTime? @map("retired_at")
@@ -230,6 +250,7 @@ model WardCodeVersion {
 
   @@unique([wardId, version])
   @@index([wardId, retiredAt])
+  @@index([lookupKey, retiredAt])
   @@map("ward_code_version")
 }
 
@@ -237,13 +258,13 @@ model WardCodeVersion {
 /// Only `tokenHash` is stored — the raw token is emailed once and never
 /// persisted (same pattern as UserSession token hashes).
 model UserAccountToken {
-  id         String                 @id @default(uuid())
-  userId     String                 @map("user_id")
+  id         String                  @id @default(uuid())
+  userId     String                  @map("user_id")
   purpose    UserAccountTokenPurpose
-  tokenHash  String                 @unique @map("token_hash")
-  expiresAt  DateTime               @map("expires_at")
-  consumedAt DateTime?              @map("consumed_at")
-  createdAt  DateTime               @default(now()) @map("created_at")
+  tokenHash  String                  @unique @map("token_hash")
+  expiresAt  DateTime                @map("expires_at")
+  consumedAt DateTime?               @map("consumed_at")
+  createdAt  DateTime                @default(now()) @map("created_at")
 
   user ApplicationUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 

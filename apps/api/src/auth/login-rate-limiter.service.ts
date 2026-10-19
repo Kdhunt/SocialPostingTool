@@ -20,10 +20,21 @@ interface Window {
 export class LoginRateLimiterService {
   private readonly windows = new Map<string, Window>();
   private readonly maxAttempts = 10;
+  /** Per-address budget: generous enough for a shared building, far too small to guess a code. */
+  private readonly maxAttemptsPerAddress = 60;
   private readonly windowMs = 15 * 60_000;
 
   /** Returns true if this key is currently within its allowed attempt budget. */
   consume(key: string, now: Date = new Date()): boolean {
+    return this.take(key, this.maxAttempts, now);
+  }
+
+  /** Same window, larger budget, for a key that identifies only the client address. */
+  consumeAddress(key: string, now: Date = new Date()): boolean {
+    return this.take(key, this.maxAttemptsPerAddress, now);
+  }
+
+  private take(key: string, max: number, now: Date): boolean {
     const existing = this.windows.get(key);
 
     if (!existing || now.getTime() - existing.windowStartedAt > this.windowMs) {
@@ -31,7 +42,7 @@ export class LoginRateLimiterService {
       return true;
     }
 
-    if (existing.count >= this.maxAttempts) {
+    if (existing.count >= max) {
       return false;
     }
 

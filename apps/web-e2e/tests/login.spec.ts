@@ -8,7 +8,7 @@ test.describe('Login', () => {
     await fillLoginForm(page, {
       username: 'not-a-real-user',
       password: 'definitely-wrong-password',
-      wardCode: 'not-the-ward-code',
+      unitCode: 'not-the-unit-code',
     });
     await page.getByRole('button', { name: 'Sign in' }).click();
 
@@ -26,7 +26,7 @@ test.describe('Login', () => {
 
     await signIn(page, credentials);
     await expect(primaryNav(page)).toBeVisible();
-    await expect(primaryNav(page).getByRole('link', { name: 'Wards' })).toBeVisible();
+    await expect(primaryNav(page).getByRole('link', { name: 'Units' })).toBeVisible();
     await expect(primaryNav(page).getByRole('link', { name: 'People' })).toHaveCount(0);
     await expect(primaryNav(page).getByRole('link', { name: 'Campaigns' })).toHaveCount(0);
   });

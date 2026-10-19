@@ -8,7 +8,7 @@ import {
   userRow,
 } from './helpers/account-user';
 import { fillHydratedInput, fillLoginForm, isPlatformOperatorNav, waitForNuxtApp } from './helpers/auth';
-import { e2eWardCode, isLiveAccountEmailE2e } from './helpers/env';
+import { e2eUnitCode, isLiveAccountEmailE2e } from './helpers/env';
 import { appUrlFromEmailedLink, fictionalMailinatorInbox, waitForMailinatorLink } from './helpers/mailinator';
 
 /**
@@ -97,13 +97,13 @@ test.describe('Account email — Mailinator', () => {
         guestPage.getByText('Your password has been updated. You can sign in with the new password.'),
       ).toBeVisible({ timeout: 20_000 });
 
-      const wardCode = e2eWardCode();
-      if (wardCode) {
+      const unitCode = e2eUnitCode();
+      if (unitCode) {
         await guestPage.goto('/login');
         await fillLoginForm(guestPage, {
           username,
           password: fictionalResetPassword,
-          wardCode,
+          unitCode,
         });
         await guestPage.getByRole('button', { name: 'Sign in' }).click();
         await expect(guestPage.getByRole('heading', { name: /^Welcome/ })).toBeVisible({ timeout: 30_000 });

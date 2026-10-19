@@ -35,6 +35,10 @@ const permissions: PermissionSeed[] = [
       'Provision ward tenants, rotate any ward code, and reset ward administrator passwords. Restricted to platform operators.',
   },
   { key: 'ward.manage', description: 'Manage ward settings and configuration.' },
+  {
+    key: 'units.manage',
+    description: 'Create and manage the units beneath this one (wards under a stake, stakes under a region, and so on).',
+  },
   { key: 'users.manage', description: 'Create, disable, and manage user accounts.' },
   { key: 'roles.manage', description: 'Assign roles and permissions to users.' },
   { key: 'directory.read', description: 'View the ward directory (people and households).' },

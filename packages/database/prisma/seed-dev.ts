@@ -6,6 +6,7 @@
  * Requires `pnpm db:seed` (roles/permissions catalog) first and a migrated DB.
  * NEVER run against production data.
  */
+import { createHmac } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 import { PrismaClient } from '@prisma/client';
 
@@ -25,6 +26,11 @@ function withPepper(wardCode: string): string {
     throw new Error('WARD_CODE_PEPPER must be set (min 16 chars) before running db:seed:dev.');
   }
   return `${wardCode}:${pepper}`;
+}
+
+/** Must match WardCodeHasherService.lookupKey in apps/api: the indexed key sign-in uses to find a unit by its code. */
+function codeLookupKey(code: string): string {
+  return createHmac('sha256', process.env.WARD_CODE_PEPPER ?? '').update(code).digest('hex');
 }
 
 async function main(): Promise<void> {
@@ -99,7 +105,7 @@ async function main(): Promise<void> {
   if (!activeCode) {
     const codeHash = await hash(withPepper(DEV_WARD_CODE));
     await prisma.wardCodeVersion.create({
-      data: { wardId: ward.id, version: 1, codeHash, activatedAt: new Date() },
+      data: { wardId: ward.id, version: 1, codeHash, lookupKey: codeLookupKey(DEV_WARD_CODE), activatedAt: new Date() },
     });
   }
 
