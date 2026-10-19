@@ -52,15 +52,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The pnpm version comes from "packageManager" in package.json; also
+      # passing `version` here makes the action fail before anything runs.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 20 reached end of life in April 2026.
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
@@ -72,8 +73,16 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Without the schema in place the API integration tests skip themselves.
+      - name: Apply database migrations and roles
+        run: |
+          pnpm --filter @ward-comms/database db:deploy
+          pnpm --filter @ward-comms/database db:seed
+
+      # Playwright (apps/web-e2e) needs a browser plus running web and API
+      # servers; it runs against deployments (see README), not in this job.
       - name: Test
-        run: pnpm test
+        run: pnpm test --filter='!@ward-comms/web-e2e'
 
       - name: Build
         run: pnpm build
