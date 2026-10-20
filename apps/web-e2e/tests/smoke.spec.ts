@@ -14,7 +14,7 @@ test.describe('Ward Communications Hub smoke', () => {
     await expect(page.getByRole('heading', { name: /sign in/i })).toBeVisible();
     await expect(page.getByLabel(/username/i)).toBeVisible();
     await expect(page.getByLabel(/password/i)).toBeVisible();
-    await expect(page.getByLabel(/ward code/i)).toBeVisible();
+    await expect(page.getByLabel(/unit code/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
   });
 
@@ -54,5 +54,10 @@ test.describe('Ward Communications Hub smoke', () => {
     await page.goto('/thiswardpagedoesnotexistzz');
     await expect(page.getByRole('heading', { name: 'Ward page not found' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Continue to sign in' })).toBeVisible();
+  });
+
+  test('an unknown or unpublished bulletin shows a not-found page', async ({ page }) => {
+    await page.goto('/thiswardpagedoesnotexistzz/00000000-0000-0000-0000-000000000000');
+    await expect(page.getByRole('heading', { name: 'Bulletin not found' })).toBeVisible();
   });
 });

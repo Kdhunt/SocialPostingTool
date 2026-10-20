@@ -1,44 +1,28 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'guest' });
 
-const { state, login, submitTotp, submitWardCode } = useAuth();
+const { state, login, submitTotp } = useAuth();
 
+const unitCode = ref('');
 const username = ref('');
 const password = ref('');
 const totpCode = ref('');
-const wardCode = ref('');
 const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
 const needsTotp = computed(() => state.value.kind === 'totp_required');
 
-async function finishWithWardCodeIfNeeded(): Promise<{ ok: boolean; error?: string }> {
-  if (state.value.kind !== 'ward_code_required') {
-    return { ok: true };
-  }
-
-  const code = wardCode.value.trim();
-  if (!code) {
-    return { ok: false, error: 'Enter the ward code to finish signing in.' };
-  }
-
-  return submitWardCode(code);
-}
-
 function syncLoginFieldsFromForm(form: HTMLFormElement): void {
   const data = new FormData(form);
   const nextUsername = String(data.get('username') ?? '').trim();
   const nextPassword = String(data.get('password') ?? '');
-  const nextWardCode = String(data.get('ward-code') ?? '');
   if (nextUsername) {
     username.value = nextUsername;
   }
   if (nextPassword) {
     password.value = nextPassword;
   }
-  if (nextWardCode) {
-    wardCode.value = nextWardCode;
-  }
+  unitCode.value = String(data.get('unit-code') ?? '');
 }
 
 async function onLoginSubmit(event: Event): Promise<void> {
@@ -48,18 +32,7 @@ async function onLoginSubmit(event: Event): Promise<void> {
 
   errorMessage.value = null;
   submitting.value = true;
-
-  let result: { ok: boolean; error?: string };
-
-  if (state.value.kind === 'ward_code_required') {
-    result = await finishWithWardCodeIfNeeded();
-  } else {
-    result = await login(username.value, password.value);
-    if (result.ok) {
-      result = await finishWithWardCodeIfNeeded();
-    }
-  }
-
+  const result = await login(username.value, password.value, unitCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -75,12 +48,7 @@ async function onLoginSubmit(event: Event): Promise<void> {
 async function onTotpSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-
-  let result = await submitTotp(totpCode.value);
-  if (result.ok) {
-    result = await finishWithWardCodeIfNeeded();
-  }
-
+  const result = await submitTotp(totpCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -97,7 +65,9 @@ async function onTotpSubmit(): Promise<void> {
 <template>
   <div class="login">
     <h1 class="login__title">Sign in</h1>
-    <p class="login__lead">Use your ward account credentials to continue.</p>
+    <p class="login__lead">
+      Enter your unit code (from your ward, stake, region or district), then your username and password.
+    </p>
 
     <form
       v-if="!needsTotp"
@@ -105,6 +75,22 @@ async function onTotpSubmit(): Promise<void> {
       novalidate
       @submit.prevent="onLoginSubmit"
     >
+      <UiFormField
+        label="Unit code"
+        input-id="unit-code"
+        hint="Your ward, stake, region or district code. Superadmin leaves this blank."
+      >
+        <input
+          id="unit-code"
+          v-model="unitCode"
+          name="unit-code"
+          class="form-control"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </UiFormField>
+
       <UiFormField label="Username" input-id="username">
         <input
           id="username"
@@ -126,21 +112,6 @@ async function onTotpSubmit(): Promise<void> {
           type="password"
           autocomplete="current-password"
           required
-        />
-      </UiFormField>
-
-      <UiFormField
-        label="Ward code"
-        input-id="ward-code"
-        hint="Required on this device until the current ward code has been verified."
-      >
-        <input
-          id="ward-code"
-          v-model="wardCode"
-          name="ward-code"
-          class="form-control"
-          type="password"
-          autocomplete="off"
         />
       </UiFormField>
 

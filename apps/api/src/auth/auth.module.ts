@@ -9,6 +9,7 @@ import { SessionRepository } from './repositories/session.repository.js';
 import { WardCodeRepository } from './repositories/ward-code.repository.js';
 import { SessionAuthGuard } from './guards/session-auth.guard.js';
 import { PermissionsGuard } from './guards/permissions.guard.js';
+import { UnitCodeLookupService } from './unit-code-lookup.service.js';
 
 @Global()
 @Module({
@@ -21,11 +22,13 @@ import { PermissionsGuard } from './guards/permissions.guard.js';
     UserRepository,
     SessionRepository,
     WardCodeRepository,
+    UnitCodeLookupService,
     SessionAuthGuard,
     PermissionsGuard,
   ],
   exports: [
     AuthService,
+    UnitCodeLookupService,
     SessionAuthGuard,
     PermissionsGuard,
     UserRepository,

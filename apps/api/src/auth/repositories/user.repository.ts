@@ -16,16 +16,29 @@ export interface UserPermissions {
 export class UserRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  /**
-   * Looks up an active (not archived) user by username. Username is not
-   * globally unique in the schema (`@@unique([wardId, username])`), so
-   * this is a best-effort global lookup for the single-ward-per-login-form
-   * MVP; a production multi-ward deployment should scope this by ward
-   * (e.g. a ward slug on the login form) to avoid ambiguity.
-   */
-  async findActiveByUsername(username: string): Promise<ApplicationUser | null> {
+  /** The unit a user belongs to, for the signed-in user payload. */
+  async findUnitSummary(unitId: string): Promise<{ name: string; level: 'Ward' | 'Stake' | 'Region' | 'District' } | null> {
+    return this.prisma.client.ward.findUnique({ where: { id: unitId }, select: { name: true, level: true } });
+  }
+
+  /** Looks up an active (not archived) user by username inside one unit. */
+  async findActiveByUsernameInUnit(unitId: string, username: string): Promise<ApplicationUser | null> {
     return this.prisma.client.applicationUser.findFirst({
-      where: { username, archivedAt: null },
+      where: { username, archivedAt: null, wardId: unitId, ward: { archivedAt: null } },
+    });
+  }
+
+  /**
+   * Every active PlatformAdmin. There must be at most one; env bootstrap
+   * is the only supported way to create that account.
+   */
+  async findActivePlatformOperators(): Promise<ApplicationUser[]> {
+    return this.prisma.client.applicationUser.findMany({
+      where: {
+        archivedAt: null,
+        roles: { some: { role: { name: 'PlatformAdmin' } } },
+      },
+      orderBy: { createdAt: 'asc' },
     });
   }
 

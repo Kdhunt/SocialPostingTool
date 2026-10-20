@@ -1,10 +1,12 @@
 /**
- * Development-only seed: creates a fictional ward, ward admin user, and
+ * Development-only seed: creates a fictional ward, ward clerk, and
  * active ward code for local sign-in. Idempotent — safe to re-run.
+ * Does not create PlatformAdmin; that account comes from BOOTSTRAP_*.
  *
  * Requires `pnpm db:seed` (roles/permissions catalog) first and a migrated DB.
  * NEVER run against production data.
  */
+import { createHmac } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 import { PrismaClient } from '@prisma/client';
 
@@ -16,6 +18,10 @@ const DEV_EMAIL = 'admin@example.com';
 const DEV_PASSWORD = 'ChangeMeNow!23';
 const DEV_WARD_CODE = 'WARD-DEV-CODE';
 const DEV_DISPLAY_NAME = 'Dev Ward Admin';
+const PLATFORM_ADMIN_ROLE = 'PlatformAdmin';
+
+/** Must match DEFAULT_UNIT_ORGANIZATIONS in packages/domain/src/bulletins/organizations.ts. */
+const DEFAULT_UNIT_ORGANIZATIONS = ['General', 'Relief Society', 'Priesthood', 'Young Women', 'Youth', 'Primary'];
 
 function withPepper(wardCode: string): string {
   const pepper = process.env.WARD_CODE_PEPPER;
@@ -23,6 +29,11 @@ function withPepper(wardCode: string): string {
     throw new Error('WARD_CODE_PEPPER must be set (min 16 chars) before running db:seed:dev.');
   }
   return `${wardCode}:${pepper}`;
+}
+
+/** Must match WardCodeHasherService.lookupKey in apps/api: the indexed key sign-in uses to find a unit by its code. */
+function codeLookupKey(code: string): string {
+  return createHmac('sha256', process.env.WARD_CODE_PEPPER ?? '').update(code).digest('hex');
 }
 
 async function main(): Promise<void> {
@@ -39,6 +50,9 @@ async function main(): Promise<void> {
         timeZone: process.env.WARD_TIME_ZONE ?? 'America/Denver',
       },
     });
+    await prisma.unitOrganization.createMany({
+      data: DEFAULT_UNIT_ORGANIZATIONS.map((name, sortOrder) => ({ wardId: ward!.id, name, sortOrder })),
+    });
   }
 
   const wardAdminRole = await prisma.role.findUnique({ where: { name: 'WardAdmin' } });
@@ -46,7 +60,7 @@ async function main(): Promise<void> {
     throw new Error('WardAdmin role not found — run `pnpm db:seed` first.');
   }
 
-  const platformAdminRole = await prisma.role.findUnique({ where: { name: 'PlatformAdmin' } });
+  const platformAdminRole = await prisma.role.findUnique({ where: { name: PLATFORM_ADMIN_ROLE } });
   if (!platformAdminRole) {
     throw new Error('PlatformAdmin role not found — run `pnpm db:seed` first.');
   }
@@ -84,10 +98,10 @@ async function main(): Promise<void> {
     create: { userId: user.id, roleId: wardAdminRole.id },
   });
 
-  await prisma.userRole.upsert({
-    where: { userId_roleId: { userId: user.id, roleId: platformAdminRole.id } },
-    update: {},
-    create: { userId: user.id, roleId: platformAdminRole.id },
+  // Superadmin is only the ENV-bootstrapped PlatformAdmin. This ward clerk
+  // must not also hold that role (re-runs strip a leftover assignment).
+  await prisma.userRole.deleteMany({
+    where: { userId: user.id, roleId: platformAdminRole.id },
   });
 
   const activeCode = await prisma.wardCodeVersion.findFirst({
@@ -97,17 +111,28 @@ async function main(): Promise<void> {
   if (!activeCode) {
     const codeHash = await hash(withPepper(DEV_WARD_CODE));
     await prisma.wardCodeVersion.create({
-      data: { wardId: ward.id, version: 1, codeHash, activatedAt: new Date() },
+      data: { wardId: ward.id, version: 1, codeHash, lookupKey: codeLookupKey(DEV_WARD_CODE), activatedAt: new Date() },
     });
   }
 
+  const bootstrapUsername = process.env.BOOTSTRAP_ADMIN_USERNAME?.trim();
   console.log('');
   console.log('=== Ward Communications Hub — dev credentials (fictional) ===');
   console.log(`Ward:      ${DEV_WARD_NAME}`);
   console.log(`Username:  ${DEV_USERNAME}`);
   console.log(`Password:  ${DEV_PASSWORD}`);
   console.log(`Ward code: ${DEV_WARD_CODE}`);
-  console.log('Sign in at http://localhost:3000/login');
+  console.log(`Page path: fictionaldevward`);
+  console.log('Sign in at http://localhost:3000/login with the ward page path filled in.');
+  if (bootstrapUsername) {
+    console.log(
+      `Superadmin is ${bootstrapUsername} from BOOTSTRAP_* (leave the ward page path blank). Run pnpm db:bootstrap if that account does not exist yet.`,
+    );
+  } else {
+    console.log(
+      'Superadmin is the BOOTSTRAP_* user (leave the ward page path blank). Set those env vars and run pnpm db:bootstrap.',
+    );
+  }
   console.log('=============================================================');
   console.log('');
 }

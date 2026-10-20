@@ -44,12 +44,14 @@ export async function fillHydratedInput(page: Page, selector: string, value: str
 
 export async function fillLoginForm(
   page: Page,
-  credentials: { username: string; password: string; wardCode: string },
+  credentials: { username: string; password: string; unitCode?: string },
 ): Promise<void> {
   await waitForHydratedLoginForm(page);
+  if (credentials.unitCode) {
+    await fillHydratedInput(page, '#unit-code', credentials.unitCode.trim());
+  }
   await fillHydratedInput(page, '#username', credentials.username);
   await fillHydratedInput(page, '#password', credentials.password);
-  await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
 }
 
 export async function signIn(page: Page, credentials: E2eCredentials): Promise<void> {
@@ -71,31 +73,6 @@ export async function signIn(page: Page, credentials: E2eCredentials): Promise<v
     const message = (await alert.textContent())?.trim() ?? 'unknown error';
     if (/temporarily locked|too many sign-in attempts/i.test(message)) {
       throw new Error('Sign-in stopped: live account is locked. Not retrying.');
-    }
-
-    const wardBindingMiss =
-      /incorrect ward code|enter the ward code to finish/i.test(message) && (await page.locator('#ward-code').isVisible());
-    if (wardBindingMiss) {
-      await fillHydratedInput(page, '#ward-code', credentials.wardCode.trim());
-      await page.getByRole('button', { name: 'Sign in' }).click();
-      await expect(welcome.or(authenticator).or(alert)).toBeVisible({ timeout: 30_000 });
-      if (await authenticator.isVisible()) {
-        throw new Error('This account requires an authenticator code; E2E login cannot complete MFA.');
-      }
-      if (await welcome.isVisible()) {
-        await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
-        return;
-      }
-      const retryMessage = (await alert.textContent())?.trim() ?? 'unknown error';
-      if (/temporarily locked|too many sign-in attempts/i.test(retryMessage)) {
-        throw new Error('Sign-in stopped: live account is locked. Not retrying.');
-      }
-      if (/incorrect ward code/i.test(retryMessage)) {
-        throw new Error(
-          'Sign-in failed: live API rejected E2E_WARD_CODE after a second ward-code submit. Not retrying.',
-        );
-      }
-      throw new Error(`Sign-in failed: ${retryMessage}`);
     }
 
     if (/invalid username or password/i.test(message)) {
@@ -126,6 +103,7 @@ export async function signInViaApi(page: Page, credentials: E2eCredentials): Pro
       username: credentials.username,
       password: credentials.password,
       clientType: 'web',
+      ...(credentials.unitCode ? { unitCode: credentials.unitCode.trim() } : {}),
     },
   });
   const loginBody: unknown = await loginResponse.json().catch(() => null);
@@ -147,30 +125,6 @@ export async function signInViaApi(page: Page, credentials: E2eCredentials): Pro
     throw new Error('This account requires an authenticator code; E2E login cannot complete MFA.');
   }
 
-  if (status === 'ward_code_required') {
-    const loginTicket =
-      loginBody && typeof loginBody === 'object' && 'loginTicket' in loginBody && typeof loginBody.loginTicket === 'string'
-        ? loginBody.loginTicket
-        : '';
-    const wardResponse = await page.request.post('/api/v1/auth/ward-code', {
-      data: {
-        loginTicket,
-        wardCode: credentials.wardCode.trim(),
-        clientType: 'web',
-      },
-    });
-    const wardBody: unknown = await wardResponse.json().catch(() => null);
-    const wardMessage = apiErrorMessage(wardBody);
-    if (wardResponse.status() === 403 || /locked|too many/i.test(wardMessage)) {
-      throw new Error('Sign-in stopped: live account is locked. Not retrying.');
-    }
-    if (!wardResponse.ok()) {
-      throw new Error(
-        `API ward-code step failed with HTTP ${wardResponse.status()}${wardMessage ? `: ${wardMessage}` : ''}.`,
-      );
-    }
-  }
-
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /^Welcome/ })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
@@ -182,4 +136,12 @@ export async function expectPageHeading(page: Page, name: string | RegExp): Prom
 
 export function primaryNav(page: Page) {
   return page.getByRole('complementary', { name: 'Primary' });
+}
+
+export async function isPlatformOperatorNav(page: Page): Promise<boolean> {
+  const nav = primaryNav(page);
+  await expect(nav).toBeVisible();
+  const hasWards = await nav.getByRole('link', { name: 'Wards' }).isVisible();
+  const hasPeople = await nav.getByRole('link', { name: 'People' }).isVisible();
+  return hasWards && !hasPeople;
 }

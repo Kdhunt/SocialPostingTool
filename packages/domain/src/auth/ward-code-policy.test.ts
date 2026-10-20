@@ -28,4 +28,14 @@ describe('requiresWardCodeVerification', () => {
       }),
     ).toBe(true);
   });
+
+  it('does not require a ward code for platform-operator sign-in', () => {
+    expect(
+      requiresWardCodeVerification({
+        lastVerifiedWardCodeVersionId: null,
+        activeWardCodeVersionId: 'version-1',
+        skipWardBinding: true,
+      }),
+    ).toBe(false);
+  });
 });

@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
+import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import express, { type Express } from 'express';
 import { loadConfig } from '@ward-comms/config';
@@ -17,7 +17,7 @@ export async function createNestExpressApp(): Promise<Express> {
 
   const adapter = new ExpressAdapter(expressApp);
 
-  const nestApp = await NestFactory.create(AppModule, adapter, {
+  const nestApp = await NestFactory.create<NestExpressApplication>(AppModule, adapter, {
     logger: new PinoLoggerService('@ward-comms/api'),
   });
 
@@ -25,6 +25,9 @@ export async function createNestExpressApp(): Promise<Express> {
     nestApp.setGlobalPrefix('api/v1');
   }
 
+  // A full bulletin save (up to 40 rich-text sections) is larger than Express's
+  // 100 KB default. Vercel itself caps request bodies at 4.5 MB.
+  nestApp.useBodyParser('json', { limit: '2mb' });
   nestApp.use(cookieParser());
   nestApp.enableCors({
     origin: config.corsAllowedOrigins,

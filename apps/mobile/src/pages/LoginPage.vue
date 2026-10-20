@@ -6,43 +6,19 @@ import { mobileAuthStore } from '../auth-store.js';
 
 const router = useRouter();
 
+const unitCode = ref('');
 const username = ref('');
 const password = ref('');
 const totpCode = ref('');
-const wardCode = ref('');
 const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
 const needsTotp = computed(() => mobileAuthStore.state.value.kind === 'totp_required');
 
-async function finishWithWardCodeIfNeeded(): Promise<{ ok: boolean; error?: string }> {
-  if (mobileAuthStore.state.value.kind !== 'ward_code_required') {
-    return { ok: true };
-  }
-
-  const code = wardCode.value.trim();
-  if (!code) {
-    return { ok: false, error: 'Enter the ward code to finish signing in.' };
-  }
-
-  return mobileAuthStore.submitWardCode(code);
-}
-
 async function onLoginSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-
-  let result: { ok: boolean; error?: string };
-
-  if (mobileAuthStore.state.value.kind === 'ward_code_required') {
-    result = await finishWithWardCodeIfNeeded();
-  } else {
-    result = await mobileAuthStore.login(username.value, password.value);
-    if (result.ok) {
-      result = await finishWithWardCodeIfNeeded();
-    }
-  }
-
+  const result = await mobileAuthStore.login(username.value, password.value, unitCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -58,12 +34,7 @@ async function onLoginSubmit(): Promise<void> {
 async function onTotpSubmit(): Promise<void> {
   errorMessage.value = null;
   submitting.value = true;
-
-  let result = await mobileAuthStore.submitTotp(totpCode.value);
-  if (result.ok) {
-    result = await finishWithWardCodeIfNeeded();
-  }
-
+  const result = await mobileAuthStore.submitTotp(totpCode.value);
   submitting.value = false;
 
   if (!result.ok) {
@@ -86,14 +57,14 @@ async function onTotpSubmit(): Promise<void> {
     </IonHeader>
     <IonContent class="ion-padding">
       <form v-if="!needsTotp" novalidate @submit.prevent="onLoginSubmit">
+        <label for="mobile-unit-code">Unit code (ward, stake, region or district)</label>
+        <input id="mobile-unit-code" v-model="unitCode" type="password" autocomplete="off" />
+
         <label for="mobile-username">Username</label>
         <input id="mobile-username" v-model="username" type="text" autocomplete="username" required />
 
         <label for="mobile-password">Password</label>
         <input id="mobile-password" v-model="password" type="password" autocomplete="current-password" required />
-
-        <label for="mobile-ward-code">Ward code</label>
-        <input id="mobile-ward-code" v-model="wardCode" type="password" autocomplete="off" />
 
         <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>
 

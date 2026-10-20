@@ -18,6 +18,17 @@ import {
   withVercelCronJobs,
 } from './vercel-output-routes.js';
 
+/**
+ * Runtime for the API function. Follows the Node major the build runs on
+ * (Vercel's project setting, 24.x today), the same way Nitro picks the web
+ * function's runtime, so the two never drift and we are not pinned to a
+ * version Vercel has discontinued (nodejs20.x stopped deploying in 2026).
+ */
+function nodeRuntime(): string {
+  const major = process.versions.node.split('.')[0] ?? '22';
+  return `nodejs${major}.x`;
+}
+
 const ROOT = process.cwd();
 const OUTPUT_DIR = path.join(ROOT, '.vercel/output');
 const CONFIG_PATH = path.join(OUTPUT_DIR, 'config.json');
@@ -191,7 +202,7 @@ async function buildServerlessFunction(spec: FunctionSpec): Promise<void> {
     path.join(funcDir, '.vc-config.json'),
     JSON.stringify(
       {
-        runtime: 'nodejs20.x',
+        runtime: nodeRuntime(),
         handler: 'index.js',
         launcherType: 'Nodejs',
         shouldAddHelpers: true,

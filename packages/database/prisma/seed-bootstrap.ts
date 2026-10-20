@@ -1,13 +1,15 @@
 /**
- * Production bootstrap: creates the first ward, admin user, and ward code when
- * BOOTSTRAP_* environment variables are set. Idempotent — skips when the
- * bootstrap username already exists.
+ * Production bootstrap: creates the first ward and the single PlatformAdmin
+ * (superadmin) when BOOTSTRAP_* environment variables are set. Idempotent —
+ * skips when a PlatformAdmin already exists. Superadmin sign-in is
+ * ward-agnostic (no page path, no ward code).
  *
  * Used by Vercel builds (see scripts/vercel-build.ts) and can be run manually:
  *
  *   DATABASE_URL=... WARD_CODE_PEPPER=... BOOTSTRAP_ADMIN_USERNAME=... \\
  *     pnpm --filter @ward-comms/database db:bootstrap
  */
+import { createHmac } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 import { PrismaClient } from '@prisma/client';
 
@@ -26,6 +28,9 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/** Must match DEFAULT_UNIT_ORGANIZATIONS in packages/domain/src/bulletins/organizations.ts. */
+const DEFAULT_UNIT_ORGANIZATIONS = ['General', 'Relief Society', 'Priesthood', 'Young Women', 'Youth', 'Primary'];
+
 function withPepper(wardCode: string): string {
   const pepper = process.env.WARD_CODE_PEPPER;
   if (!pepper || pepper.length < 16) {
@@ -34,8 +39,17 @@ function withPepper(wardCode: string): string {
   return `${wardCode}:${pepper}`;
 }
 
+/** Must match WardCodeHasherService.lookupKey in apps/api: the indexed key sign-in uses to find a unit by its code. */
+function codeLookupKey(code: string): string {
+  return createHmac('sha256', process.env.WARD_CODE_PEPPER ?? '').update(code).digest('hex');
+}
+
 async function main(): Promise<void> {
-  const adminUsername = requireEnv('BOOTSTRAP_ADMIN_USERNAME');
+  const adminUsername = process.env.BOOTSTRAP_ADMIN_USERNAME?.trim();
+  if (!adminUsername) {
+    console.log('Bootstrap skipped: BOOTSTRAP_ADMIN_USERNAME is not set.');
+    return;
+  }
   const adminPassword = requireEnv('BOOTSTRAP_ADMIN_PASSWORD');
   const wardCode = requireEnv('BOOTSTRAP_WARD_CODE');
   const wardName = process.env.BOOTSTRAP_WARD_NAME?.trim() || 'Ward Communications Hub';
@@ -56,18 +70,33 @@ async function main(): Promise<void> {
     throw new Error('BOOTSTRAP_WARD_CODE must be at least 4 characters.');
   }
 
-  const existingUser = await prisma.applicationUser.findFirst({
-    where: { username: adminUsername, archivedAt: null },
-  });
-  if (existingUser) {
-    console.log(`Bootstrap skipped: user "${adminUsername}" already exists.`);
-    return;
-  }
-
-  const wardAdminRole = await prisma.role.findUnique({ where: { name: 'WardAdmin' } });
   const platformAdminRole = await prisma.role.findUnique({ where: { name: 'PlatformAdmin' } });
+  const wardAdminRole = await prisma.role.findUnique({ where: { name: 'WardAdmin' } });
   if (!wardAdminRole || !platformAdminRole) {
     throw new Error('Roles not found — run `pnpm --filter @ward-comms/database db:seed` first.');
+  }
+
+  const existingOperators = await prisma.applicationUser.findMany({
+    where: {
+      archivedAt: null,
+      roles: { some: { roleId: platformAdminRole.id } },
+    },
+    select: { id: true, username: true },
+  });
+  if (existingOperators.length > 1) {
+    throw new Error(
+      `Bootstrap refused: ${existingOperators.length} PlatformAdmin accounts exist. Keep only the BOOTSTRAP_* superadmin.`,
+    );
+  }
+  if (existingOperators.length === 1) {
+    const existing = existingOperators[0];
+    await prisma.userRole.deleteMany({
+      where: { userId: existing?.id, roleId: wardAdminRole.id },
+    });
+    console.log(
+      `Bootstrap skipped: PlatformAdmin "${existing?.username ?? 'unknown'}" already exists. There is only one superadmin.`,
+    );
+    return;
   }
 
   const passwordHash = await hash(adminPassword);
@@ -79,24 +108,29 @@ async function main(): Promise<void> {
       ward = await tx.ward.create({
         data: { name: wardName, timeZone, publicSlug: publicSlugFromName(wardName) },
       });
+      await tx.unitOrganization.createMany({
+        data: DEFAULT_UNIT_ORGANIZATIONS.map((name, sortOrder) => ({ wardId: ward!.id, name, sortOrder })),
+      });
     }
 
-    const adminUser = await tx.applicationUser.create({
-      data: {
-        wardId: ward.id,
-        username: adminUsername,
-        email: adminEmail,
-        displayName: adminDisplayName,
-        passwordHash,
-        passwordUpdatedAt: new Date(),
-      },
-    });
+    const adminUser =
+      (await tx.applicationUser.findFirst({
+        where: { wardId: ward.id, username: adminUsername, archivedAt: null },
+      })) ??
+      (await tx.applicationUser.create({
+        data: {
+          wardId: ward.id,
+          username: adminUsername,
+          email: adminEmail,
+          displayName: adminDisplayName,
+          passwordHash,
+          passwordUpdatedAt: new Date(),
+        },
+      }));
 
     await tx.userRole.createMany({
-      data: [
-        { userId: adminUser.id, roleId: wardAdminRole.id },
-        { userId: adminUser.id, roleId: platformAdminRole.id },
-      ],
+      data: [{ userId: adminUser.id, roleId: platformAdminRole.id }],
+      skipDuplicates: true,
     });
 
     const activeCode = await tx.wardCodeVersion.findFirst({
@@ -105,7 +139,7 @@ async function main(): Promise<void> {
     });
     if (!activeCode) {
       await tx.wardCodeVersion.create({
-        data: { wardId: ward.id, version: 1, codeHash, activatedAt: new Date() },
+        data: { wardId: ward.id, version: 1, codeHash, lookupKey: codeLookupKey(wardCode), activatedAt: new Date() },
       });
     }
   });
@@ -114,7 +148,8 @@ async function main(): Promise<void> {
   console.log('=== Production bootstrap complete ===');
   console.log(`Ward:     ${wardName}`);
   console.log(`Username: ${adminUsername}`);
-  console.log('Sign in at your deployed /login URL with the bootstrap password and ward code.');
+  console.log('Sign in at /login with the bootstrap username and password.');
+  console.log('Leave the ward page path blank — PlatformAdmin does not use a ward code.');
   console.log('Remove BOOTSTRAP_* environment variables after the first successful deploy.');
   console.log('====================================');
   console.log('');

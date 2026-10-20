@@ -19,10 +19,12 @@ export class WardRepository {
     });
   }
 
-  async listActiveWithAdmins(): Promise<
+  async listActiveWithAdmins(onlyIds?: string[]): Promise<
     Array<{
       id: string;
       name: string;
+      level: Ward['level'];
+      parentId: string | null;
       publicSlug: string;
       timeZone: string;
       createdAt: Date;
@@ -30,7 +32,7 @@ export class WardRepository {
     }>
   > {
     const rows = await this.prisma.client.ward.findMany({
-      where: { archivedAt: null },
+      where: { archivedAt: null, ...(onlyIds ? { id: { in: onlyIds } } : {}) },
       orderBy: { name: 'asc' },
       include: {
         users: {
@@ -44,6 +46,8 @@ export class WardRepository {
     return rows.map((ward) => ({
       id: ward.id,
       name: ward.name,
+      level: ward.level,
+      parentId: ward.parentId,
       publicSlug: ward.publicSlug,
       timeZone: ward.timeZone,
       createdAt: ward.createdAt,
@@ -51,9 +55,10 @@ export class WardRepository {
     }));
   }
 
-  async findActiveByName(name: string): Promise<Ward | null> {
+  /** Names only need to be unique among siblings: two stakes may each have a "1st Ward". */
+  async findActiveByNameUnderParent(name: string, parentId: string | null): Promise<Ward | null> {
     return this.prisma.client.ward.findFirst({
-      where: { name, archivedAt: null },
+      where: { name, parentId, archivedAt: null },
     });
   }
 

@@ -55,12 +55,15 @@ packages/
    pnpm --filter @ward-comms/database db:generate
    pnpm --filter @ward-comms/database db:migrate
    pnpm --filter @ward-comms/database db:seed
+   pnpm --filter @ward-comms/database db:bootstrap
    pnpm db:seed:dev
    ```
 
    `db:seed` loads the Role/Permission catalog. `db:seed:dev` creates a
-   fictional dev ward, ward admin (`admin` / `ChangeMeNow!23`), and ward
-   code (`WARD-DEV-CODE`) — credentials are printed to the console.
+   fictional ward clerk (`admin` / `ChangeMeNow!23`, path `fictionaldevward`,
+   ward code `WARD-DEV-CODE`). Superadmin is the **only** `PlatformAdmin`,
+   created from `BOOTSTRAP_*` via `pnpm db:bootstrap` — sign in with that
+   username and password and leave the ward page path blank.
 
 5. Run every app in development mode:
 
@@ -78,7 +81,7 @@ Once running:
 
 - API health check: `http://localhost:3001/health`
 - Web health page: `http://localhost:3000`
-- Web sign-in: `http://localhost:3000/login` (after `db:seed:dev`, use `admin` / `ChangeMeNow!23`, ward code `WARD-DEV-CODE`)
+- Web sign-in: `http://localhost:3000/login`. Superadmin is `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` with the ward page path left blank. After `db:seed:dev`, a ward clerk is `admin` / `ChangeMeNow!23` with page path `fictionaldevward` and ward code `WARD-DEV-CODE`.
 - Public campaign board: `http://localhost:3000/{publicSlug}` (dev seed uses `/fictionaldevward`). Live example: `https://www.wardcomms.online/grangecreek` after that ward’s public path is set to `grangecreek`.
 
 ### One-command bootstrap (after `pnpm install` and `.env` setup)
@@ -88,6 +91,7 @@ docker compose up -d
 pnpm --filter @ward-comms/database db:generate
 pnpm --filter @ward-comms/database db:migrate
 pnpm --filter @ward-comms/database db:seed
+pnpm --filter @ward-comms/database db:bootstrap
 pnpm db:seed:dev
 pnpm dev
 ```
@@ -100,12 +104,17 @@ fictional dev credentials to the console. For custom users, use the
 New accounts require a unique (per ward) email address — format is
 validated and the value is stored trimmed and lowercased.
 
-### Provisioning additional wards
+### Provisioning units (wards, stakes, regions, districts)
+
+Wards sit under stakes, stakes under regions, and regions under districts.
+Every level is a full unit with its own sign-in code, administrators, directory
+and campaigns, and a unit's administrators manage the units beneath it
+(**Admin → Units**). See `docs/unit-hierarchy.md`.
 
 Superadmin is the ENV-bootstrapped `PlatformAdmin` user (`BOOTSTRAP_*` variables;
-see `docs/vercel.md`). That operator can:
+see `docs/vercel.md`). There is only one. That operator can:
 
-- Create ward tenants from **Admin → Wards** (`/admin/wards`) or `POST /platform/wards`
+- Create units at any level from **Admin → Units** (`/admin/wards`) or `POST /platform/wards`, and place them under a parent (`POST /platform/wards/:wardId/parent`)
 - Rotate **any** ward’s shared code (`POST /platform/wards/:wardId/code/rotate`)
 - Reset **any** ward administrator password (`POST /platform/wards/:wardId/admins/:userId/password`)
 
@@ -117,18 +126,29 @@ Each provisioned ward receives:
 
 Ward administrators manage users in their own ward (**Admin → Users**, including
 password reset via `POST /users/:id/password`) and can rotate **their** ward code
-(**Admin → Ward code**). PlatformAdmin is not assignable from that screen —
-additional platform operators are created only by bootstrap or `pnpm db:seed:dev`.
+(**Admin → Ward code**). PlatformAdmin is not assignable from that screen.
+The only platform operator is created by `pnpm db:bootstrap` from `BOOTSTRAP_*`.
+That account is **not** a ward administrator: after sign-in they see wards and
+ward admins only. Member directory and campaigns stay in each ward login.
 
-The dev seed assigns both `WardAdmin` and `PlatformAdmin` to the local `admin`
-user. After upgrading, re-run `pnpm --filter @ward-comms/database db:seed` so
-`WardAdmin` no longer receives `platform.wards.manage`.
+`pnpm db:seed:dev` creates a **ward clerk** only. It does not grant
+`PlatformAdmin`. After upgrading, re-run `pnpm db:seed:dev` so a leftover
+platform role is stripped from the fictional `admin` user. Re-run
+`pnpm --filter @ward-comms/database db:seed` so `WardAdmin` no longer receives
+`platform.wards.manage`.
+
+### Bulletins
+
+Units publish newsletter-style bulletins with a section per organization,
+rich text with tables, a two-column or single-column layout, QR codes, other
+language editions, and a public page at `/{publicSlug}/{bulletinId}` that
+prints or saves as a PDF. See `docs/bulletins.md`.
 
 ### Authentication overview
 
-- `POST /auth/login` → `{ username, password, clientType?: 'web'|'mobile' }`
+- `POST /auth/login` → `{ username, password, unitCode?: string, clientType?: 'web'|'mobile' }` (the unit code alone picks the ward, stake, region or district; omit it for the sole PlatformAdmin)
 - `GET /public/wards/:slug/campaigns` → anonymous published-campaign board for `/{slug}` (not the login ward code)
-- `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (only when `/auth/login` responds `ward_code_required`)
+- `POST /auth/ward-code` → `{ loginTicket, wardCode, clientType? }` (legacy; sign-in with `unitCode` no longer returns `ward_code_required`)
 - `POST /auth/refresh` → `{ refreshToken }` (mobile only)
 - `POST /auth/logout`, `GET /auth/session`, `GET /auth/sessions`, `POST /auth/sessions/:id/revoke`
 - `PATCH /auth/email`, `POST /auth/change-password`, `POST /auth/verification-email` (signed-in account management)
@@ -267,9 +287,9 @@ pnpm --filter @ward-comms/web-e2e exec playwright install chromium
 pnpm test:e2e
 ```
 
-Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests need `E2E_USERNAME`, `E2E_PASSWORD`, and `E2E_WARD_CODE`, **or** a gitignored Playwright storage state at `apps/web-e2e/.auth/user.json`. Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit passwords, ward codes, or session files.
+Against a deployed site, set `E2E_BASE_URL` so the suite does not start local Nuxt. Authenticated tests need the **superadmin** (`E2E_USERNAME` and `E2E_PASSWORD`, or `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD`), **or** a gitignored Playwright storage state at `apps/web-e2e/.auth/user.json`. Do not set `E2E_UNIT_CODE` for that account (a unit code signs in to a ward, stake, region or district instead). Copy `apps/web-e2e/.env.example` to `apps/web-e2e/.env` (gitignored) or export the variables in your shell. Never commit passwords, ward codes, or session files.
 
-To capture the session from a headed window (sign in yourself, including ward code):
+To capture the session from a headed window (sign in as the superadmin, ward page path blank):
 
 ```bash
 pnpm --filter @ward-comms/web-e2e test:e2e:save-session

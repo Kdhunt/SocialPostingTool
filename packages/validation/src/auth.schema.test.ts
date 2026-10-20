@@ -15,6 +15,25 @@ describe('loginRequestSchema', () => {
   it('accepts a valid username/password payload', () => {
     const result = loginRequestSchema.parse({ username: 'jane.doe', password: 'Fictional-Password-42' });
     expect(result.username).toBe('jane.doe');
+    expect(result.unitCode).toBeUndefined();
+  });
+
+  it('treats a blank unit code as platform login', () => {
+    const result = loginRequestSchema.parse({
+      username: 'admin',
+      password: 'Fictional-Password-42',
+      unitCode: '  ',
+    });
+    expect(result.unitCode).toBeUndefined();
+  });
+
+  it('trims the unit code but keeps its case', () => {
+    const result = loginRequestSchema.parse({
+      username: 'admin',
+      password: 'Fictional-Password-42',
+      unitCode: ' Denver-North-7 ',
+    });
+    expect(result.unitCode).toBe('Denver-North-7');
   });
 
   it('rejects an empty username', () => {

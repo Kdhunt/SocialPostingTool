@@ -1,3 +1,6 @@
+import { computed } from 'vue';
+import { isPlatformOperatorView } from '@ward-comms/domain';
+
 export interface NavItem {
   label: string;
   to: string;
@@ -16,70 +19,117 @@ export function useAppNavigation(): {
   sections: import('vue').ComputedRef<NavSection[]>;
   adminItems: import('vue').ComputedRef<NavItem[]>;
   hasPermission: (key: string) => boolean;
+  isPlatformOperator: import('vue').ComputedRef<boolean>;
 } {
   const { state: authState } = useAuth();
 
-  function hasPermission(key: string): boolean {
+  function permissionKeys(): string[] {
     if (authState.value.kind !== 'authenticated') {
-      return false;
+      return [];
     }
-    return authState.value.user.permissions.includes(key);
+    return authState.value.user.permissions;
   }
 
-  const sections = computed<NavSection[]>(() => [
-    {
+  /** The signed-in user's unit level; older sessions without it are treated as a ward. */
+  function unitLevel(): 'Ward' | 'Stake' | 'Region' | 'District' {
+    return authState.value.kind === 'authenticated' ? (authState.value.user.unitLevel ?? 'Ward') : 'Ward';
+  }
+
+  function hasPermission(key: string): boolean {
+    return permissionKeys().includes(key);
+  }
+
+  const isPlatformOperator = computed(() => isPlatformOperatorView(permissionKeys()));
+
+  const sections = computed<NavSection[]>(() => {
+    const account: NavSection = {
       id: 'account',
       label: 'Account',
       items: [
         { label: 'Account', to: '/settings/account', matchPrefix: '/settings/account' },
         { label: 'Security', to: '/settings/security', matchPrefix: '/settings/security' },
       ],
-    },
-    {
+    };
+    const overview: NavSection = {
       id: 'overview',
       label: 'Overview',
       items: [{ label: 'Home', to: '/', matchPrefix: '/' }],
-    },
-    {
-      id: 'people',
-      label: 'People',
-      items: [
-        {
-          label: 'People',
-          to: '/directory',
-          isActive: (path) => path === '/directory' || path.startsWith('/directory/people'),
-        },
-        {
-          label: 'Households',
-          to: '/directory/households',
-          matchPrefix: '/directory/households',
-        },
-      ],
-    },
-    {
-      id: 'messaging',
-      label: 'Messaging',
-      items: [
-        { label: 'Campaigns', to: '/campaigns', matchPrefix: '/campaigns' },
-        {
-          label: 'Audiences',
-          to: '/audiences',
-          isActive: (path) =>
-            path === '/audiences' ||
-            (path.startsWith('/audiences/') && !path.startsWith('/audiences/destinations')),
-        },
-        { label: 'Destinations', to: '/audiences/destinations', matchPrefix: '/audiences/destinations' },
-      ],
-    },
-  ]);
+    };
+
+    if (isPlatformOperator.value) {
+      return [account, overview];
+    }
+
+    return [
+      account,
+      overview,
+      {
+        id: 'people',
+        label: 'People',
+        items: [
+          {
+            label: 'People',
+            to: '/directory',
+            isActive: (path) => path === '/directory' || path.startsWith('/directory/people'),
+          },
+          {
+            label: 'Households',
+            to: '/directory/households',
+            matchPrefix: '/directory/households',
+          },
+        ],
+      },
+      {
+        id: 'messaging',
+        label: 'Messaging',
+        items: [
+          { label: 'Campaigns', to: '/campaigns', matchPrefix: '/campaigns' },
+          { label: 'Bulletins', to: '/bulletins', matchPrefix: '/bulletins' },
+          {
+            label: 'Audiences',
+            to: '/audiences',
+            isActive: (path) =>
+              path === '/audiences' ||
+              (path.startsWith('/audiences/') && !path.startsWith('/audiences/destinations')),
+          },
+          { label: 'Destinations', to: '/audiences/destinations', matchPrefix: '/audiences/destinations' },
+        ],
+      },
+    ];
+  });
 
   const adminItems = computed<NavItem[]>(() => {
     const items: NavItem[] = [];
+    if (isPlatformOperator.value) {
+      items.push({
+        label: 'Units',
+        to: '/admin/wards',
+        permission: 'platform.wards.manage',
+        matchPrefix: '/admin/wards',
+      });
+      return items;
+    }
     if (hasPermission('users.manage')) {
       items.push({ label: 'Users', to: '/admin/users', permission: 'users.manage', matchPrefix: '/admin/users' });
     }
+    if (hasPermission('units.manage') && unitLevel() !== 'Ward') {
+      items.push({ label: 'Units', to: '/admin/units', permission: 'units.manage', matchPrefix: '/admin/units' });
+    }
     if (hasPermission('ward.manage')) {
-      items.push({ label: 'Ward code', to: '/admin/ward-code', permission: 'ward.manage', matchPrefix: '/admin/ward-code' });
+      items.push({
+        label: `${unitLevel()} code`,
+        to: '/admin/ward-code',
+        permission: 'ward.manage',
+        matchPrefix: '/admin/ward-code',
+      });
+    }
+    if (hasPermission('ward.manage')) {
+      items.push({
+        label: 'Organizations',
+        to: '/admin/organizations',
+        permission: 'ward.manage',
+        matchPrefix: '/admin/organizations',
+      });
     }
     if (hasPermission('campaigns.send')) {
       items.push({
@@ -98,18 +148,10 @@ export function useAppNavigation(): {
     if (hasPermission('audit.read')) {
       items.push({ label: 'Audit log', to: '/admin/audit', permission: 'audit.read', matchPrefix: '/admin/audit' });
     }
-    if (hasPermission('platform.wards.manage')) {
-      items.push({
-        label: 'Wards',
-        to: '/admin/wards',
-        permission: 'platform.wards.manage',
-        matchPrefix: '/admin/wards',
-      });
-    }
     return items;
   });
 
-  return { sections, adminItems, hasPermission };
+  return { sections, adminItems, hasPermission, isPlatformOperator };
 }
 
 export function isNavItemActive(path: string, item: NavItem): boolean {

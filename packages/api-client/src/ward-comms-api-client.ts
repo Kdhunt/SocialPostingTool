@@ -5,6 +5,26 @@ import {
   type UpdateWardPublicSlugRequest,
 } from '@ward-comms/validation';
 import {
+  bulletinDetailSchema,
+  bulletinListResponseSchema,
+  copyBulletinAsLanguageRequestSchema,
+  createBulletinRequestSchema,
+  publicBulletinListResponseSchema,
+  publicBulletinSchema,
+  saveBulletinRequestSchema,
+  saveUnitOrganizationRequestSchema,
+  unitOrganizationListResponseSchema,
+  unitOrganizationSchema,
+  type BulletinDetailDto,
+  type BulletinListResponse,
+  type CreateBulletinRequest,
+  type PublicBulletinDto,
+  type PublicBulletinListResponse,
+  type SaveBulletinRequest,
+  type UnitOrganizationDto,
+  type UnitOrganizationListResponse,
+} from '@ward-comms/validation';
+import {
   loginResponseSchema,
   mobileTokenPairSchema,
   sessionResponseSchema,
@@ -98,6 +118,9 @@ import {
   userSummarySchema,
   wardCodeInfoSchema,
   wardListResponseSchema,
+  setUnitParentRequestSchema,
+  unitTreeResponseSchema,
+  type UnitTreeResponse,
   createWardRequestSchema,
   createWardResponseSchema,
   resetPasswordRequestSchema,
@@ -237,10 +260,16 @@ export class WardCommsApiClient {
     return publicWardBulletinResponseSchema.parse(await response.json());
   }
 
-  async login(username: string, password: string, clientType: 'web' | 'mobile' = 'web'): Promise<LoginResponse> {
+  async login(
+    username: string,
+    password: string,
+    clientType: 'web' | 'mobile' = 'web',
+    unitCode?: string,
+  ): Promise<LoginResponse> {
+    const code = unitCode?.trim();
     const response = await this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password, clientType }),
+      body: JSON.stringify({ username, password, clientType, ...(code ? { unitCode: code } : {}) }),
     });
     return loginResponseSchema.parse(await response.json());
   }
@@ -462,6 +491,65 @@ export class WardCommsApiClient {
       body: JSON.stringify(updateUserEmailRequestSchema.parse(input)),
     });
     return userSummarySchema.parse(await response.json());
+  }
+
+  /** Platform operators: place a unit under a parent one level up, or detach it with null. */
+  async setUnitParent(unitId: string, parentId: string | null): Promise<WardSummaryDto> {
+    const response = await this.request(`/platform/wards/${unitId}/parent`, {
+      method: 'POST',
+      body: JSON.stringify(setUnitParentRequestSchema.parse({ parentId })),
+    });
+    return wardSummarySchema.parse(await response.json());
+  }
+
+  // --- Unit hierarchy (stake / region / district admins, scoped beneath their own unit) ---
+
+  async listUnits(): Promise<UnitTreeResponse> {
+    const response = await this.request('/admin/units');
+    return unitTreeResponseSchema.parse(await response.json());
+  }
+
+  async createUnit(input: CreateWardRequest): Promise<CreateWardResponse> {
+    const response = await this.request('/admin/units', {
+      method: 'POST',
+      body: JSON.stringify(createWardRequestSchema.parse(input)),
+    });
+    return createWardResponseSchema.parse(await response.json());
+  }
+
+  async moveUnit(unitId: string, parentId: string): Promise<WardSummaryDto> {
+    const response = await this.request(`/admin/units/${unitId}/parent`, {
+      method: 'POST',
+      body: JSON.stringify(setUnitParentRequestSchema.parse({ parentId })),
+    });
+    return wardSummarySchema.parse(await response.json());
+  }
+
+  async updateUnitPublicSlug(unitId: string, input: UpdateWardPublicSlugRequest): Promise<WardSummaryDto> {
+    const response = await this.request(`/admin/units/${unitId}/public-slug`, {
+      method: 'POST',
+      body: JSON.stringify(updateWardPublicSlugRequestSchema.parse(input)),
+    });
+    return wardSummarySchema.parse(await response.json());
+  }
+
+  async rotateUnitCode(unitId: string, newWardCode: string): Promise<WardCodeInfoDto> {
+    const response = await this.request(`/admin/units/${unitId}/code/rotate`, {
+      method: 'POST',
+      body: JSON.stringify(rotateWardCodeRequestSchema.parse({ newWardCode })),
+    });
+    return wardCodeInfoSchema.parse(await response.json());
+  }
+
+  async resetUnitAdminPassword(unitId: string, userId: string, password: string): Promise<void> {
+    await this.request(`/admin/units/${unitId}/admins/${userId}/password`, {
+      method: 'POST',
+      body: JSON.stringify(resetPasswordRequestSchema.parse({ password })),
+    });
+  }
+
+  async sendUnitAdminPasswordResetEmail(unitId: string, userId: string): Promise<void> {
+    await this.request(`/admin/units/${unitId}/admins/${userId}/password-reset-email`, { method: 'POST' });
   }
 
   async sendWardAdminPasswordResetEmail(wardId: string, userId: string): Promise<void> {
@@ -913,5 +1001,92 @@ export class WardCommsApiClient {
   async cancelCampaign(id: string): Promise<CampaignDetailDto> {
     const response = await this.request(`/campaigns/${id}/cancel`, { method: 'POST' });
     return campaignDetailSchema.parse(await response.json());
+  }
+
+  // --- Bulletins ---------------------------------------------------------------
+
+  async listBulletins(): Promise<BulletinListResponse> {
+    const response = await this.request('/bulletins');
+    return bulletinListResponseSchema.parse(await response.json());
+  }
+
+  async getBulletin(id: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}`);
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async createBulletin(input: CreateBulletinRequest = {}): Promise<BulletinDetailDto> {
+    const response = await this.request('/bulletins', {
+      method: 'POST',
+      body: JSON.stringify(createBulletinRequestSchema.parse(input)),
+    });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async saveBulletin(id: string, input: SaveBulletinRequest): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(saveBulletinRequestSchema.parse(input)),
+    });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async publishBulletin(id: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}/publish`, { method: 'POST' });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async unpublishBulletin(id: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}/unpublish`, { method: 'POST' });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async copyBulletinAsLanguage(id: string, language: string): Promise<BulletinDetailDto> {
+    const response = await this.request(`/bulletins/${encodeURIComponent(id)}/editions`, {
+      method: 'POST',
+      body: JSON.stringify(copyBulletinAsLanguageRequestSchema.parse({ language })),
+    });
+    return bulletinDetailSchema.parse(await response.json());
+  }
+
+  async deleteBulletin(id: string): Promise<void> {
+    await this.request(`/bulletins/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async listUnitOrganizations(): Promise<UnitOrganizationListResponse> {
+    const response = await this.request('/organizations');
+    return unitOrganizationListResponseSchema.parse(await response.json());
+  }
+
+  async createUnitOrganization(name: string): Promise<UnitOrganizationDto> {
+    const response = await this.request('/organizations', {
+      method: 'POST',
+      body: JSON.stringify(saveUnitOrganizationRequestSchema.parse({ name })),
+    });
+    return unitOrganizationSchema.parse(await response.json());
+  }
+
+  async renameUnitOrganization(id: string, name: string): Promise<UnitOrganizationDto> {
+    const response = await this.request(`/organizations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(saveUnitOrganizationRequestSchema.parse({ name })),
+    });
+    return unitOrganizationSchema.parse(await response.json());
+  }
+
+  async archiveUnitOrganization(id: string): Promise<void> {
+    await this.request(`/organizations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async listPublicBulletins(slug: string): Promise<PublicBulletinListResponse> {
+    const response = await this.request(`/public/wards/${encodeURIComponent(slug)}/bulletins`);
+    return publicBulletinListResponseSchema.parse(await response.json());
+  }
+
+  async getPublicBulletin(slug: string, id: string): Promise<PublicBulletinDto> {
+    const response = await this.request(
+      `/public/wards/${encodeURIComponent(slug)}/bulletins/${encodeURIComponent(id)}`,
+    );
+    return publicBulletinSchema.parse(await response.json());
   }
 }

@@ -12,6 +12,18 @@ export type ClientType = z.infer<typeof clientTypeSchema>;
 export const loginRequestSchema = z.object({
   username: z.string().min(1).max(255),
   password: z.string().min(1).max(512),
+  /**
+   * The sign-in code of the user's unit (ward, stake, region or district).
+   * It alone identifies the unit. Omit for platform-operator sign-in.
+   */
+  unitCode: z
+    .string()
+    .max(255)
+    .optional()
+    .transform((value) => {
+      const code = value?.trim() ?? '';
+      return code.length > 0 ? code : undefined;
+    }),
   clientType: clientTypeSchema.optional(),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
@@ -37,6 +49,9 @@ export const authUserSchema = z.object({
   totpEnabled: z.boolean().optional(),
   email: z.string().nullable().optional(),
   emailVerifiedAt: z.string().datetime().nullable().optional(),
+  /** The signed-in user's unit, so the UI can say "Stake" and show hierarchy tools above ward level. */
+  unitName: z.string().optional(),
+  unitLevel: z.enum(['Ward', 'Stake', 'Region', 'District']).optional(),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
 

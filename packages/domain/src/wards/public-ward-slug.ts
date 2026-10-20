@@ -18,6 +18,7 @@ export const RESERVED_PUBLIC_WARD_SLUGS: ReadonlySet<string> = new Set([
   'api',
   'assets',
   'audiences',
+  'bulletins',
   'campaigns',
   'directory',
   'favicon',
