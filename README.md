@@ -280,7 +280,17 @@ Do **not** set `NUXT_PUBLIC_API_BASE_URL` unless you split web and API domains.
 
 ## End-to-end tests
 
-Playwright lives in `apps/web-e2e`. Guest tests cover the public login page, forgot-password, and verify-email. Authenticated tests walk core and admin pages. Against a live origin they may create fictional throwaway records, including `@mailinator.com` users to confirm verification and password-reset mail. They do not rotate the real ward code, reset the signed-in admin password, or provision a tenant.
+Playwright lives in `apps/web-e2e`.
+
+**Full local suite (recommended).** Builds a fictional mock ward (district → region → stake → two wards, every role, households, minors, consent, audiences, campaigns in every status, bulletins) on a disposable local stack and tests every page, button and workflow. It needs only local Postgres and Redis; it starts its own API, web app and mail catcher on separate ports. See [`apps/web-e2e/README.md`](apps/web-e2e/README.md).
+
+```bash
+docker compose up -d postgres redis
+pnpm --filter @ward-comms/web-e2e exec playwright install chromium
+pnpm test:e2e:local
+```
+
+**Live smoke suite.** Guest tests cover the public login page, forgot-password, and verify-email. Authenticated tests walk core and admin pages. Against a live origin they may create fictional throwaway records, including `@mailinator.com` users to confirm verification and password-reset mail. They do not rotate the real ward code, reset the signed-in admin password, or provision a tenant.
 
 ```bash
 pnpm --filter @ward-comms/web-e2e exec playwright install chromium
