@@ -11,12 +11,18 @@
 //   pnpm --filter @ward-comms/database db:migrate
 //   pnpm --filter @ward-comms/api test
 import { randomUUID } from 'node:crypto';
+import { NotFoundException } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { AppConfig } from '@ward-comms/config';
 import { LOCKOUT_THRESHOLD } from '@ward-comms/domain';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
-import { AuthService, AccountDisabledError, AccountLockedError, InvalidCredentialsError } from './auth.service.js';
+import {
+  AuthService,
+  AccountDisabledError,
+  AccountLockedError,
+  InvalidCredentialsError,
+} from './auth.service.js';
 import { PasswordHasherService } from './password-hasher.service.js';
 import { WardCodeHasherService } from './ward-code-hasher.service.js';
 import { UnitCodeLookupService } from './unit-code-lookup.service.js';
@@ -74,7 +80,16 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
   const passwordHasher = new PasswordHasherService();
   const wardCodeHasher = new WardCodeHasherService(config);
   const unitCodes = new UnitCodeLookupService(wardCodes, wardCodeHasher);
-  const authService = new AuthService(users, sessions, wardCodes, passwordHasher, wardCodeHasher, unitCodes, audit, config);
+  const authService = new AuthService(
+    users,
+    sessions,
+    wardCodes,
+    passwordHasher,
+    wardCodeHasher,
+    unitCodes,
+    audit,
+    config,
+  );
 
   let wardId: string;
   const password = 'Fictional-Password-42';
@@ -106,7 +121,10 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
 
   beforeEach(async () => {
     const ward = await prisma.client.ward.create({
-      data: { name: `Fictional Test Ward ${randomUUID()}`, publicSlug: `w${randomUUID().replace(/-/g, '')}` },
+      data: {
+        name: `Fictional Test Ward ${randomUUID()}`,
+        publicSlug: `w${randomUUID().replace(/-/g, '')}`,
+      },
     });
     wardId = ward.id;
 
@@ -172,7 +190,11 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     if (loginOutcome.status !== 'totp_required') throw new Error('expected totp_required');
 
     const rotated = 'rotated-mid-login-9';
-    await wardCodes.rotate(wardId, await wardCodeHasher.hash(rotated), wardCodeHasher.lookupKey(rotated));
+    await wardCodes.rotate(
+      wardId,
+      await wardCodeHasher.hash(rotated),
+      wardCodeHasher.lookupKey(rotated),
+    );
 
     await expect(
       authService.verifyTotp(loginOutcome.loginTicket, computeTotpCode(secret), context(deviceId)),
@@ -186,46 +208,80 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
   it('rejects a wrong or missing-unit code with the same generic error', async () => {
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     await expect(
-      authService.login(user.username, password, context(`device-${randomUUID()}`), 'not-a-real-code'),
+      authService.login(
+        user.username,
+        password,
+        context(`device-${randomUUID()}`),
+        'not-a-real-code',
+      ),
     ).rejects.toThrow(InvalidCredentialsError);
   });
 
   it('accepts only the new code after the unit code is rotated', async () => {
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     const rotated = 'rotated-ward-code-9';
-    await wardCodes.rotate(wardId, await wardCodeHasher.hash(rotated), wardCodeHasher.lookupKey(rotated));
-
-    await expect(wardLogin(user.username, password, context(`device-${randomUUID()}`))).rejects.toThrow(
-      InvalidCredentialsError,
+    await wardCodes.rotate(
+      wardId,
+      await wardCodeHasher.hash(rotated),
+      wardCodeHasher.lookupKey(rotated),
     );
-    const afterRotation = await authService.login(user.username, password, context(`device-${randomUUID()}`), rotated);
+
+    await expect(
+      wardLogin(user.username, password, context(`device-${randomUUID()}`)),
+    ).rejects.toThrow(InvalidCredentialsError);
+    const afterRotation = await authService.login(
+      user.username,
+      password,
+      context(`device-${randomUUID()}`),
+      rotated,
+    );
     expect(afterRotation.status).toBe('ok');
   });
 
   it('backfills the lookup key on older code rows and still signs in', async () => {
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
-    const before = await prisma.client.wardCodeVersion.findFirstOrThrow({ where: { wardId, retiredAt: null } });
+    const before = await prisma.client.wardCodeVersion.findFirstOrThrow({
+      where: { wardId, retiredAt: null },
+    });
     expect(before.lookupKey).toBeNull();
 
-    expect((await wardLogin(user.username, password, context(`device-${randomUUID()}`))).status).toBe('ok');
-    const after = await prisma.client.wardCodeVersion.findUniqueOrThrow({ where: { id: before.id } });
+    expect(
+      (await wardLogin(user.username, password, context(`device-${randomUUID()}`))).status,
+    ).toBe('ok');
+    const after = await prisma.client.wardCodeVersion.findUniqueOrThrow({
+      where: { id: before.id },
+    });
     expect(after.lookupKey).toBe(wardCodeHasher.lookupKey(wardCode));
-    expect((await wardLogin(user.username, password, context(`device-${randomUUID()}`))).status).toBe('ok');
+    expect(
+      (await wardLogin(user.username, password, context(`device-${randomUUID()}`))).status,
+    ).toBe('ok');
   });
 
   it('refuses to guess when the same code is active in two units', async () => {
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     const otherWard = await prisma.client.ward.create({
-      data: { name: `Fictional Same Code Ward ${randomUUID()}`, publicSlug: `s${randomUUID().replace(/-/g, '')}` },
+      data: {
+        name: `Fictional Same Code Ward ${randomUUID()}`,
+        publicSlug: `s${randomUUID().replace(/-/g, '')}`,
+      },
     });
     // Both rows predate lookup keys, as a duplicate from before uniqueness was enforced would.
     await prisma.client.wardCodeVersion.create({
-      data: { wardId: otherWard.id, version: 1, codeHash: await wardCodeHasher.hash(wardCode), activatedAt: new Date() },
+      data: {
+        wardId: otherWard.id,
+        version: 1,
+        codeHash: await wardCodeHasher.hash(wardCode),
+        activatedAt: new Date(),
+      },
     });
     try {
-      await expect(wardLogin(user.username, password, context('device-dup'))).rejects.toThrow(InvalidCredentialsError);
+      await expect(wardLogin(user.username, password, context('device-dup'))).rejects.toThrow(
+        InvalidCredentialsError,
+      );
       // Still ambiguous once both rows have been keyed by that first attempt.
-      await expect(wardLogin(user.username, password, context('device-dup'))).rejects.toThrow(InvalidCredentialsError);
+      await expect(wardLogin(user.username, password, context('device-dup'))).rejects.toThrow(
+        InvalidCredentialsError,
+      );
       const signal = await prisma.client.auditEvent.findFirst({
         where: { action: 'auth.login.ambiguous_unit_code' },
         orderBy: { createdAt: 'desc' },
@@ -268,7 +324,12 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     });
     const ward = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     try {
-      const outcome = await authService.login(stakeUser.username, password, context(`device-${randomUUID()}`), stakeCode);
+      const outcome = await authService.login(
+        stakeUser.username,
+        password,
+        context(`device-${randomUUID()}`),
+        stakeCode,
+      );
       expect(outcome.status).toBe('ok');
       if (outcome.status !== 'ok') throw new Error('unreachable');
       expect(outcome.user.wardId).toBe(stake.id);
@@ -278,7 +339,12 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
         authService.login(ward.username, password, context(`device-${randomUUID()}`), stakeCode),
       ).rejects.toThrow(InvalidCredentialsError);
       await expect(
-        authService.login(stakeUser.username, password, context(`device-${randomUUID()}`), wardCode),
+        authService.login(
+          stakeUser.username,
+          password,
+          context(`device-${randomUUID()}`),
+          wardCode,
+        ),
       ).rejects.toThrow(InvalidCredentialsError);
     } finally {
       await prisma.client.ward.update({ where: { id: wardId }, data: { parentId: null } });
@@ -290,14 +356,14 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
   });
 
   it('rejects invalid credentials without revealing whether the username exists', async () => {
-    await expect(authService.login('no-such-user', 'whatever-12345', context('device-x'))).rejects.toThrow(
-      InvalidCredentialsError,
-    );
+    await expect(
+      authService.login('no-such-user', 'whatever-12345', context('device-x')),
+    ).rejects.toThrow(InvalidCredentialsError);
 
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
-    await expect(wardLogin(user.username, 'wrong-password-12345', context('device-x'))).rejects.toThrow(
-      InvalidCredentialsError,
-    );
+    await expect(
+      wardLogin(user.username, 'wrong-password-12345', context('device-x')),
+    ).rejects.toThrow(InvalidCredentialsError);
   });
 
   it('locks the account after repeated failed attempts and blocks further attempts even with the correct password', async () => {
@@ -316,7 +382,11 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
 
   it('rejects login for a disabled account', async () => {
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
-    await authService.disableAccount(user.id, user.id, context('device-admin'));
+    await authService.disableAccount(
+      user.id,
+      { userId: user.id, wardId: user.wardId },
+      context('device-admin'),
+    );
 
     await expect(wardLogin(user.username, password, context('device-y'))).rejects.toThrow(
       AccountDisabledError,
@@ -327,11 +397,40 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     const deviceId = `device-${randomUUID()}`;
     const verified = await wardLogin(user.username, password, context(deviceId));
-    if (verified.status !== 'ok' || !verified.sessionToken) throw new Error('expected session token');
+    if (verified.status !== 'ok' || !verified.sessionToken)
+      throw new Error('expected session token');
 
-    await authService.disableAccount(user.id, user.id, context('device-admin'));
+    await authService.disableAccount(
+      user.id,
+      { userId: user.id, wardId: user.wardId },
+      context('device-admin'),
+    );
 
     await expect(authService.validateSessionToken(verified.sessionToken)).rejects.toThrow();
+  });
+
+  it('refuses to disable or enable an account in another unit, and reports it as not found', async () => {
+    const otherWard = await prisma.client.ward.create({
+      data: {
+        name: `Fictional Other Ward ${randomUUID()}`,
+        publicSlug: `w${randomUUID().replace(/-/g, '')}`,
+      },
+    });
+    const outsider = { userId: randomUUID(), wardId: otherWard.id };
+
+    await expect(
+      authService.disableAccount(userId, outsider, context('device-outsider')),
+    ).rejects.toThrow(NotFoundException);
+    await expect(
+      authService.enableAccount(userId, outsider, context('device-outsider')),
+    ).rejects.toThrow(NotFoundException);
+
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    expect(user.disabledAt).toBeNull();
+    const audits = await prisma.client.auditEvent.count({
+      where: { entityId: userId, action: 'auth.user.disabled' },
+    });
+    expect(audits).toBe(0);
   });
 
   it('rotates the mobile refresh token on each refresh and invalidates the previous one', async () => {
@@ -342,10 +441,15 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     if (verified.status !== 'ok' || !verified.tokens) throw new Error('expected mobile tokens');
 
     const originalRefreshToken = verified.tokens.refreshToken;
-    const { tokens: rotated } = await authService.refresh(originalRefreshToken, context(deviceId, 'mobile'));
+    const { tokens: rotated } = await authService.refresh(
+      originalRefreshToken,
+      context(deviceId, 'mobile'),
+    );
 
     expect(rotated.refreshToken).not.toBe(originalRefreshToken);
-    await expect(authService.refresh(originalRefreshToken, context(deviceId, 'mobile'))).rejects.toThrow();
+    await expect(
+      authService.refresh(originalRefreshToken, context(deviceId, 'mobile')),
+    ).rejects.toThrow();
 
     const { user: refreshedUser } = await authService.validateAccessToken(rotated.accessToken);
     expect(refreshedUser.id).toBe(user.id);
@@ -356,7 +460,8 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     const deviceId = `device-${randomUUID()}`;
 
     const verified = await wardLogin(user.username, password, context(deviceId));
-    if (verified.status !== 'ok' || !verified.sessionToken) throw new Error('expected session token');
+    if (verified.status !== 'ok' || !verified.sessionToken)
+      throw new Error('expected session token');
 
     const { session } = await authService.validateSessionToken(verified.sessionToken);
     await authService.logout(session.id, user.id, context(deviceId));
@@ -368,20 +473,35 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     const deviceId = `device-${randomUUID()}`;
     const verified = await wardLogin(user.username, password, context(deviceId));
-    if (verified.status !== 'ok' || !verified.sessionToken) throw new Error('expected session token');
+    if (verified.status !== 'ok' || !verified.sessionToken)
+      throw new Error('expected session token');
 
-    await authService.changeOwnPassword(user.id, password, 'Fictional-Reset-99x', context(deviceId));
-
-    await expect(authService.validateSessionToken(verified.sessionToken)).rejects.toThrow();
-    await expect(wardLogin(user.username, password, context(`device-${randomUUID()}`))).rejects.toThrow(
-      InvalidCredentialsError,
+    await authService.changeOwnPassword(
+      user.id,
+      password,
+      'Fictional-Reset-99x',
+      context(deviceId),
     );
 
-    const afterChange = await wardLogin(user.username, 'Fictional-Reset-99x', context(`device-${randomUUID()}`));
+    await expect(authService.validateSessionToken(verified.sessionToken)).rejects.toThrow();
+    await expect(
+      wardLogin(user.username, password, context(`device-${randomUUID()}`)),
+    ).rejects.toThrow(InvalidCredentialsError);
+
+    const afterChange = await wardLogin(
+      user.username,
+      'Fictional-Reset-99x',
+      context(`device-${randomUUID()}`),
+    );
     expect(afterChange.status).toBe('ok');
 
     await expect(
-      authService.changeOwnPassword(user.id, 'wrong-current-99x', 'Fictional-Another-99x', context(deviceId)),
+      authService.changeOwnPassword(
+        user.id,
+        'wrong-current-99x',
+        'Fictional-Another-99x',
+        context(deviceId),
+      ),
     ).rejects.toThrow(/Incorrect current password/i);
 
     const auditEvent = await prisma.client.auditEvent.findFirst({
@@ -394,7 +514,9 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
   it('lets two wards share a username and keeps platform login ward-agnostic', async () => {
     const platformRole =
       (await prisma.client.role.findUnique({ where: { name: 'PlatformAdmin' } })) ??
-      (await prisma.client.role.create({ data: { name: 'PlatformAdmin', description: 'Platform operator' } }));
+      (await prisma.client.role.create({
+        data: { name: 'PlatformAdmin', description: 'Platform operator' },
+      }));
 
     const previousOperatorRoles = await prisma.client.userRole.findMany({
       where: { roleId: platformRole.id },
@@ -415,7 +537,10 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     await prisma.client.userRole.create({ data: { userId: operator.id, roleId: platformRole.id } });
 
     const otherWard = await prisma.client.ward.create({
-      data: { name: `Fictional Other Ward ${randomUUID()}`, publicSlug: `o${randomUUID().replace(/-/g, '')}` },
+      data: {
+        name: `Fictional Other Ward ${randomUUID()}`,
+        publicSlug: `o${randomUUID().replace(/-/g, '')}`,
+      },
     });
     const clerk = await prisma.client.applicationUser.create({
       data: {
@@ -439,7 +564,11 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     const extraUserIds: string[] = [operator.id, clerk.id];
 
     try {
-      const platformLogin = await authService.login(sharedUsername, password, context(`device-${randomUUID()}`));
+      const platformLogin = await authService.login(
+        sharedUsername,
+        password,
+        context(`device-${randomUUID()}`),
+      );
       expect(platformLogin.status).toBe('ok');
       if (platformLogin.status !== 'ok') throw new Error('expected platform session');
       expect(platformLogin.user.id).toBe(operator.id);
@@ -476,7 +605,10 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
       await prisma.client.userSession.deleteMany({ where: { userId: { in: extraUserIds } } });
       await prisma.client.userRole.deleteMany({ where: { roleId: platformRole.id } });
       if (previousOperatorRoles.length > 0) {
-        await prisma.client.userRole.createMany({ data: previousOperatorRoles, skipDuplicates: true });
+        await prisma.client.userRole.createMany({
+          data: previousOperatorRoles,
+          skipDuplicates: true,
+        });
       }
       await prisma.client.wardCodeVersion.deleteMany({ where: { wardId: otherWard.id } });
       await prisma.client.applicationUser.deleteMany({ where: { id: { in: extraUserIds } } });
@@ -487,8 +619,12 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
   it('surfaces a user permission set derived from assigned roles, never a raw hash', async () => {
     const permissionKey = `fictional.permission.${randomUUID()}`;
     const permission = await prisma.client.permission.create({ data: { key: permissionKey } });
-    const role = await prisma.client.role.create({ data: { name: `Fictional Role ${randomUUID()}` } });
-    await prisma.client.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id } });
+    const role = await prisma.client.role.create({
+      data: { name: `Fictional Role ${randomUUID()}` },
+    });
+    await prisma.client.rolePermission.create({
+      data: { roleId: role.id, permissionId: permission.id },
+    });
     await prisma.client.userRole.create({ data: { userId, roleId: role.id } });
 
     const permissionKeys = await users.getPermissionKeys(userId);

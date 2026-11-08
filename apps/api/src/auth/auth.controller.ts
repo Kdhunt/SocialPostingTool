@@ -43,9 +43,17 @@ import { AuthService, type RequestContext } from './auth.service.js';
 import { LoginRateLimiterService } from './login-rate-limiter.service.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { RequirePermission } from './decorators/require-permission.decorator.js';
-import { SessionAuthGuard, type AuthContext, type AuthenticatedRequest } from './guards/session-auth.guard.js';
+import {
+  SessionAuthGuard,
+  type AuthContext,
+  type AuthenticatedRequest,
+} from './guards/session-auth.guard.js';
 import { PermissionsGuard } from './guards/permissions.guard.js';
-import { DEVICE_ID_COOKIE_NAME, DEVICE_ID_COOKIE_TTL_MS, SESSION_COOKIE_NAME } from './auth.constants.js';
+import {
+  DEVICE_ID_COOKIE_NAME,
+  DEVICE_ID_COOKIE_TTL_MS,
+  SESSION_COOKIE_NAME,
+} from './auth.constants.js';
 import { getAuthCookieOptions } from './auth-cookie.util.js';
 import { AccountEmailService } from '../messaging/account-email.service.js';
 
@@ -58,17 +66,27 @@ export class AuthController {
   ) {}
 
   private resolveDeviceId(req: Request, res: Response): string {
-    const existing = (req.cookies as Record<string, string | undefined> | undefined)?.[DEVICE_ID_COOKIE_NAME];
+    const existing = (req.cookies as Record<string, string | undefined> | undefined)?.[
+      DEVICE_ID_COOKIE_NAME
+    ];
     if (existing) {
       return existing;
     }
 
     const deviceId = randomUUID();
-    res.cookie(DEVICE_ID_COOKIE_NAME, deviceId, getAuthCookieOptions({ maxAge: DEVICE_ID_COOKIE_TTL_MS }));
+    res.cookie(
+      DEVICE_ID_COOKIE_NAME,
+      deviceId,
+      getAuthCookieOptions({ maxAge: DEVICE_ID_COOKIE_TTL_MS }),
+    );
     return deviceId;
   }
 
-  private buildContext(req: Request, res: Response, clientType: 'web' | 'mobile' | undefined): RequestContext {
+  private buildContext(
+    req: Request,
+    res: Response,
+    clientType: 'web' | 'mobile' | undefined,
+  ): RequestContext {
     return {
       ipAddress: req.ip ?? null,
       userAgent: req.headers['user-agent'] ?? null,
@@ -149,7 +167,10 @@ export class AuthController {
     const tenantKey = dto.unitCode === undefined ? 'platform' : 'unit';
     const rateLimitKey = `${req.ip}:${tenantKey}:${dto.username}`;
     const ipRateLimitKey = `${req.ip}:login`;
-    if (!this.rateLimiter.consume(rateLimitKey) || !this.rateLimiter.consumeAddress(ipRateLimitKey)) {
+    if (
+      !this.rateLimiter.consume(rateLimitKey) ||
+      !this.rateLimiter.consumeAddress(ipRateLimitKey)
+    ) {
       throw new ForbiddenException('Too many sign-in attempts. Please wait and try again.');
     }
 
@@ -215,7 +236,9 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   @Post('totp/enroll')
   @HttpCode(200)
-  async beginTotpEnrollment(@CurrentUser() user: AuthContext['user']): Promise<TotpEnrollmentResponse> {
+  async beginTotpEnrollment(
+    @CurrentUser() user: AuthContext['user'],
+  ): Promise<TotpEnrollmentResponse> {
     return this.authService.beginTotpEnrollment(user.id);
   }
 
@@ -350,14 +373,22 @@ export class AuthController {
     }
     const dto = parseBody(changePasswordRequestSchema, body);
     const context = this.buildContext(req, res, 'web');
-    await this.authService.changeOwnPassword(user.id, dto.currentPassword, dto.newPassword, context);
+    await this.authService.changeOwnPassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+      context,
+    );
     res.clearCookie(SESSION_COOKIE_NAME);
   }
 
   @UseGuards(SessionAuthGuard)
   @Post('verification-email')
   @HttpCode(204)
-  async resendOwnVerificationEmail(@CurrentUser() user: AuthContext['user'], @Req() req: Request): Promise<void> {
+  async resendOwnVerificationEmail(
+    @CurrentUser() user: AuthContext['user'],
+    @Req() req: Request,
+  ): Promise<void> {
     if (!this.rateLimiter.consume(`${req.ip}:own-verification-email`)) {
       throw new ForbiddenException('Too many email requests. Please wait and try again.');
     }
@@ -408,12 +439,16 @@ export class AuthController {
     @CurrentUser() user: AuthContext['user'],
     @Req() req: Request,
   ): Promise<void> {
-    await this.authService.disableAccount(targetUserId, user.id, {
-      ipAddress: req.ip ?? null,
-      userAgent: req.headers['user-agent'] ?? null,
-      deviceId: 'n/a',
-      clientType: 'web',
-    });
+    await this.authService.disableAccount(
+      targetUserId,
+      { userId: user.id, wardId: user.wardId },
+      {
+        ipAddress: req.ip ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+        deviceId: 'n/a',
+        clientType: 'web',
+      },
+    );
   }
 
   @UseGuards(SessionAuthGuard, PermissionsGuard)
@@ -425,11 +460,15 @@ export class AuthController {
     @CurrentUser() user: AuthContext['user'],
     @Req() req: Request,
   ): Promise<void> {
-    await this.authService.enableAccount(targetUserId, user.id, {
-      ipAddress: req.ip ?? null,
-      userAgent: req.headers['user-agent'] ?? null,
-      deviceId: 'n/a',
-      clientType: 'web',
-    });
+    await this.authService.enableAccount(
+      targetUserId,
+      { userId: user.id, wardId: user.wardId },
+      {
+        ipAddress: req.ip ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+        deviceId: 'n/a',
+        clientType: 'web',
+      },
+    );
   }
 }
