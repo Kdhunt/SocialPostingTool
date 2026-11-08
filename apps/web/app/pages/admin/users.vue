@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import {
   createUserRequestSchema,
   fieldErrorsFromUnknown,
@@ -23,7 +22,7 @@ type PageState =
   | { kind: 'loaded'; users: UserSummaryDto[]; roles: RoleSummaryDto[] };
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 type CreateUserField = keyof CreateUserRequest;
 
@@ -79,17 +78,12 @@ async function load(): Promise<void> {
   } catch (error) {
     pageState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load users.',
+      message: apiErrorMessage(error, 'Unable to load users.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   if (!canManageUsers()) {
     await navigateTo('/');
     return;
@@ -131,7 +125,7 @@ async function createUser(): Promise<void> {
     if (zodFields && Object.keys(zodFields).length > 0) {
       applyFieldErrors(zodFields);
     } else {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to create user.';
+      actionError.value = apiErrorMessage(error, 'Unable to create user.');
     }
   } finally {
     creating.value = false;
@@ -180,7 +174,7 @@ async function submitEditEmail(userId: string): Promise<void> {
     if (zodFields?.email) {
       editEmailError.value = zodFields.email;
     } else {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to update email.';
+      actionError.value = apiErrorMessage(error, 'Unable to update email.');
     }
   } finally {
     savingEmail.value = false;
@@ -195,7 +189,7 @@ async function emailPasswordReset(user: UserSummaryDto): Promise<void> {
     await client.sendUserPasswordResetEmail(user.id);
     successMessage.value = `A password reset email was queued for ${user.email ?? user.username}.`;
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to send a reset email.';
+    actionError.value = apiErrorMessage(error, 'Unable to send a reset email.');
   } finally {
     emailingUserId.value = null;
   }
@@ -209,7 +203,7 @@ async function emailVerification(user: UserSummaryDto): Promise<void> {
     await client.sendUserVerificationEmail(user.id);
     successMessage.value = `A confirmation email was queued for ${user.email ?? user.username}.`;
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to send a confirmation email.';
+    actionError.value = apiErrorMessage(error, 'Unable to send a confirmation email.');
   } finally {
     emailingUserId.value = null;
   }
@@ -237,7 +231,7 @@ async function submitResetPassword(userId: string): Promise<void> {
     if (zodFields?.password) {
       resetPasswordError.value = zodFields.password;
     } else {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to reset password.';
+      actionError.value = apiErrorMessage(error, 'Unable to reset password.');
     }
   } finally {
     resetting.value = false;
@@ -258,7 +252,7 @@ async function saveRoles(userId: string): Promise<void> {
     editingUserId.value = null;
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to update roles.';
+    actionError.value = apiErrorMessage(error, 'Unable to update roles.');
   }
 }
 
@@ -272,7 +266,7 @@ async function toggleDisabled(user: UserSummaryDto): Promise<void> {
     }
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to update account status.';
+    actionError.value = apiErrorMessage(error, 'Unable to update account status.');
   }
 }
 

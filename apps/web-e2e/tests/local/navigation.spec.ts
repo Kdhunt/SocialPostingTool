@@ -84,11 +84,6 @@ const EXPECTED_SIDEBAR: Record<SessionKey, string[]> = {
   ],
 };
 
-/** Confirmed app bugs, kept visible as expected failures until fixed. */
-const KNOWN_NAV_BUGS: Partial<Record<SessionKey, string>> = {
-  viewer:
-    'BUG: the sidebar offers Campaigns, Bulletins, Audiences and Destinations to a Viewer; each page then shows "Missing required permission".',
-};
 
 async function sidebarLabels(page: Page): Promise<string[]> {
   const nav = primaryNav(page);
@@ -101,14 +96,12 @@ for (const role of Object.keys(EXPECTED_SIDEBAR) as SessionKey[]) {
     test.use(as(role));
 
     test('shows exactly the sections this role may use', async ({ page }) => {
-      test.fail(Boolean(KNOWN_NAV_BUGS[role]), KNOWN_NAV_BUGS[role]);
       await open(page, '/');
       await expect.poll(() => sidebarLabels(page)).toEqual(EXPECTED_SIDEBAR[role]);
       await expect(primaryNav(page).getByText(SESSIONS[role].displayName)).toBeVisible();
     });
 
     test('every sidebar link opens its page without a permission error', async ({ page }) => {
-      test.fail(Boolean(KNOWN_NAV_BUGS[role]), KNOWN_NAV_BUGS[role]);
       const refused: string[] = [];
       page.on('response', (response) => {
         if (response.status() === 403)
@@ -262,8 +255,9 @@ test.describe('Mobile navigation', () => {
       await menu.click();
       await expect(menu).toHaveAttribute('aria-expanded', 'true', { timeout: 1_000 });
     }).toPass();
-    await primaryNav(page).getByRole('link', { name: 'Campaigns' }).click();
-    await heading(page, 'Campaigns');
+    // A Viewer's menu only offers what the role can open, so use People rather than Campaigns.
+    await primaryNav(page).getByRole('link', { name: 'People' }).click();
+    await heading(page, 'Directory');
     await expect(menu).toHaveAttribute('aria-expanded', 'false');
 
     await menu.click();

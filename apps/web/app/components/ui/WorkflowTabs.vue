@@ -119,6 +119,11 @@ function tabIndex(tabId: string): number {
   gap: var(--space-5);
 }
 
+/* `display: flex` above would otherwise override the hidden attribute and show every panel. */
+.workflow-tabs__panel[hidden] {
+  display: none;
+}
+
 .workflow-tabs__description {
   color: var(--color-text-muted);
   font-size: 0.9375rem;

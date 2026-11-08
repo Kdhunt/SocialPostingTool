@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { AuditEventDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
@@ -9,7 +8,7 @@ import { useAuth } from '~/composables/useAuth';
 definePageMeta({ layout: 'authenticated' });
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 const events = ref<AuditEventDto[]>([]);
 const loading = ref(true);
@@ -32,18 +31,13 @@ async function load(): Promise<void> {
     });
     events.value = response.events;
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to load audit log.';
+    actionError.value = apiErrorMessage(error, 'Unable to load audit log.');
   } finally {
     loading.value = false;
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   if (!canRead()) {
     await navigateTo('/');
     return;

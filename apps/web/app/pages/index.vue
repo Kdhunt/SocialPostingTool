@@ -4,8 +4,8 @@ definePageMeta({ layout: 'authenticated' });
 import type { CampaignSummaryDto, PlatformWardSummaryDto } from '@ward-comms/validation';
 import { campaignStatusLabel } from '~/utils/display-labels';
 
-const { state: authState, refreshSession } = useAuth();
-const { hasPermission, isPlatformOperator } = useAppNavigation();
+const { state: authState } = useAuth();
+const { hasPermission, canUseArea, isPlatformOperator } = useAppNavigation();
 const client = useApiClient();
 
 const pendingApprovals = ref<CampaignSummaryDto[]>([]);
@@ -15,14 +15,18 @@ const platformWards = ref<PlatformWardSummaryDto[]>([]);
 const loadingWards = ref(true);
 
 async function loadActivity(): Promise<void> {
+  if (!canUseArea('campaigns')) {
+    loadingActivity.value = false;
+    return;
+  }
   loadingActivity.value = true;
   try {
-    const recent = await client.searchCampaigns({});
+    const [recent, pending] = await Promise.all([
+      client.searchCampaigns({}),
+      hasPermission('campaigns.approve') ? client.searchCampaigns({ status: 'PendingApproval' }) : null,
+    ]);
     recentCampaigns.value = recent.campaigns.slice(0, 5);
-    if (hasPermission('campaigns.approve')) {
-      const pending = await client.searchCampaigns({ status: 'PendingApproval' });
-      pendingApprovals.value = pending.campaigns;
-    }
+    pendingApprovals.value = pending?.campaigns ?? [];
   } catch {
     pendingApprovals.value = [];
     recentCampaigns.value = [];
@@ -44,11 +48,6 @@ async function loadPlatformWards(): Promise<void> {
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   if (isPlatformOperator.value) {
     await loadPlatformWards();
     return;
@@ -121,9 +120,9 @@ function adminNames(ward: PlatformWardSummaryDto): string {
       />
 
       <section class="dashboard__grid" aria-label="Quick actions">
-        <UiQuickActionCard title="Directory" to="/directory" description="Look up members, households, contact methods, and consent." />
-        <UiQuickActionCard title="Campaigns" to="/campaigns" description="Draft messages, preview overlap, request approval, and schedule sends." />
-        <UiQuickActionCard title="Audiences" to="/audiences" description="Build groups from members or rules and attach delivery destinations." />
+        <UiQuickActionCard v-if="canUseArea('directory')" title="Directory" to="/directory" description="Look up members, households, contact methods, and consent." />
+        <UiQuickActionCard v-if="canUseArea('campaigns')" title="Campaigns" to="/campaigns" description="Draft messages, preview overlap, request approval, and schedule sends." />
+        <UiQuickActionCard v-if="canUseArea('audiences')" title="Audiences" to="/audiences" description="Build groups from members or rules and attach delivery destinations." />
         <UiQuickActionCard
           v-if="hasPermission('campaigns.create')"
           title="New campaign"
@@ -145,7 +144,7 @@ function adminNames(ward: PlatformWardSummaryDto): string {
         </ul>
       </section>
 
-      <section class="card dashboard__panel" aria-label="Recent campaigns">
+      <section v-if="canUseArea('campaigns')" class="card dashboard__panel" aria-label="Recent campaigns">
         <div class="dashboard__panel-header">
           <h2 class="dashboard__panel-title">Recent campaigns</h2>
           <UiAppButton variant="ghost" to="/campaigns">View all</UiAppButton>

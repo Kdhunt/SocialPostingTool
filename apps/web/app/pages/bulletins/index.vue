@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { BulletinSummaryDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
@@ -15,7 +14,7 @@ type ListState =
   | { kind: 'loaded'; bulletins: BulletinSummaryDto[] };
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 const listState = ref<ListState>({ kind: 'loading' });
 const creating = ref(false);
 const actionError = ref<string | null>(null);
@@ -41,7 +40,7 @@ async function load(): Promise<void> {
   } catch (error) {
     listState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load bulletins.',
+      message: apiErrorMessage(error, 'Unable to load bulletins.'),
     };
   }
 }
@@ -54,18 +53,13 @@ async function createBulletin(): Promise<void> {
     await navigateTo(`/bulletins/${created.id}`);
   } catch (error) {
     actionError.value =
-      error instanceof ApiRequestError ? error.message : 'Unable to start a bulletin.';
+      apiErrorMessage(error, 'Unable to start a bulletin.');
   } finally {
     creating.value = false;
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await load();
 });
 </script>

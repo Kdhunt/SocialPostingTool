@@ -1,7 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'authenticated' });
 
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { CampaignSummaryDto, CampaignStatusDto } from '@ward-comms/validation';
 import { campaignStatusLabel } from '~/utils/display-labels';
 
@@ -23,7 +22,7 @@ const STATUS_OPTIONS: CampaignStatusDto[] = [
 ];
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 const query = ref('');
 const status = ref<CampaignStatusDto | ''>('');
@@ -46,17 +45,12 @@ async function search(): Promise<void> {
   } catch (error) {
     listState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load campaigns.',
+      message: apiErrorMessage(error, 'Unable to load campaigns.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await search();
 });
 </script>

@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
+import { computed, onMounted, ref } from 'vue';
 import type { CommunicationDestinationDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
 
 type ListState =
   | { kind: 'loading' }
@@ -12,7 +9,8 @@ type ListState =
   | { kind: 'loaded'; destinations: CommunicationDestinationDto[] };
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
+const canManage = computed(() => canUseArea('destinationsManage'));
 
 const listState = ref<ListState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
@@ -29,17 +27,12 @@ async function load(): Promise<void> {
   } catch (error) {
     listState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load destinations.',
+      message: apiErrorMessage(error, 'Unable to load destinations.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await load();
 });
 
@@ -55,7 +48,7 @@ async function createDestination(): Promise<void> {
     newProviderAccountReference.value = '';
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to create destination.';
+    actionError.value = apiErrorMessage(error, 'Unable to create destination.');
   }
 }
 
@@ -65,7 +58,7 @@ async function archiveDestination(id: string): Promise<void> {
     await client.archiveDestination(id);
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to archive destination.';
+    actionError.value = apiErrorMessage(error, 'Unable to archive destination.');
   }
 }
 </script>
@@ -82,7 +75,7 @@ async function archiveDestination(id: string): Promise<void> {
 
     <p v-if="actionError" role="alert" class="destinations-page__error">{{ actionError }}</p>
 
-    <form class="destinations-page__form" novalidate @submit.prevent="createDestination">
+    <form v-if="canManage" class="destinations-page__form" novalidate @submit.prevent="createDestination">
       <label for="destination-name">Name</label>
       <input id="destination-name" v-model="newName" type="text" required />
 
@@ -106,7 +99,7 @@ async function archiveDestination(id: string): Promise<void> {
       <li v-for="destination in listState.destinations" :key="destination.id">
         {{ destination.name }} ({{ destination.channel }})
         <span v-if="!destination.isActive" class="destinations-page__tag">Archived</span>
-        <button v-if="destination.isActive" type="button" @click="archiveDestination(destination.id)">Archive</button>
+        <button v-if="canManage && destination.isActive" type="button" @click="archiveDestination(destination.id)">Archive</button>
       </li>
       <li v-if="listState.destinations.length === 0">No destinations yet.</li>
     </ul>

@@ -1,10 +1,8 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'authenticated' });
 
-import { ApiRequestError } from '@ward-comms/api-client';
-
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
 
 const name = ref('');
 const baseMessage = ref('');
@@ -12,12 +10,7 @@ const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind !== 'authenticated') {
-    await navigateTo('/login');
-    return;
-  }
-  if (!authState.value.user.permissions.includes('campaigns.create')) {
+  if (!canUseArea('campaignsCreate')) {
     await navigateTo('/campaigns');
   }
 });
@@ -32,7 +25,7 @@ async function onSubmit(): Promise<void> {
     });
     await navigateTo(`/campaigns/${campaign.id}`);
   } catch (error) {
-    errorMessage.value = error instanceof ApiRequestError ? error.message : 'Unable to create campaign.';
+    errorMessage.value = apiErrorMessage(error, 'Unable to create campaign.');
   } finally {
     submitting.value = false;
   }

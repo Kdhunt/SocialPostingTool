@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { CommunicationChannel, ProviderCredentialSummaryDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
@@ -11,7 +10,7 @@ definePageMeta({ layout: 'authenticated' });
 const CHANNELS: CommunicationChannel[] = ['Email', 'Sms', 'FacebookPage'];
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 const credentials = ref<ProviderCredentialSummaryDto[]>([]);
 const loading = ref(true);
@@ -33,18 +32,13 @@ async function load(): Promise<void> {
     const response = await client.listProviderCredentials();
     credentials.value = response.credentials;
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to load credentials.';
+    actionError.value = apiErrorMessage(error, 'Unable to load credentials.');
   } finally {
     loading.value = false;
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   if (!canManage()) {
     await navigateTo('/');
     return;
@@ -72,7 +66,7 @@ async function upsert(): Promise<void> {
     expiresAt.value = '';
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to save credentials.';
+    actionError.value = apiErrorMessage(error, 'Unable to save credentials.');
   }
 }
 
@@ -82,7 +76,7 @@ async function revoke(id: string): Promise<void> {
     await client.revokeProviderCredential(id);
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to revoke credentials.';
+    actionError.value = apiErrorMessage(error, 'Unable to revoke credentials.');
   }
 }
 </script>

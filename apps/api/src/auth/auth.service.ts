@@ -6,6 +6,7 @@ import {
   computeTotpLockedUntil,
   isAccountLocked,
   isSessionValid,
+  shouldTouchSession,
   isTotpEnabled,
   isTotpLocked,
   LOGIN_TICKET_TTL_MS,
@@ -26,7 +27,7 @@ import { InvalidSignedTokenError, signToken, verifyToken } from '../common/signe
 import { PasswordHasherService } from './password-hasher.service.js';
 import { WardCodeHasherService } from './ward-code-hasher.service.js';
 import { UnitCodeLookupService } from './unit-code-lookup.service.js';
-import { SessionRepository } from './repositories/session.repository.js';
+import { SessionRepository, type SessionWithUser } from './repositories/session.repository.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { WardCodeRepository } from './repositories/ward-code.repository.js';
 import { decryptProviderSecret, encryptProviderSecret } from '../providers/provider-credential-cipher.js';
@@ -563,35 +564,39 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired access token.');
     }
 
-    const session = await this.sessions.findById(payload.sessionId);
-    if (!session || !isSessionValid(session) || session.userId !== payload.userId) {
+    const found = await this.sessions.findWithUser({ id: payload.sessionId });
+    if (!found || !isSessionValid(found.session) || found.session.userId !== payload.userId) {
       throw new UnauthorizedException('This session is no longer valid.');
     }
-
-    return this.loadAuthUser(session);
+    return this.authorizedSession(found);
   }
 
+  /**
+   * Runs on every cookie-authenticated request, so it does one database read
+   * (session, user, unit and permissions together) and writes `lastUsedAt`
+   * only when it is stale (see shouldTouchSession).
+   */
   async validateSessionToken(sessionToken: string): Promise<{ user: AuthUser; session: UserSession }> {
-    const sessionTokenHash = hashOpaqueToken(sessionToken);
-    const session = await this.sessions.findByTokenHash(sessionTokenHash);
-
-    if (!session || !isSessionValid(session)) {
+    const found = await this.sessions.findWithUser({ sessionTokenHash: hashOpaqueToken(sessionToken) });
+    if (!found || !isSessionValid(found.session)) {
       throw new UnauthorizedException('This session is no longer valid.');
     }
-
-    await this.sessions.touchLastUsed(session.id);
-    return this.loadAuthUser(session);
+    if (shouldTouchSession(found.session.lastUsedAt)) {
+      await this.sessions.touchLastUsed(found.session.id);
+    }
+    return this.authorizedSession(found);
   }
 
-  private async loadAuthUser(session: UserSession): Promise<{ user: AuthUser; session: UserSession }> {
-    const user = await this.users.findById(session.userId);
-    if (!user || user.disabledAt) {
+  private authorizedSession(found: SessionWithUser): { user: AuthUser; session: UserSession } {
+    if (found.user.disabledAt) {
       throw new UnauthorizedException('This account is no longer active.');
     }
-
     return {
-      user: await this.buildAuthUser(user),
-      session,
+      user: {
+        ...this.toAuthUser(found.user, found.permissionKeys),
+        ...(found.unit ? { unitName: found.unit.name, unitLevel: found.unit.level } : {}),
+      },
+      session: found.session,
     };
   }
 

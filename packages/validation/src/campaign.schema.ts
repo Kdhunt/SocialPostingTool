@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { queryBooleanSchema } from './query.schema.js';
 import { communicationChannelSchema } from './audience.schema.js';
 
 // Request/response contracts for the Phase 7 campaign drafting workflow
@@ -190,7 +191,7 @@ export type UpdateCampaignRequest = z.infer<typeof updateCampaignRequestSchema>;
 export const campaignSearchQuerySchema = z.object({
   query: z.string().max(255).optional(),
   status: campaignStatusSchema.optional(),
-  includeArchived: z.coerce.boolean().optional(),
+  includeArchived: queryBooleanSchema.optional(),
 });
 export type CampaignSearchQuery = z.infer<typeof campaignSearchQuerySchema>;
 

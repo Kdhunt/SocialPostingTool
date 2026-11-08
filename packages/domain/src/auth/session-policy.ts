@@ -27,3 +27,19 @@ export function isSessionValid(
 ): boolean {
   return !isSessionExpired(session.expiresAt, now) && !isSessionRevoked(session.revokedAt);
 }
+
+/**
+ * How often a session's `lastUsedAt` is written. Every authenticated API
+ * call validates the session, so writing it on each call doubled the
+ * database work for no benefit: nothing expires sessions on idle time, and
+ * "last used" only needs to be roughly right for an administrator.
+ */
+export const SESSION_TOUCH_INTERVAL_MS = 5 * 60_000; // 5 minutes
+
+/** Whether a validated session's `lastUsedAt` is stale enough to write again. */
+export function shouldTouchSession(
+  lastUsedAt: Date | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  return lastUsedAt == null || now.getTime() - lastUsedAt.getTime() >= SESSION_TOUCH_INTERVAL_MS;
+}

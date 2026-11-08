@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { navigateTo, useRoute } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute } from '#imports';
 import type { HouseholdDetailDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
 
 type PageState =
   | { kind: 'loading' }
@@ -14,7 +12,8 @@ type PageState =
 const route = useRoute();
 const householdId = route.params.id as string;
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
+const canEdit = computed(() => canUseArea('directoryWrite'));
 
 const pageState = ref<PageState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
@@ -34,17 +33,12 @@ async function load(): Promise<void> {
   } catch (error) {
     pageState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load household.',
+      message: apiErrorMessage(error, 'Unable to load household.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await load();
 });
 
@@ -58,7 +52,7 @@ async function saveBasicInfo(): Promise<void> {
     });
     pageState.value = { kind: 'loaded', household };
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to save household.';
+    actionError.value = apiErrorMessage(error, 'Unable to save household.');
   }
 }
 
@@ -68,7 +62,7 @@ async function archiveHousehold(): Promise<void> {
     await client.archiveHousehold(householdId);
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to archive household.';
+    actionError.value = apiErrorMessage(error, 'Unable to archive household.');
   }
 }
 </script>
@@ -87,10 +81,12 @@ async function archiveHousehold(): Promise<void> {
       </header>
 
       <p v-if="actionError" role="alert" class="household-page__error">{{ actionError }}</p>
+      <UiAlertBanner v-if="!canEdit" tone="info">You can view this household but your role can’t change it.</UiAlertBanner>
 
       <section aria-labelledby="household-info-heading">
         <h2 id="household-info-heading">Household info</h2>
         <form class="household-page__form" novalidate @submit.prevent="saveBasicInfo">
+          <fieldset class="plain-fieldset" :disabled="!canEdit">
           <label for="edit-name">Name</label>
           <input id="edit-name" v-model="editName" type="text" required />
 
@@ -100,10 +96,11 @@ async function archiveHousehold(): Promise<void> {
           <label for="edit-city">City</label>
           <input id="edit-city" v-model="editCity" type="text" />
 
-          <button type="submit">Save</button>
+          <button v-if="canEdit" type="submit">Save</button>
+          </fieldset>
         </form>
 
-        <button v-if="pageState.household.isActive" type="button" @click="archiveHousehold">Mark inactive</button>
+        <button v-if="canEdit && pageState.household.isActive" type="button" @click="archiveHousehold">Mark inactive</button>
       </section>
 
       <section aria-labelledby="members-heading">

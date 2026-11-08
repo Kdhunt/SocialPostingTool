@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import { isPlatformOperatorView } from '@ward-comms/domain';
+import { canUse, type PageArea } from '~/utils/permissions';
 
 export interface NavItem {
   label: string;
@@ -19,6 +20,8 @@ export function useAppNavigation(): {
   sections: import('vue').ComputedRef<NavSection[]>;
   adminItems: import('vue').ComputedRef<NavItem[]>;
   hasPermission: (key: string) => boolean;
+  /** Whether the signed-in user may use an area of the app (see utils/permissions). */
+  canUseArea: (area: PageArea) => boolean;
   isPlatformOperator: import('vue').ComputedRef<boolean>;
 } {
   const { state: authState } = useAuth();
@@ -60,41 +63,38 @@ export function useAppNavigation(): {
       return [account, overview];
     }
 
-    return [
-      account,
-      overview,
-      {
-        id: 'people',
-        label: 'People',
-        items: [
+    const can = (area: PageArea): boolean => canUse(permissionKeys(), area);
+    const people: NavItem[] = can('directory')
+      ? [
           {
             label: 'People',
             to: '/directory',
             isActive: (path) => path === '/directory' || path.startsWith('/directory/people'),
           },
-          {
-            label: 'Households',
-            to: '/directory/households',
-            matchPrefix: '/directory/households',
-          },
-        ],
-      },
-      {
-        id: 'messaging',
-        label: 'Messaging',
-        items: [
-          { label: 'Campaigns', to: '/campaigns', matchPrefix: '/campaigns' },
-          { label: 'Bulletins', to: '/bulletins', matchPrefix: '/bulletins' },
-          {
-            label: 'Audiences',
-            to: '/audiences',
-            isActive: (path) =>
-              path === '/audiences' ||
-              (path.startsWith('/audiences/') && !path.startsWith('/audiences/destinations')),
-          },
-          { label: 'Destinations', to: '/audiences/destinations', matchPrefix: '/audiences/destinations' },
-        ],
-      },
+          { label: 'Households', to: '/directory/households', matchPrefix: '/directory/households' },
+        ]
+      : [];
+    const messaging: NavItem[] = [
+      ...(can('campaigns') ? [{ label: 'Campaigns', to: '/campaigns', matchPrefix: '/campaigns' }] : []),
+      ...(can('bulletins') ? [{ label: 'Bulletins', to: '/bulletins', matchPrefix: '/bulletins' }] : []),
+      ...(can('audiences')
+        ? [
+            {
+              label: 'Audiences',
+              to: '/audiences',
+              isActive: (path: string) =>
+                path === '/audiences' || (path.startsWith('/audiences/') && !path.startsWith('/audiences/destinations')),
+            },
+            { label: 'Destinations', to: '/audiences/destinations', matchPrefix: '/audiences/destinations' },
+          ]
+        : []),
+    ];
+
+    return [
+      account,
+      overview,
+      ...(people.length > 0 ? [{ id: 'people', label: 'People', items: people }] : []),
+      ...(messaging.length > 0 ? [{ id: 'messaging', label: 'Messaging', items: messaging }] : []),
     ];
   });
 
@@ -151,7 +151,11 @@ export function useAppNavigation(): {
     return items;
   });
 
-  return { sections, adminItems, hasPermission, isPlatformOperator };
+  function canUseArea(area: PageArea): boolean {
+    return canUse(permissionKeys(), area);
+  }
+
+  return { sections, adminItems, hasPermission, canUseArea, isPlatformOperator };
 }
 
 export function isNavItemActive(path: string, item: NavItem): boolean {

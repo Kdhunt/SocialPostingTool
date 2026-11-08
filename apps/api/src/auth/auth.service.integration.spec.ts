@@ -334,6 +334,51 @@ describe.skipIf(!databaseAvailable)('AuthService — live PostgreSQL integration
     await expect(authService.validateSessionToken(verified.sessionToken)).rejects.toThrow();
   });
 
+  it('validates a session in one read and writes lastUsedAt only when it is stale', async () => {
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    const verified = await wardLogin(user.username, password, context(`device-${randomUUID()}`));
+    if (verified.status !== 'ok' || !verified.sessionToken)
+      throw new Error('expected session token');
+
+    const first = await authService.validateSessionToken(verified.sessionToken);
+    expect(first.user.id).toBe(userId);
+    expect(first.user.wardId).toBe(wardId);
+    const touchedAt = (
+      await prisma.client.userSession.findUniqueOrThrow({ where: { id: first.session.id } })
+    ).lastUsedAt;
+    expect(touchedAt).not.toBeNull();
+
+    await authService.validateSessionToken(verified.sessionToken);
+    const afterSecond = (
+      await prisma.client.userSession.findUniqueOrThrow({ where: { id: first.session.id } })
+    ).lastUsedAt;
+    expect(afterSecond?.getTime()).toBe(touchedAt?.getTime());
+
+    await prisma.client.userSession.update({
+      where: { id: first.session.id },
+      data: { lastUsedAt: new Date(Date.now() - 10 * 60_000) },
+    });
+    await authService.validateSessionToken(verified.sessionToken);
+    const afterStale = (
+      await prisma.client.userSession.findUniqueOrThrow({ where: { id: first.session.id } })
+    ).lastUsedAt;
+    expect(afterStale!.getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it('rejects a session whose account has been disabled', async () => {
+    const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
+    const verified = await wardLogin(user.username, password, context(`device-${randomUUID()}`));
+    if (verified.status !== 'ok' || !verified.sessionToken)
+      throw new Error('expected session token');
+    await prisma.client.applicationUser.update({
+      where: { id: userId },
+      data: { disabledAt: new Date() },
+    });
+    await expect(authService.validateSessionToken(verified.sessionToken)).rejects.toThrow(
+      'This account is no longer active.',
+    );
+  });
+
   it('rotates the mobile refresh token on each refresh and invalidates the previous one', async () => {
     const user = await prisma.client.applicationUser.findUniqueOrThrow({ where: { id: userId } });
     const deviceId = `device-${randomUUID()}`;

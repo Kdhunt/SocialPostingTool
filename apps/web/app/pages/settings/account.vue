@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import {
   changeEmailRequestSchema,
   changePasswordRequestSchema,
@@ -46,11 +45,6 @@ function describedBy(inputId: string, error?: string, hasHint = false): string |
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   emailValue.value = signedInUser.value?.email ?? '';
 });
 
@@ -76,7 +70,7 @@ async function changeEmail(): Promise<void> {
     if (zodFields && Object.keys(zodFields).length > 0) {
       emailFieldErrors.value = zodFields;
     } else {
-      pageError.value = error instanceof ApiRequestError ? error.message : 'Unable to update email.';
+      pageError.value = apiErrorMessage(error, 'Unable to update email.');
     }
   } finally {
     emailSubmitting.value = false;
@@ -112,7 +106,7 @@ async function changePassword(): Promise<void> {
     if (zodFields && Object.keys(zodFields).length > 0) {
       passwordFieldErrors.value = zodFields;
     } else {
-      pageError.value = error instanceof ApiRequestError ? error.message : 'Unable to update password.';
+      pageError.value = apiErrorMessage(error, 'Unable to update password.');
     }
   } finally {
     passwordSubmitting.value = false;
@@ -127,7 +121,7 @@ async function resendVerification(): Promise<void> {
     await client.resendOwnVerificationEmail();
     emailSuccess.value = 'A confirmation email was queued for your inbox.';
   } catch (error) {
-    pageError.value = error instanceof ApiRequestError ? error.message : 'Unable to send a confirmation email.';
+    pageError.value = apiErrorMessage(error, 'Unable to send a confirmation email.');
   } finally {
     resending.value = false;
   }

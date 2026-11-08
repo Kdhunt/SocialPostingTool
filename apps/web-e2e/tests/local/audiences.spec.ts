@@ -48,10 +48,6 @@ test.describe('Audiences as ward admin', () => {
   });
 
   test('archived audiences stay hidden until “Include archived” is ticked', async ({ page }) => {
-    test.fail(
-      true,
-      'BUG: the web client sends includeArchived=false and z.coerce.boolean() reads "false" as true.',
-    );
     await open(page, '/audiences');
     await expect(page.getByRole('link', { name: AUDIENCES.adults.name })).toBeVisible();
     await expect(page.getByRole('link', { name: AUDIENCES.archived.name })).toHaveCount(0);
@@ -302,12 +298,15 @@ test.describe('Audiences permissions', () => {
   test('a contributor can read audiences but not change them', async ({ page, ward, api }) => {
     await open(page, `/audiences/${ward.audiences.adults}`);
     await heading(page, AUDIENCES.adults.name);
-    await fill(page, '#edit-name', 'Fictional Hijacked Name');
-    await page
-      .getByRole('region', { name: 'Audience info' })
-      .getByRole('button', { name: 'Save' })
-      .click();
-    await expect(page.getByRole('alert')).toContainText('Missing required permission');
+    await expect(page.getByText('You can view this audience but your role can’t change it.')).toBeVisible();
+    await expect(page.locator('#edit-name')).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Delete permanently' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Add member' })).toHaveCount(0);
+    await open(page, '/audiences');
+    await expect(page.getByRole('link', { name: 'Create audience' })).toHaveCount(0);
+    await open(page, '/audiences/destinations');
+    await expect(page.getByRole('button', { name: 'Add destination' })).toHaveCount(0);
 
     const contributor = await api('contributor');
     expect((await contributor.post('/audiences', { data: { name: 'Blocked' } })).status()).toBe(

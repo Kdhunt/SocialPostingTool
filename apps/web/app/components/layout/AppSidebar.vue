@@ -9,6 +9,11 @@ const sidebarOpen = ref(false);
 
 const user = computed(() => (authState.value.kind === 'authenticated' ? authState.value.user : null));
 
+async function signOut(): Promise<void> {
+  await logout();
+  await navigateTo('/login');
+}
+
 function closeSidebar(): void {
   sidebarOpen.value = false;
 }
@@ -72,7 +77,7 @@ watch(
 
     <div v-if="user" class="sidebar__footer">
       <p class="sidebar__user-name">{{ user.displayName }}</p>
-      <button type="button" class="sidebar__sign-out" @click="logout">Sign out</button>
+      <button type="button" class="sidebar__sign-out" @click="signOut">Sign out</button>
     </div>
   </aside>
 

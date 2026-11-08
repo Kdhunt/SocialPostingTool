@@ -1,7 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'authenticated' });
 
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { PersonSummaryDto } from '@ward-comms/validation';
 
 type ListState =
@@ -11,7 +10,7 @@ type ListState =
   | { kind: 'loaded'; people: PersonSummaryDto[] };
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
 
 const query = ref('');
 const includeInactive = ref(false);
@@ -28,17 +27,12 @@ async function search(): Promise<void> {
   } catch (error) {
     listState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load the directory.',
+      message: apiErrorMessage(error, 'Unable to load the directory.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await search();
 });
 </script>
@@ -51,7 +45,7 @@ onMounted(async () => {
     >
       <template #actions>
         <UiAppButton variant="secondary" to="/directory/households">Households</UiAppButton>
-        <UiAppButton to="/directory/people/new">Add person</UiAppButton>
+        <UiAppButton v-if="canUseArea('directoryWrite')" to="/directory/people/new">Add person</UiAppButton>
       </template>
     </LayoutPageHeader>
 
@@ -75,7 +69,7 @@ onMounted(async () => {
       title="No people found"
       description="Try a different search term or add a new person to the directory."
     >
-      <template #actions>
+      <template v-if="canUseArea('directoryWrite')" #actions>
         <UiAppButton to="/directory/people/new">Add person</UiAppButton>
       </template>
     </UiEmptyState>

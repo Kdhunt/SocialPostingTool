@@ -108,10 +108,6 @@ test.describe('Campaign list', () => {
   });
 
   test('archived campaigns stay hidden until “Include archived” is ticked', async ({ page }) => {
-    test.fail(
-      true,
-      'BUG: the web client sends includeArchived=false and z.coerce.boolean() reads "false" as true.',
-    );
     await open(page, '/campaigns');
     await expect(page.getByRole('link', { name: CAMPAIGNS.draft.name })).toBeVisible();
     await expect(page.getByRole('link', { name: CAMPAIGNS.archived.name })).toHaveCount(0);
@@ -477,13 +473,9 @@ test.describe('Approval workflow across roles', () => {
       await tab(writer, 'Approve & send');
       await writer.getByRole('button', { name: 'Reopen as draft' }).click();
       await status(writer, 'Draft');
-      // Reopening starts a new version without the audiences (see the known-issue test below).
-      if (await writer.getByText('No audiences selected yet.').isVisible()) {
-        await tab(writer, 'Setup');
-        await writer.getByLabel('Add audience').selectOption({ label: AUDIENCES.newsletter.name });
-        await writer.getByRole('button', { name: 'Add audience' }).click();
-        await expect(writer.getByRole('heading', { name: 'Audiences (1)' })).toBeVisible();
-      }
+      // Reopening keeps the audiences, so the writer only fixes the message.
+      await tab(writer, 'Setup');
+      await expect(writer.getByRole('heading', { name: 'Audiences (1)' })).toBeVisible();
       await tab(writer, 'Content');
       await writer.locator('#base-message').fill('A fictional message, now with a time: 7pm.');
       await writer.getByRole('button', { name: 'Save content' }).click();
@@ -553,10 +545,6 @@ test.describe('Known campaign issues', () => {
     api,
     ward,
   }) => {
-    test.fail(
-      true,
-      'UX bug: "Reopen as draft" starts version 2 with only the base message; audiences, channel text and overlap settings are dropped, so Submit fails.',
-    );
     const admin = await api('wardAdmin');
     const campaign = await createCampaign(admin, ward, ['newsletter']);
     await admin.post(`/campaigns/${campaign.id}/channel-text`, {
@@ -572,10 +560,6 @@ test.describe('Known campaign issues', () => {
   });
 
   test('workflow tabs hide the panels that are not selected', async ({ page, ward }) => {
-    test.fail(
-      true,
-      'BUG: .workflow-tabs__panel sets display:flex, which overrides the hidden attribute, so every tab panel is always shown.',
-    );
     await open(page, `/campaigns/${ward.campaigns.draft}`);
     await expect(page.getByRole('heading', { name: 'Campaign details' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Workflow actions' })).toBeHidden();

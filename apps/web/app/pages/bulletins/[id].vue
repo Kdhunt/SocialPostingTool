@@ -39,7 +39,7 @@ interface BulletinDraft {
 
 const route = useRoute();
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 const bulletinId = computed(() => String(route.params.id ?? ''));
 
 const loading = ref(true);
@@ -187,7 +187,7 @@ const publicUrl = computed(() => {
 });
 
 function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiRequestError) return error.message;
+  if (error instanceof ApiRequestError) return apiErrorMessage(error, fallback);
   // Validation errors from the shared schemas (thrown before any request is sent).
   const issues = (
     error as { issues?: Array<{ path: Array<string | number>; message: string }> } | null
@@ -370,11 +370,6 @@ onBeforeRouteLeave(() => {
 });
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await load();
   const started = route.query.started;
   if (typeof started === 'string' && saved.value) {

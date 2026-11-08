@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { HouseholdListResponse } from '@ward-comms/validation';
 
 type HouseholdSummary = HouseholdListResponse['households'][number];
@@ -39,7 +38,7 @@ onMounted(async () => {
     const response = await client.listHouseholds();
     households.value = response.households;
   } catch (error) {
-    loadError.value = error instanceof ApiRequestError ? error.message : 'Unable to load households.';
+    loadError.value = apiErrorMessage(error, 'Unable to load households.');
   } finally {
     loading.value = false;
   }

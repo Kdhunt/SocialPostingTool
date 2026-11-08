@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { TotpEnrollmentResponse, TotpStatusResponse } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
@@ -26,17 +25,12 @@ async function loadStatus(): Promise<void> {
   try {
     status.value = await client.getTotpStatus();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to load security settings.';
+    actionError.value = apiErrorMessage(error, 'Unable to load security settings.');
     status.value = { enabled: false, pendingEnrollment: false };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await loadStatus();
 });
 
@@ -47,7 +41,7 @@ async function startEnrollment(): Promise<void> {
   try {
     enrollment.value = await client.beginTotpEnrollment();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to start two-factor setup.';
+    actionError.value = apiErrorMessage(error, 'Unable to start two-factor setup.');
   } finally {
     submitting.value = false;
   }
@@ -67,7 +61,7 @@ async function confirmEnrollment(): Promise<void> {
       await navigateTo('/login');
     }
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to confirm two-factor setup.';
+    actionError.value = apiErrorMessage(error, 'Unable to confirm two-factor setup.');
   } finally {
     submitting.value = false;
   }
@@ -89,7 +83,7 @@ async function disableTwoFactor(): Promise<void> {
       await loadStatus();
     }
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to disable two-factor authentication.';
+    actionError.value = apiErrorMessage(error, 'Unable to disable two-factor authentication.');
   } finally {
     submitting.value = false;
   }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isSessionExpired, isSessionRevoked, isSessionValid } from './session-policy.js';
+import {
+  SESSION_TOUCH_INTERVAL_MS,
+  isSessionExpired,
+  isSessionRevoked,
+  isSessionValid,
+  shouldTouchSession,
+} from './session-policy.js';
 
 describe('isSessionExpired', () => {
   it('is true once expiresAt has passed', () => {
@@ -36,5 +42,21 @@ describe('isSessionValid', () => {
 
   it('is invalid when expired even if not revoked', () => {
     expect(isSessionValid({ expiresAt: new Date('2025-12-31T00:00:00Z'), revokedAt: null }, now)).toBe(false);
+  });
+});
+
+describe('shouldTouchSession', () => {
+  const now = new Date('2026-01-01T12:00:00Z');
+
+  it('touches a session that has never been marked used', () => {
+    expect(shouldTouchSession(null, now)).toBe(true);
+  });
+
+  it('skips the write while the last touch is recent', () => {
+    expect(shouldTouchSession(new Date(now.getTime() - SESSION_TOUCH_INTERVAL_MS + 1_000), now)).toBe(false);
+  });
+
+  it('touches again once the interval has passed', () => {
+    expect(shouldTouchSession(new Date(now.getTime() - SESSION_TOUCH_INTERVAL_MS), now)).toBe(true);
   });
 });

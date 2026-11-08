@@ -11,6 +11,13 @@ const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
 const needsTotp = computed(() => state.value.kind === 'totp_required');
+const route = useRoute();
+
+/** Where to go after signing in: a same-site path from ?redirect=, otherwise home. */
+function afterSignIn(): string {
+  const target = route.query.redirect;
+  return typeof target === 'string' && target.startsWith('/') && !target.startsWith('//') ? target : '/';
+}
 
 function syncLoginFieldsFromForm(form: HTMLFormElement): void {
   const data = new FormData(form);
@@ -41,7 +48,7 @@ async function onLoginSubmit(event: Event): Promise<void> {
   }
 
   if (state.value.kind === 'authenticated') {
-    await navigateTo('/');
+    await navigateTo(afterSignIn());
   }
 }
 
@@ -57,7 +64,7 @@ async function onTotpSubmit(): Promise<void> {
   }
 
   if (state.value.kind === 'authenticated') {
-    await navigateTo('/');
+    await navigateTo(afterSignIn());
   }
 }
 </script>

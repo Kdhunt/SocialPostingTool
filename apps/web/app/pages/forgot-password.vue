@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { ApiRequestError } from '@ward-comms/api-client';
 import { useApiClient } from '~/composables/useApiClient';
 
 definePageMeta({ layout: 'guest' });
@@ -19,7 +18,7 @@ async function onSubmit(): Promise<void> {
     const result = await client.requestPasswordReset(email.value);
     successMessage.value = result.message;
   } catch (error) {
-    errorMessage.value = error instanceof ApiRequestError ? error.message : 'Unable to send a reset email.';
+    errorMessage.value = apiErrorMessage(error, 'Unable to send a reset email.');
   } finally {
     submitting.value = false;
   }

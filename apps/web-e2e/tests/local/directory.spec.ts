@@ -68,10 +68,6 @@ test.describe('Directory as ward admin', () => {
   test('inactive members stay hidden until “Include inactive members” is ticked', async ({
     page,
   }) => {
-    test.fail(
-      true,
-      'BUG: the web client sends includeInactive=false and z.coerce.boolean() reads "false" as true, so inactive members always show.',
-    );
     await open(page, '/directory');
     await expect(page.locator('ul.results')).toBeVisible();
     await expect(
@@ -160,10 +156,6 @@ test.describe('Directory as ward admin', () => {
   });
 
   test('a removed contact method disappears from the person’s page', async ({ page, api }) => {
-    test.fail(
-      true,
-      'BUG: removed (archived) contact methods are still listed on the person page, with no "removed" label.',
-    );
     const person = await createPerson(await api('wardAdmin'));
     await (
       await api('wardAdmin')
@@ -397,7 +389,8 @@ test.describe('Directory write permission', () => {
     await fill(page, '#first-name', 'Fictional');
     await fill(page, '#last-name', 'Blocked');
     await page.getByRole('button', { name: 'Save' }).click();
-    await expect(page.getByRole('alert')).toContainText('Missing required permission');
+    await expect(page.getByRole('alert')).toContainText('Your role doesn’t include access to this.');
+    await expect(page.getByText('Missing required permission')).toHaveCount(0);
 
     const viewerApi = await api('viewer');
     expect(

@@ -106,9 +106,15 @@ to a dedicated audit action for the domain-specific event that caused it
 (e.g. `campaign.sent_simulated`).
 
 `revise` is the explicit `Rejected → Draft` action: it creates a **new**
-`CampaignVersion` (copying the previous version's base message/image as a
-starting point) rather than mutating the rejected version, so the content
-an approver rejected remains exactly as it was when they saw it.
+`CampaignVersion` rather than mutating the rejected version, so the content
+an approver rejected remains exactly as it was when they saw it. The new
+version starts from everything the rejected one had, so the author only
+changes what the approver asked for: base message and image, selected
+audiences with their override text and image, per-channel text, and the
+overlap strategy. Audiences archived since the rejection are left out (and
+a `PreferSpecificAudience` strategy pointing at one falls back to
+`FirstAudienceWins`), and destinations are recomputed from the audiences as
+they are now.
 
 ## Provider simulator — no real sends in this phase
 

@@ -84,11 +84,6 @@ Tests that change things create their own records (unique names), so they can ru
 
 **Other bugs, marked `test.fail` with a reason.** Each test turns red once the bug is fixed, as a reminder to remove the marker:
 
-- "Include inactive" and "Include archived" don't work on Directory, Audiences or Campaigns: the client sends `=false`, and `z.coerce.boolean()` reads `"false"` as `true`.
-- Viewer is shown Campaigns, Bulletins, Audiences and Destinations, and each page then shows a raw "Missing required permission" error.
-- A removed contact method still shows on the person page.
-- Workflow tabs never hide their panels (`display: flex` overrides `hidden`).
-- "Reopen as draft" drops audiences, channel text and overlap settings, so Submit fails.
 - Possible bug, needs a product decision: destinations are pooled per campaign, so a member of an SMS-only audience is also queued for email.
 - Two-factor codes can be reused within their 90-second window (RFC 6238 §5.2).
 - Audit "Action contains" is an exact match.
@@ -96,6 +91,8 @@ Tests that change things create their own records (unique names), so they can ru
 - "Delete permanently" on an audience doesn't ask for confirmation.
 - History timestamps are raw UTC, not the ward time zone (AGENTS.md convention).
 - Cancelling a scheduled campaign leaves its schedule row active. Cosmetic: the worker still skips it.
+
+Fixed and now covered by ordinary tests: the Include inactive/archived filters, role-aware navigation with a plain-language "no access" message, removed contact methods, workflow tabs, and "Reopen as draft" keeping its setup (`session-and-roles.spec.ts` covers the session and role behaviour).
 
 Notes, not marked as bugs: public bulletins are cached for up to about 6 minutes, so "Unpublish" isn't instant for readers; a submitter can approve their own campaign; whitespace-only names are accepted.
 
