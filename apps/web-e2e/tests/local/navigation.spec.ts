@@ -109,6 +109,11 @@ for (const role of Object.keys(EXPECTED_SIDEBAR) as SessionKey[]) {
 
     test('every sidebar link opens its page without a permission error', async ({ page }) => {
       test.fail(Boolean(KNOWN_NAV_BUGS[role]), KNOWN_NAV_BUGS[role]);
+      const refused: string[] = [];
+      page.on('response', (response) => {
+        if (response.status() === 403)
+          refused.push(`${new URL(page.url()).pathname} → ${new URL(response.url()).pathname}`);
+      });
       await open(page, '/');
       for (const label of await sidebarLabels(page)) {
         const link = primaryNav(page)
@@ -119,8 +124,13 @@ for (const role of Object.keys(EXPECTED_SIDEBAR) as SessionKey[]) {
         if (!expected) throw new Error(`No expected heading for ${label}`);
         await heading(page, expected.name, expected.level ?? 1);
         await expect(link).toHaveAttribute('aria-current', 'page');
-        await expect(page.getByText(/Missing required permission|Forbidden/)).toHaveCount(0);
+        await page.waitForLoadState('networkidle');
       }
+      expect(
+        refused,
+        `The API refused requests made by pages in this role's sidebar:\n${refused.join('\n')}`,
+      ).toEqual([]);
+      await expect(page.getByText(/Missing required permission|Forbidden/)).toHaveCount(0);
     });
   });
 }
