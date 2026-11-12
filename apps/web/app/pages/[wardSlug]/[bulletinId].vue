@@ -69,7 +69,7 @@ async function load(): Promise<void> {
       notFound.value = true;
     } else {
       errorMessage.value =
-        error instanceof ApiRequestError ? error.message : 'Unable to load this bulletin.';
+        apiErrorMessage(error, 'Unable to load this bulletin.');
     }
   } finally {
     loading.value = false;

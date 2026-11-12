@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { navigateTo, useRoute } from '#imports';
+import { useRoute } from '#imports';
 import { ApiRequestError } from '@ward-comms/api-client';
 import type {
   AudienceGroupSummaryDto,
@@ -37,7 +37,7 @@ const CHANNELS: CommunicationChannel[] = ['Email', 'Sms', 'FacebookPage'];
 const route = useRoute();
 const campaignId = route.params.id as string;
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 const pageState = ref<PageState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
@@ -137,7 +137,7 @@ async function load(): Promise<void> {
   } catch (error) {
     pageState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load campaign.',
+      message: apiErrorMessage(error, 'Unable to load campaign.'),
     };
   }
 }
@@ -152,11 +152,6 @@ async function loadAudienceOptions(): Promise<void> {
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await Promise.all([load(), loadAudienceOptions(), loadDeliveryBatches()]);
 });
 
@@ -167,7 +162,7 @@ function withActionErrorHandling(action: () => Promise<CampaignDetailDto>): () =
       const campaign = await action();
       pageState.value = { kind: 'loaded', campaign };
     } catch (error) {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Action failed.';
+      actionError.value = apiErrorMessage(error, 'Action failed.');
     }
   };
 }
@@ -193,7 +188,7 @@ async function createAsset(): Promise<void> {
     assetStorageReference.value = '';
     assetAltText.value = '';
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to register the image.';
+    actionError.value = apiErrorMessage(error, 'Unable to register the image.');
   }
 }
 
@@ -206,7 +201,7 @@ async function generateAiImage(): Promise<void> {
     });
     aiPrompt.value = '';
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to generate image.';
+    actionError.value = apiErrorMessage(error, 'Unable to generate image.');
   }
 }
 
@@ -217,7 +212,7 @@ async function confirmPendingAsset(): Promise<void> {
     pendingAsset.value = await client.confirmCampaignAsset(campaignId, pendingAsset.value.id);
     createdAssetIds.value = [...createdAssetIds.value, pendingAsset.value.id];
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to confirm image.';
+    actionError.value = apiErrorMessage(error, 'Unable to confirm image.');
   }
 }
 
@@ -228,7 +223,7 @@ async function rejectPendingAsset(): Promise<void> {
     await client.rejectCampaignAsset(campaignId, pendingAsset.value.id);
     pendingAsset.value = null;
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to discard image.';
+    actionError.value = apiErrorMessage(error, 'Unable to discard image.');
   }
 }
 
@@ -277,7 +272,7 @@ async function runPreview(): Promise<void> {
   } catch (error) {
     previewState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load preview.',
+      message: apiErrorMessage(error, 'Unable to load preview.'),
     };
   }
 }
@@ -290,7 +285,7 @@ async function runValidation(): Promise<void> {
   } catch (error) {
     validationState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to validate campaign.',
+      message: apiErrorMessage(error, 'Unable to validate campaign.'),
     };
   }
 }
@@ -324,7 +319,7 @@ async function loadDeliveryBatches(): Promise<void> {
       selectedBatch.value = null;
     }
   } catch (error) {
-    deliveryError.value = error instanceof ApiRequestError ? error.message : 'Unable to load delivery results.';
+    deliveryError.value = apiErrorMessage(error, 'Unable to load delivery results.');
   } finally {
     deliveryLoading.value = false;
   }
@@ -335,7 +330,7 @@ async function viewBatch(batchId: string): Promise<void> {
   try {
     selectedBatch.value = await client.getDeliveryBatch(campaignId, batchId);
   } catch (error) {
-    deliveryError.value = error instanceof ApiRequestError ? error.message : 'Unable to load batch details.';
+    deliveryError.value = apiErrorMessage(error, 'Unable to load batch details.');
   }
 }
 
@@ -358,7 +353,7 @@ async function archiveCampaign(): Promise<void> {
     await client.archiveCampaign(campaignId);
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to archive campaign.';
+    actionError.value = apiErrorMessage(error, 'Unable to archive campaign.');
   }
 }
 </script>

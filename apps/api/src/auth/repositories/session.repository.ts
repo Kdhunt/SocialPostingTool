@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { UserSession } from '@prisma/client';
+import type { ApplicationUser, UserSession } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 export interface CreateSessionInput {
@@ -12,6 +12,13 @@ export interface CreateSessionInput {
   ipAddress: string | null;
   userAgent: string | null;
   expiresAt: Date;
+}
+
+export interface SessionWithUser {
+  session: UserSession;
+  user: ApplicationUser;
+  unit: { name: string; level: 'Ward' | 'Stake' | 'Region' | 'District' } | null;
+  permissionKeys: string[];
 }
 
 @Injectable()
@@ -33,8 +40,34 @@ export class SessionRepository {
     });
   }
 
-  async findByTokenHash(sessionTokenHash: string): Promise<UserSession | null> {
-    return this.prisma.client.userSession.findUnique({ where: { sessionTokenHash } });
+  /**
+   * The session for a token, with everything needed to authorize the
+   * request — user, unit and permission keys — in one round trip. Every
+   * authenticated API call goes through this.
+   */
+  async findWithUser(where: { sessionTokenHash: string } | { id: string }): Promise<SessionWithUser | null> {
+    const row = await this.prisma.client.userSession.findUnique({
+      where,
+      include: {
+        user: {
+          include: {
+            ward: { select: { name: true, level: true } },
+            roles: {
+              select: { role: { select: { rolePermissions: { select: { permission: { select: { key: true } } } } } } },
+            },
+          },
+        },
+      },
+    });
+    if (!row) {
+      return null;
+    }
+    const { user, ...session } = row;
+    const { ward, roles, ...applicationUser } = user;
+    const permissionKeys = [
+      ...new Set(roles.flatMap((userRole) => userRole.role.rolePermissions.map((rp) => rp.permission.key))),
+    ];
+    return { session, user: applicationUser, unit: ward, permissionKeys };
   }
 
   async findByRefreshTokenHash(refreshTokenHash: string): Promise<UserSession | null> {

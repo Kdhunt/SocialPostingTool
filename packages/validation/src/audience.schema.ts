@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { queryBooleanSchema } from './query.schema.js';
 
 // Request/response contracts for the Phase 6 audience groups and
 // communication destinations. Audience group names are never hardcoded
@@ -106,7 +107,7 @@ export type AddAudienceDestinationRequest = z.infer<typeof addAudienceDestinatio
 
 export const audienceSearchQuerySchema = z.object({
   query: z.string().max(255).optional(),
-  includeArchived: z.coerce.boolean().optional(),
+  includeArchived: queryBooleanSchema.optional(),
 });
 export type AudienceSearchQuery = z.infer<typeof audienceSearchQuerySchema>;
 

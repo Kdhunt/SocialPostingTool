@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import { useApiClient } from '~/composables/useApiClient';
 
 definePageMeta({ layout: 'guest' });
@@ -25,7 +24,7 @@ onMounted(async () => {
     message.value = result.message;
   } catch (error) {
     status.value = 'error';
-    message.value = error instanceof ApiRequestError ? error.message : 'Unable to confirm this email address.';
+    message.value = apiErrorMessage(error, 'Unable to confirm this email address.');
   }
 });
 </script>

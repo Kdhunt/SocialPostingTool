@@ -18,6 +18,7 @@
     "test": "turbo run test && pnpm run test:scripts",
     "test:scripts": "vitest run --config scripts/vitest.config.ts",
     "test:e2e": "pnpm --filter @ward-comms/web-e2e test:e2e",
+    "test:e2e:local": "pnpm --filter @ward-comms/web-e2e test:e2e:local",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

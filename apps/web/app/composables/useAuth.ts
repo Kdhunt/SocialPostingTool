@@ -11,7 +11,16 @@ export type AuthState =
 
 export interface UseAuthReturn {
   state: ReturnType<typeof useState<AuthState>>;
+  /** Always asks the API. Use after something that changes the session (email, password, 2FA). */
   refreshSession: () => Promise<void>;
+  /**
+   * Resolves the session once and reuses it: no request when it is already
+   * known and recent, and concurrent callers share one request. The auth
+   * route middleware calls this before every signed-in page.
+   */
+  ensureSession: () => Promise<AuthState>;
+  /** Marks the session as gone, e.g. after the API answers 401. */
+  markSignedOut: () => void;
   login: (username: string, password: string, unitCode?: string) => Promise<{ ok: boolean; error?: string }>;
   submitTotp: (code: string) => Promise<{ ok: boolean; error?: string }>;
   submitWardCode: (wardCode: string) => Promise<{ ok: boolean; error?: string }>;
@@ -25,8 +34,14 @@ export interface UseAuthReturn {
  * ever reflects server-confirmed state (see AGENTS.md: "do not use
  * localStorage for browser authentication tokens").
  */
+/** How long a confirmed session is reused before the middleware checks it again. */
+export const SESSION_RECHECK_MS = 5 * 60_000;
+
+let pendingSessionCheck: Promise<void> | null = null;
+
 export function useAuth(): UseAuthReturn {
   const state = useState<AuthState>('auth-state', () => ({ kind: 'unknown' }));
+  const checkedAt = useState<number>('auth-checked-at', () => 0);
   const config = useRuntimeConfig();
   const client = new WardCommsApiClient({ baseUrl: config.public.apiBaseUrl });
 
@@ -37,6 +52,25 @@ export function useAuth(): UseAuthReturn {
     } catch {
       state.value = { kind: 'anonymous' };
     }
+    checkedAt.value = Date.now();
+  }
+
+  async function ensureSession(): Promise<AuthState> {
+    const fresh = Date.now() - checkedAt.value < SESSION_RECHECK_MS;
+    if (fresh && (state.value.kind === 'authenticated' || state.value.kind === 'anonymous')) {
+      return state.value;
+    }
+    // Only the browser shares this promise; the server never calls ensureSession.
+    pendingSessionCheck ??= refreshSession().finally(() => {
+      pendingSessionCheck = null;
+    });
+    await pendingSessionCheck;
+    return state.value;
+  }
+
+  function markSignedOut(): void {
+    state.value = { kind: 'anonymous' };
+    checkedAt.value = Date.now();
   }
 
   async function login(
@@ -55,6 +89,7 @@ export function useAuth(): UseAuthReturn {
         return { ok: true };
       }
       state.value = { kind: 'authenticated', user: result.user };
+      checkedAt.value = Date.now();
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof ApiRequestError ? error.message : 'Unable to sign in.' };
@@ -72,6 +107,7 @@ export function useAuth(): UseAuthReturn {
         return { ok: true };
       }
       state.value = { kind: 'authenticated', user: result.user };
+      checkedAt.value = Date.now();
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof ApiRequestError ? error.message : 'Unable to verify authenticator code.' };
@@ -85,6 +121,7 @@ export function useAuth(): UseAuthReturn {
     try {
       const result = await client.verifyWardCode(state.value.loginTicket, wardCode, 'web');
       state.value = { kind: 'authenticated', user: result.user };
+      checkedAt.value = Date.now();
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof ApiRequestError ? error.message : 'Unable to verify ward code.' };
@@ -93,8 +130,8 @@ export function useAuth(): UseAuthReturn {
 
   async function logout(): Promise<void> {
     await client.logout().catch(() => undefined);
-    state.value = { kind: 'anonymous' };
+    markSignedOut();
   }
 
-  return { state, refreshSession, login, submitTotp, submitWardCode, logout };
+  return { state, refreshSession, ensureSession, markSignedOut, login, submitTotp, submitWardCode, logout };
 }

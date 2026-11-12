@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
 
 const firstName = ref('');
 const lastName = ref('');
@@ -17,10 +14,6 @@ const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-  }
 });
 
 async function onSubmit(): Promise<void> {
@@ -36,7 +29,7 @@ async function onSubmit(): Promise<void> {
     });
     await navigateTo(`/directory/people/${person.id}`);
   } catch (error) {
-    errorMessage.value = error instanceof ApiRequestError ? error.message : 'Unable to create person.';
+    errorMessage.value = apiErrorMessage(error, 'Unable to create person.');
   } finally {
     submitting.value = false;
   }

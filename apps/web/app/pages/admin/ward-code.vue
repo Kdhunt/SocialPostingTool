@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { WardCodeInfoDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
@@ -9,7 +8,7 @@ import { useAuth } from '~/composables/useAuth';
 definePageMeta({ layout: 'authenticated' });
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 const codeInfo = ref<WardCodeInfoDto | null | undefined>(undefined);
 const actionError = ref<string | null>(null);
@@ -25,17 +24,12 @@ async function load(): Promise<void> {
   try {
     codeInfo.value = await client.getWardCodeInfo();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to load ward code info.';
+    actionError.value = apiErrorMessage(error, 'Unable to load ward code info.');
     codeInfo.value = null;
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   if (!canManage()) {
     await navigateTo('/');
     return;
@@ -51,7 +45,7 @@ async function rotate(): Promise<void> {
     newWardCode.value = '';
     successMessage.value = 'Ward code rotated. All users must re-enter the new code on their next sign-in.';
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to rotate ward code.';
+    actionError.value = apiErrorMessage(error, 'Unable to rotate ward code.');
   }
 }
 </script>

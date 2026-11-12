@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRoute } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import { resetPasswordWithTokenRequestSchema, fieldErrorsFromZodError } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 
@@ -42,7 +41,7 @@ async function onSubmit(): Promise<void> {
     password.value = '';
     confirmPassword.value = '';
   } catch (error) {
-    errorMessage.value = error instanceof ApiRequestError ? error.message : 'Unable to update the password.';
+    errorMessage.value = apiErrorMessage(error, 'Unable to update the password.');
   } finally {
     submitting.value = false;
   }

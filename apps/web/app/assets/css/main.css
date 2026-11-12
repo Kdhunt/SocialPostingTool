@@ -144,3 +144,12 @@ textarea {
     background: #ffffff;
   }
 }
+
+/* A fieldset used only to disable a group of controls, without its default border. */
+.plain-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: contents;
+}

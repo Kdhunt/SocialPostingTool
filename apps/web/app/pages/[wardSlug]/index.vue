@@ -55,7 +55,7 @@ async function load(): Promise<void> {
     if (error instanceof ApiRequestError && error.status === 404) {
       notFound.value = true;
     } else {
-      errorMessage.value = error instanceof ApiRequestError ? error.message : 'Unable to load published campaigns.';
+      errorMessage.value = apiErrorMessage(error, 'Unable to load published campaigns.');
     }
   } finally {
     loading.value = false;

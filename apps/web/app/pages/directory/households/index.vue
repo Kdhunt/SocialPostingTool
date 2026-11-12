@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { HouseholdListResponse } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
 
 type ListState =
   | { kind: 'loading' }
@@ -12,7 +9,7 @@ type ListState =
   | { kind: 'loaded'; households: HouseholdListResponse['households'] };
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
 const listState = ref<ListState>({ kind: 'loading' });
 
 async function load(): Promise<void> {
@@ -23,17 +20,12 @@ async function load(): Promise<void> {
   } catch (error) {
     listState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load households.',
+      message: apiErrorMessage(error, 'Unable to load households.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await load();
 });
 </script>
@@ -44,7 +36,7 @@ onMounted(async () => {
       <h1>Households</h1>
       <div class="households-page__actions">
         <NuxtLink to="/directory">Directory</NuxtLink>
-        <NuxtLink to="/directory/households/new">Add household</NuxtLink>
+        <NuxtLink v-if="canUseArea('directoryWrite')" to="/directory/households/new">Add household</NuxtLink>
       </div>
     </header>
 

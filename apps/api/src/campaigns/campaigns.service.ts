@@ -662,16 +662,63 @@ export class CampaignsService {
     this.assertTransition(campaign.status, 'Draft');
     const previous = await this.requireCurrentVersion(campaignId);
 
-    await this.versions.create({
+    const next = await this.versions.create({
       campaignId,
       versionNumber: previous.versionNumber + 1,
       baseMessage: previous.baseMessage,
       baseImageAssetId: previous.baseImageAssetId,
       createdByUserId: context.actorUserId,
     });
+    await this.copyVersionSetup(wardId, previous, next.id);
 
     await this.transitionStatus(wardId, campaignId, campaign.status, 'Draft', context);
     return this.get(wardId, campaignId);
+  }
+
+  /**
+   * Starts a revised version from everything the rejected one had, so the
+   * author only changes what the approver asked for: audiences (with their
+   * overrides), per-channel text and the overlap strategy. The rejected
+   * version itself is never modified. Audiences archived since then are
+   * left out, and destinations are recomputed from the audiences as they
+   * are now, so nothing archived is carried forward.
+   */
+  private async copyVersionSetup(
+    wardId: string,
+    previous: CampaignVersionWithDetails,
+    nextVersionId: string,
+  ): Promise<void> {
+    const copiedAudienceIds: string[] = [];
+    for (const audience of previous.audiences) {
+      const group = await this.audienceGroups.findByIdForWard(wardId, audience.audienceGroupId);
+      if (!group || group.archivedAt !== null) continue;
+      await this.campaignAudiences.add({
+        campaignVersionId: nextVersionId,
+        audienceGroupId: audience.audienceGroupId,
+        overrideText: audience.overrideText,
+        overrideImageAssetId: audience.overrideImageAssetId,
+      });
+      copiedAudienceIds.push(audience.audienceGroupId);
+    }
+    await this.recomputeDestinations(wardId, nextVersionId, copiedAudienceIds);
+
+    for (const channelVersion of previous.channelVersions) {
+      await this.channelVersions.upsert(
+        nextVersionId,
+        channelVersion.channel as CommunicationChannel,
+        channelVersion.text,
+      );
+    }
+
+    const preferred = previous.preferSpecificAudienceGroupId;
+    const keepPreferred = preferred !== null && copiedAudienceIds.includes(preferred);
+    await this.versions.updateContent(nextVersionId, {
+      overlapResolutionStrategy:
+        previous.overlapResolutionStrategy === 'PreferSpecificAudience' && !keepPreferred
+          ? 'FirstAudienceWins'
+          : previous.overlapResolutionStrategy,
+      preferSpecificAudienceGroupId: keepPreferred ? preferred : null,
+    });
   }
 
   async schedule(wardId: string, campaignId: string, scheduledFor: Date, context: CampaignActionContext): Promise<CampaignDetailDto> {

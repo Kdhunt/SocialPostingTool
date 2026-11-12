@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { PersonSummaryDto } from '@ward-comms/validation';
 
 const props = withDefaults(
@@ -41,7 +40,7 @@ async function runSearch(searchQuery: string): Promise<void> {
     const { people } = await client.searchPeople({ query: searchQuery.trim(), limit: 8 });
     results.value = people;
   } catch (error) {
-    searchError.value = error instanceof ApiRequestError ? error.message : 'Unable to search.';
+    searchError.value = apiErrorMessage(error, 'Unable to search.');
     results.value = [];
   } finally {
     searching.value = false;

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import {
   createWardRequestSchema,
   fieldErrorsFromUnknown,
@@ -33,7 +32,7 @@ type PageState =
 type CreateWardField = keyof CreateWardRequest;
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 const isPlatform = props.mode === 'platform';
 
 /** The same screen talks to /platform/wards or /admin/units depending on mode. */
@@ -59,7 +58,6 @@ const api = {
   updateSlug: (unitId: string, publicSlug: string) =>
     isPlatform ? client.updateWardPublicSlug(unitId, { publicSlug }) : client.updateUnitPublicSlug(unitId, { publicSlug }),
 };
-
 
 const pageState = ref<PageState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
@@ -199,17 +197,12 @@ async function load(): Promise<void> {
   } catch (error) {
     pageState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load units.',
+      message: apiErrorMessage(error, 'Unable to load units.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   if (!canManageWards()) {
     await navigateTo('/');
     return;
@@ -265,7 +258,7 @@ async function createWard(): Promise<void> {
     if (zodFields && Object.keys(zodFields).length > 0) {
       applyFieldErrors(zodFields);
     } else {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to create the unit.';
+      actionError.value = apiErrorMessage(error, 'Unable to create the unit.');
     }
   } finally {
     submitting.value = false;
@@ -301,7 +294,7 @@ async function rotateWardCode(wardId: string): Promise<void> {
       wardActionErrors.value = { ...wardActionErrors.value, [codeKey]: zodFields.newWardCode };
       actionError.value = 'Fix the highlighted fields and try again.';
     } else {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to change the sign-in code.';
+      actionError.value = apiErrorMessage(error, 'Unable to change the sign-in code.');
     }
   } finally {
     rotatingWardId.value = null;
@@ -337,7 +330,7 @@ async function resetAdminPassword(wardId: string, userId: string): Promise<void>
       wardActionErrors.value = { ...wardActionErrors.value, [passwordKey]: zodFields.password };
       actionError.value = 'Fix the highlighted fields and try again.';
     } else {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to reset the administrator password.';
+      actionError.value = apiErrorMessage(error, 'Unable to reset the administrator password.');
     }
   } finally {
     resettingAdminId.value = null;
@@ -352,7 +345,7 @@ async function emailAdminPasswordReset(wardId: string, userId: string, email: st
     await api.emailReset(wardId, userId);
     successMessage.value = `A password reset email was queued${email ? ` for ${email}` : ''}.`;
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to send a reset email.';
+    actionError.value = apiErrorMessage(error, 'Unable to send a reset email.');
   } finally {
     emailingAdminId.value = null;
   }
@@ -370,7 +363,7 @@ async function savePublicSlug(wardId: string): Promise<void> {
     const zodFields = fieldErrorsFromUnknown(error);
     actionError.value =
       zodFields?.publicSlug ??
-      (error instanceof ApiRequestError ? error.message : 'Unable to update the public page path.');
+      (apiErrorMessage(error, 'Unable to update the public page path.'));
   } finally {
     savingSlugId.value = null;
   }
@@ -388,7 +381,7 @@ async function moveUnit(unit: PlatformWardSummaryDto): Promise<void> {
       : `${updated.name} is no longer under another unit.`;
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to move the unit.';
+    actionError.value = apiErrorMessage(error, 'Unable to move the unit.');
   } finally {
     movingUnitId.value = null;
   }

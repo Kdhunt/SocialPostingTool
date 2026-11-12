@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { navigateTo, useRoute } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { AudienceGroupDetailDto, CommunicationDestinationDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
 
 type PageState =
   | { kind: 'loading' }
@@ -14,7 +12,9 @@ type PageState =
 const route = useRoute();
 const audienceId = route.params.id as string;
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
+/** People who can read audiences but not manage them see the audience read-only. */
+const canEdit = computed(() => canUseArea('audiencesManage'));
 
 const pageState = ref<PageState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
@@ -50,7 +50,7 @@ async function load(): Promise<void> {
   } catch (error) {
     pageState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load audience.',
+      message: apiErrorMessage(error, 'Unable to load audience.'),
     };
   }
 }
@@ -65,11 +65,6 @@ async function loadDestinations(): Promise<void> {
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await Promise.all([load(), loadDestinations()]);
 });
 
@@ -80,7 +75,7 @@ function withActionErrorHandling(action: () => Promise<AudienceGroupDetailDto>):
       const audience = await action();
       pageState.value = { kind: 'loaded', audience };
     } catch (error) {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Action failed.';
+      actionError.value = apiErrorMessage(error, 'Action failed.');
     }
   };
 }
@@ -118,7 +113,7 @@ async function archiveAudience(): Promise<void> {
     await client.archiveAudience(audienceId);
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to archive audience.';
+    actionError.value = apiErrorMessage(error, 'Unable to archive audience.');
   }
 }
 
@@ -128,7 +123,7 @@ async function restoreAudience(): Promise<void> {
     await client.restoreAudience(audienceId);
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to restore audience.';
+    actionError.value = apiErrorMessage(error, 'Unable to restore audience.');
   }
 }
 
@@ -138,7 +133,7 @@ async function deleteAudience(): Promise<void> {
     await client.deleteAudience(audienceId);
     await navigateTo('/audiences');
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to delete audience.';
+    actionError.value = apiErrorMessage(error, 'Unable to delete audience.');
   }
 }
 
@@ -167,7 +162,7 @@ async function previewRules(): Promise<void> {
   try {
     rulesPreview.value = await client.previewAudienceRules(audienceId);
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to preview rules.';
+    actionError.value = apiErrorMessage(error, 'Unable to preview rules.');
   }
 }
 
@@ -177,7 +172,7 @@ async function applyRules(): Promise<void> {
     rulesApplyResult.value = await client.applyAudienceRules(audienceId);
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to apply rules.';
+    actionError.value = apiErrorMessage(error, 'Unable to apply rules.');
   }
 }
 
@@ -208,27 +203,30 @@ const breadcrumbs = computed(() => {
       </LayoutPageHeader>
 
       <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>
+      <UiAlertBanner v-if="!canEdit" tone="info">You can view this audience but your role can’t change it.</UiAlertBanner>
 
       <section aria-labelledby="audience-info-heading">
         <h2 id="audience-info-heading">Audience info</h2>
         <form class="audience-page__form" novalidate @submit.prevent="saveBasicInfo">
+          <fieldset class="plain-fieldset" :disabled="!canEdit">
           <label for="edit-name">Name</label>
           <input id="edit-name" v-model="editName" type="text" required />
 
           <label for="edit-description">Description</label>
           <textarea id="edit-description" v-model="editDescription" rows="3"></textarea>
 
-          <button type="submit">Save</button>
+          <button v-if="canEdit" type="submit">Save</button>
+          </fieldset>
         </form>
 
-        <div class="audience-page__lifecycle-actions">
+        <div v-if="canEdit" class="audience-page__lifecycle-actions">
           <button v-if="pageState.audience.isActive" type="button" @click="archiveAudience">Archive</button>
           <button v-else type="button" @click="restoreAudience">Restore</button>
           <button type="button" class="audience-page__danger" @click="deleteAudience">
             Delete permanently
           </button>
         </div>
-        <p class="audience-page__hint">
+        <p v-if="canEdit" class="audience-page__hint">
           Deleting only succeeds when this audience has no members and no linked destinations — otherwise, archive
           it instead.
         </p>
@@ -244,6 +242,7 @@ const breadcrumbs = computed(() => {
           </a>.
         </p>
         <form class="audience-page__form" novalidate @submit.prevent="saveRules">
+          <fieldset class="plain-fieldset" :disabled="!canEdit">
           <label for="membership-mode">Mode</label>
           <select id="membership-mode" v-model="membershipMode">
             <option value="Manual">Manual only</option>
@@ -266,9 +265,10 @@ const breadcrumbs = computed(() => {
               <label><input v-model="ruleHouseholdRoles" type="checkbox" value="Member" /> Member</label>
             </fieldset>
           </template>
-          <button type="submit">Save rules</button>
+          <button v-if="canEdit" type="submit">Save rules</button>
+          </fieldset>
         </form>
-        <div class="audience-page__lifecycle-actions">
+        <div v-if="canEdit" class="audience-page__lifecycle-actions">
           <button type="button" :disabled="membershipMode !== 'Rules'" @click="previewRules">Preview matches</button>
           <button type="button" :disabled="membershipMode !== 'Rules'" @click="applyRules">Apply rules</button>
         </div>
@@ -289,12 +289,12 @@ const breadcrumbs = computed(() => {
             <span v-if="member.source" class="audience-page__tag">{{ member.source }}</span>
             <span v-if="member.isMinor" class="audience-page__tag audience-page__tag--minor">Minor</span>
             <span v-if="!member.isActive" class="audience-page__tag">Inactive</span>
-            <button type="button" @click="removeMember(member.personId)">Remove</button>
+            <button v-if="canEdit" type="button" @click="removeMember(member.personId)">Remove</button>
           </li>
           <li v-if="pageState.audience.members.length === 0">No members yet.</li>
         </ul>
 
-        <form class="audience-page__inline-form" novalidate @submit.prevent="addMember">
+        <form v-if="canEdit" class="audience-page__inline-form" novalidate @submit.prevent="addMember">
           <UiPersonSearchPicker input-id="new-member-picker" label="Search for a member to add" @select="onMemberSelected" />
           <UiAppButton type="submit" :disabled="!newMemberPersonId">Add member</UiAppButton>
         </form>
@@ -305,12 +305,12 @@ const breadcrumbs = computed(() => {
         <ul class="audience-page__list">
           <li v-for="destination in pageState.audience.destinations" :key="destination.destinationId">
             {{ destination.name }} ({{ destination.channel }})
-            <button type="button" @click="removeDestination(destination.destinationId)">Unlink</button>
+            <button v-if="canEdit" type="button" @click="removeDestination(destination.destinationId)">Unlink</button>
           </li>
           <li v-if="pageState.audience.destinations.length === 0">No destinations linked yet.</li>
         </ul>
 
-        <form class="audience-page__inline-form" novalidate @submit.prevent="addDestination">
+        <form v-if="canEdit" class="audience-page__inline-form" novalidate @submit.prevent="addDestination">
           <label for="destination-select">Destination</label>
           <select id="destination-select" v-model="selectedDestinationId" required>
             <option value="" disabled>Choose a destination</option>

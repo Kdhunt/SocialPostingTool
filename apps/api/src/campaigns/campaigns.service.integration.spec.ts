@@ -278,6 +278,86 @@ describe.skipIf(!databaseAvailable)('CampaignsService — live PostgreSQL integr
     expect(afterEdit.currentVersion.versionNumber).toBe(rejectedVersionNumber + 1);
   });
 
+  it('carries audiences, overrides, channel text and overlap into a revised version, skipping archived audiences', async () => {
+    await setupWard();
+    const first = await createAudienceWithMembersAndDestination('Revise Keep A', [], 'Email');
+    const second = await createAudienceWithMembersAndDestination('Revise Keep B', [], 'Sms');
+    const archived = await createAudienceWithMembersAndDestination('Revise Archived', [], 'Email');
+    const created = await service.create(
+      wardId,
+      { name: 'Fictional Revise Campaign', baseMessage: 'Original' },
+      ctx(),
+    );
+    await service.addAudience(
+      wardId,
+      created.id,
+      { audienceGroupId: first.audienceGroupId, overrideText: 'Override A' },
+      ctx(),
+    );
+    await service.addAudience(
+      wardId,
+      created.id,
+      { audienceGroupId: second.audienceGroupId },
+      ctx(),
+    );
+    await service.addAudience(
+      wardId,
+      created.id,
+      { audienceGroupId: archived.audienceGroupId },
+      ctx(),
+    );
+    await service.setChannelText(wardId, created.id, { channel: 'Sms', text: 'Short text' }, ctx());
+    await service.setOverlapResolution(
+      wardId,
+      created.id,
+      {
+        overlapResolutionStrategy: 'PreferSpecificAudience',
+        preferSpecificAudienceGroupId: second.audienceGroupId,
+      },
+      ctx(),
+    );
+    await service.submitForApproval(wardId, created.id, ctx());
+    const rejected = await service.decideApproval(
+      wardId,
+      created.id,
+      'Rejected',
+      'Shorten it',
+      ctx(),
+    );
+    await prisma.client.audienceGroup.update({
+      where: { id: archived.audienceGroupId },
+      data: { archivedAt: new Date() },
+    });
+
+    const revised = await service.revise(wardId, created.id, ctx());
+    const version = revised.currentVersion;
+    expect(version.versionNumber).toBe(rejected.currentVersion.versionNumber + 1);
+    expect(version.audiences.map((a) => a.audienceGroupId).sort()).toEqual(
+      [first.audienceGroupId, second.audienceGroupId].sort(),
+    );
+    expect(
+      version.audiences.find((a) => a.audienceGroupId === first.audienceGroupId)?.overrideText,
+    ).toBe('Override A');
+    expect(version.destinations.map((d) => d.destinationId).sort()).toEqual(
+      [first.destinationId, second.destinationId].sort(),
+    );
+    expect(version.channelVersions).toEqual([
+      expect.objectContaining({ channel: 'Sms', text: 'Short text' }),
+    ]);
+    expect(version.overlapResolutionStrategy).toBe('PreferSpecificAudience');
+    expect(version.preferSpecificAudienceGroupId).toBe(second.audienceGroupId);
+
+    // Resubmitting works without re-adding anything.
+    const resubmitted = await service.submitForApproval(wardId, created.id, ctx());
+    expect(resubmitted.status).toBe('PendingApproval');
+    // The rejected version is untouched.
+    const rejectedVersion = await prisma.client.campaignVersion.findFirstOrThrow({
+      where: { campaignId: created.id, versionNumber: rejected.currentVersion.versionNumber },
+      include: { audiences: true },
+    });
+    expect(rejectedVersion.audiences).toHaveLength(3);
+  });
+
   it('rejects invalid status transitions, such as approving a campaign that is still a Draft', async () => {
     await setupWard();
     const created = await service.create(wardId, { name: 'Invalid Transition Campaign', baseMessage: 'Body text' }, ctx());

@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { navigateTo, useRoute } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute } from '#imports';
 import type { PersonDetailDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
-import { useAuth } from '~/composables/useAuth';
 
 type PageState = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'loaded'; person: PersonDetailDto };
 
 const route = useRoute();
 const personId = route.params.id as string;
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
+/** People without directory.write can read the record but not change it. */
+const canEdit = computed(() => canUseArea('directoryWrite'));
 
 const pageState = ref<PageState>({ kind: 'loading' });
 const actionError = ref<string | null>(null);
@@ -42,6 +42,11 @@ const PERSON_TABS = [
   { id: 'family', label: 'Family', description: 'Relationships to other members.' },
 ] as const;
 
+/** Removed contact methods are kept for history by the API, but are no longer the person's contacts. */
+const activeContactMethods = computed(() =>
+  pageState.value.kind === 'loaded' ? pageState.value.person.contactMethods.filter((method) => !method.archivedAt) : [],
+);
+
 const breadcrumbs = computed(() => {
   if (pageState.value.kind !== 'loaded') {
     return [{ label: 'Directory', to: '/directory' }, { label: 'Person' }];
@@ -70,16 +75,11 @@ async function load(): Promise<void> {
     editGender.value = person.gender;
     editDateOfBirth.value = person.dateOfBirth ?? '';
   } catch (error) {
-    pageState.value = { kind: 'error', message: error instanceof ApiRequestError ? error.message : 'Unable to load person.' };
+    pageState.value = { kind: 'error', message: apiErrorMessage(error, 'Unable to load person.') };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await load();
 });
 
@@ -90,7 +90,7 @@ function withActionErrorHandling(action: () => Promise<PersonDetailDto>): () => 
       const person = await action();
       pageState.value = { kind: 'loaded', person };
     } catch (error) {
-      actionError.value = error instanceof ApiRequestError ? error.message : 'Action failed.';
+      actionError.value = apiErrorMessage(error, 'Action failed.');
     }
   };
 }
@@ -177,6 +177,8 @@ const restorePerson = withActionErrorHandling(async () => {
 
       <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>
 
+      <UiAlertBanner v-if="!canEdit" tone="info">You can view this record but your role can’t change it.</UiAlertBanner>
+
       <UiAlertBanner v-if="pageState.person.restricted" tone="info">
         Date of birth and contact information are restricted for this record.
       </UiAlertBanner>
@@ -184,6 +186,7 @@ const restorePerson = withActionErrorHandling(async () => {
       <UiWorkflowTabs v-model="activeTab" :tabs="[...PERSON_TABS]">
         <template #profile>
           <form class="form-stack" novalidate @submit.prevent="saveBasicInfo">
+            <fieldset class="plain-fieldset" :disabled="!canEdit">
             <UiFormField label="First name" input-id="edit-first-name">
               <input id="edit-first-name" v-model="editFirstName" class="form-control" type="text" required />
             </UiFormField>
@@ -203,30 +206,32 @@ const restorePerson = withActionErrorHandling(async () => {
             <UiFormField v-if="!pageState.person.restricted" label="Date of birth" input-id="edit-dob">
               <input id="edit-dob" v-model="editDateOfBirth" class="form-control" type="date" />
             </UiFormField>
-            <div class="button-row">
+            <div v-if="canEdit" class="button-row">
               <UiAppButton type="submit">Save profile</UiAppButton>
               <UiAppButton v-if="pageState.person.isActive" variant="secondary" type="button" @click="archivePerson">Mark inactive</UiAppButton>
               <UiAppButton v-else variant="secondary" type="button" @click="restorePerson">Mark active</UiAppButton>
             </div>
+            </fieldset>
           </form>
         </template>
 
         <template #contact>
           <template v-if="!pageState.person.restricted">
             <ul class="item-list">
-              <li v-for="method in pageState.person.contactMethods" :key="method.id" class="item-list__row">
+              <li v-for="method in activeContactMethods" :key="method.id" class="item-list__row">
                 <div>
                   <strong>{{ method.type }}:</strong> {{ method.value }}
                   <p class="hint">Consent: {{ method.consent?.status ?? 'Not recorded' }}</p>
                 </div>
-                <div class="button-row">
+                <div v-if="canEdit" class="button-row">
                   <UiAppButton variant="ghost" type="button" @click="grantConsent(method.id)">Grant</UiAppButton>
                   <UiAppButton variant="ghost" type="button" @click="denyConsent(method.id)">Deny</UiAppButton>
                   <UiAppButton variant="ghost" type="button" @click="archiveContactMethod(method.id)">Remove</UiAppButton>
                 </div>
               </li>
+              <li v-if="activeContactMethods.length === 0" class="hint">No contact methods yet.</li>
             </ul>
-            <form class="form-stack" novalidate @submit.prevent="addContactMethod">
+            <form v-if="canEdit" class="form-stack" novalidate @submit.prevent="addContactMethod">
               <UiFormField label="Type" input-id="contact-type">
                 <select id="contact-type" v-model="contactType" class="form-control">
                   <option value="Email">Email</option>
@@ -249,13 +254,13 @@ const restorePerson = withActionErrorHandling(async () => {
                 <NuxtLink :to="`/directory/households/${membership.householdId}`">{{ membership.householdName }}</NuxtLink>
                 <p class="hint">{{ membership.householdRole }}</p>
               </div>
-              <UiAppButton v-if="!membership.endedAt" variant="ghost" type="button" @click="endHouseholdMembership(membership.id)">
+              <UiAppButton v-if="canEdit && !membership.endedAt" variant="ghost" type="button" @click="endHouseholdMembership(membership.id)">
                 End membership
               </UiAppButton>
-              <span v-else class="status-pill status-pill--muted">Ended</span>
+              <span v-else-if="membership.endedAt" class="status-pill status-pill--muted">Ended</span>
             </li>
           </ul>
-          <form class="form-stack" novalidate @submit.prevent="addHouseholdMembership">
+          <form v-if="canEdit" class="form-stack" novalidate @submit.prevent="addHouseholdMembership">
             <UiHouseholdSearchPicker input-id="household-picker" @select="onHouseholdSelected" />
             <label class="checkbox-row">
               <input v-model="endOtherMemberships" type="checkbox" />
@@ -272,10 +277,10 @@ const restorePerson = withActionErrorHandling(async () => {
                 {{ relationship.relationshipType }} of
                 <NuxtLink :to="`/directory/people/${relationship.relatedPersonId}`">{{ relationship.relatedPersonDisplayName }}</NuxtLink>
               </span>
-              <UiAppButton variant="ghost" type="button" @click="archiveRelationship(relationship.id)">End relationship</UiAppButton>
+              <UiAppButton v-if="canEdit" variant="ghost" type="button" @click="archiveRelationship(relationship.id)">End relationship</UiAppButton>
             </li>
           </ul>
-          <form class="form-stack" novalidate @submit.prevent="addRelationship">
+          <form v-if="canEdit" class="form-stack" novalidate @submit.prevent="addRelationship">
             <UiPersonSearchPicker input-id="related-person-picker" label="Search for related person" @select="onRelatedPersonSelected" />
             <UiFormField label="Relationship" input-id="relationship-type">
               <select id="relationship-type" v-model="relationshipType" class="form-control">

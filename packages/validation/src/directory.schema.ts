@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { queryBooleanSchema } from './query.schema.js';
 
 // Request/response contracts for the Phase 5 directory (people, households,
 // relationships, contact methods, consent). Date of birth and contact
@@ -164,7 +165,7 @@ export type UpdatePersonRequest = z.infer<typeof updatePersonRequestSchema>;
 
 export const personSearchQuerySchema = z.object({
   query: z.string().max(255).optional(),
-  includeInactive: z.coerce.boolean().optional(),
+  includeInactive: queryBooleanSchema.optional(),
   householdId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { UnitOrganizationDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
@@ -9,7 +8,7 @@ import { useAuth } from '~/composables/useAuth';
 definePageMeta({ layout: 'authenticated' });
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 const loading = ref(true);
 const organizations = ref<UnitOrganizationDto[]>([]);
@@ -20,7 +19,7 @@ const actionError = ref<string | null>(null);
 const notice = ref<string | null>(null);
 
 function fail(error: unknown, fallback: string): void {
-  actionError.value = error instanceof ApiRequestError ? error.message : fallback;
+  actionError.value = apiErrorMessage(error, fallback);
 }
 
 async function load(): Promise<void> {
@@ -89,12 +88,11 @@ async function archive(org: UnitOrganizationDto): Promise<void> {
 }
 
 onMounted(async () => {
-  await refreshSession();
   if (
     authState.value.kind !== 'authenticated' ||
     !authState.value.user.permissions.includes('ward.manage')
   ) {
-    await navigateTo(authState.value.kind === 'anonymous' ? '/login' : '/');
+    await navigateTo('/');
     return;
   }
   await load();

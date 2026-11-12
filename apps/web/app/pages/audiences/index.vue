@@ -1,7 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'authenticated' });
 
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { AudienceGroupSummaryDto } from '@ward-comms/validation';
 
 type ListState =
@@ -11,7 +10,7 @@ type ListState =
   | { kind: 'loaded'; audiences: AudienceGroupSummaryDto[] };
 
 const client = useApiClient();
-const { state: authState, refreshSession } = useAuth();
+const { canUseArea } = useAppNavigation();
 
 const query = ref('');
 const includeArchived = ref(false);
@@ -28,17 +27,12 @@ async function search(): Promise<void> {
   } catch (error) {
     listState.value = {
       kind: 'error',
-      message: error instanceof ApiRequestError ? error.message : 'Unable to load audiences.',
+      message: apiErrorMessage(error, 'Unable to load audiences.'),
     };
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   await search();
 });
 </script>
@@ -51,7 +45,7 @@ onMounted(async () => {
     >
       <template #actions>
         <UiAppButton variant="secondary" to="/audiences/destinations">Destinations</UiAppButton>
-        <UiAppButton to="/audiences/new">Create audience</UiAppButton>
+        <UiAppButton v-if="canUseArea('audiencesManage')" to="/audiences/new">Create audience</UiAppButton>
       </template>
     </LayoutPageHeader>
 
@@ -75,7 +69,7 @@ onMounted(async () => {
       title="No audiences yet"
       description="Create an audience group to target members for email, SMS, or social posts."
     >
-      <template #actions>
+      <template v-if="canUseArea('audiencesManage')" #actions>
         <UiAppButton to="/audiences/new">Create audience</UiAppButton>
       </template>
     </UiEmptyState>

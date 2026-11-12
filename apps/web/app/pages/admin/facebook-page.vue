@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { navigateTo, useRoute } from '#imports';
-import { ApiRequestError } from '@ward-comms/api-client';
 import type { FacebookPageChoiceDto, FacebookPageConnectionDto } from '@ward-comms/validation';
 import { useApiClient } from '~/composables/useApiClient';
 import { useAuth } from '~/composables/useAuth';
@@ -10,7 +9,7 @@ definePageMeta({ layout: 'authenticated' });
 
 const client = useApiClient();
 const route = useRoute();
-const { state: authState, refreshSession } = useAuth();
+const { state: authState } = useAuth();
 
 const loading = ref(true);
 const actionError = ref<string | null>(null);
@@ -39,18 +38,13 @@ async function load(): Promise<void> {
       choices.value = pending.pages;
     }
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to load Facebook Page connections.';
+    actionError.value = apiErrorMessage(error, 'Unable to load Facebook Page connections.');
   } finally {
     loading.value = false;
   }
 }
 
 onMounted(async () => {
-  await refreshSession();
-  if (authState.value.kind === 'anonymous') {
-    await navigateTo('/login');
-    return;
-  }
   if (!canManage()) {
     await navigateTo('/');
     return;
@@ -80,7 +74,7 @@ async function connectWithToken(): Promise<void> {
     successMessage.value = 'Facebook Page connected for this ward.';
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to connect this Facebook Page.';
+    actionError.value = apiErrorMessage(error, 'Unable to connect this Facebook Page.');
   }
 }
 
@@ -90,7 +84,7 @@ async function startOauth(): Promise<void> {
     const { authorizationUrl } = await client.startFacebookPageOauth();
     window.location.assign(authorizationUrl);
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to start Facebook connection.';
+    actionError.value = apiErrorMessage(error, 'Unable to start Facebook connection.');
   }
 }
 
@@ -103,7 +97,7 @@ async function choosePage(id: string): Promise<void> {
     await navigateTo('/admin/facebook-page');
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to choose that Facebook Page.';
+    actionError.value = apiErrorMessage(error, 'Unable to choose that Facebook Page.');
   }
 }
 
@@ -114,7 +108,7 @@ async function disconnect(id: string): Promise<void> {
     successMessage.value = 'Facebook Page disconnected for this ward.';
     await load();
   } catch (error) {
-    actionError.value = error instanceof ApiRequestError ? error.message : 'Unable to disconnect this Facebook Page.';
+    actionError.value = apiErrorMessage(error, 'Unable to disconnect this Facebook Page.');
   }
 }
 </script>
