@@ -183,7 +183,7 @@ const restorePerson = withActionErrorHandling(async () => {
         Date of birth and contact information are restricted for this record.
       </UiAlertBanner>
 
-      <UiWorkflowTabs v-model="activeTab" :tabs="[...PERSON_TABS]">
+      <UiWorkflowTabs v-model="activeTab" :tabs="[...PERSON_TABS]" label="Person record sections">
         <template #profile>
           <form class="form-stack" novalidate @submit.prevent="saveBasicInfo">
             <fieldset class="plain-fieldset" :disabled="!canEdit">

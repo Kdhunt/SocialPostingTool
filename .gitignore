@@ -56,3 +56,5 @@ packages/database/generated/
 
 # Local tool output
 node-compile-cache/
+apps/web-e2e/.coverage/
+apps/web-e2e/.manual/

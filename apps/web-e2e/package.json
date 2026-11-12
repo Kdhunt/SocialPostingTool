@@ -11,6 +11,7 @@
     "mock-ward:reset": "tsx mock-ward/reset-db.ts",
     "test:e2e:local": "playwright test -c playwright.local.config.ts",
     "test:e2e:local:headed": "playwright test -c playwright.local.config.ts --headed --workers=1",
+    "test:e2e:local:coverage": "rm -rf .coverage && NODE_V8_COVERAGE=$PWD/.coverage/raw NODE_OPTIONS=\"--require $PWD/mock-ward/coverage-flush.cjs\" playwright test -c playwright.local.config.ts; pnpm dlx c8@10 report --temp-directory .coverage/raw --reports-dir .coverage/report --reporter=text-summary --reporter=html --src ../.. --include 'apps/api/src/**' --include 'apps/worker/src/**' --include 'packages/*/src/**' --exclude '**/*.spec.ts' --exclude '**/*.test.ts' --exclude-after-remap",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

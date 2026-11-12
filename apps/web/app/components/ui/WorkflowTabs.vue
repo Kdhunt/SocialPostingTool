@@ -5,9 +5,14 @@ export interface WorkflowTab {
   description?: string;
 }
 
-const props = defineProps<{
-  tabs: WorkflowTab[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    tabs: WorkflowTab[];
+    /** What the tabs are, read out by screen readers. */
+    label?: string;
+  }>(),
+  { label: 'Sections' },
+);
 
 const activeTab = defineModel<string>({ required: true });
 
@@ -22,7 +27,7 @@ function tabIndex(tabId: string): number {
 
 <template>
   <div class="workflow-tabs">
-    <div class="workflow-tabs__list" role="tablist" aria-label="Campaign steps">
+    <div class="workflow-tabs__list" role="tablist" :aria-label="label">
       <button
         v-for="(tab, index) in tabs"
         :id="`tab-${tab.id}`"
@@ -36,7 +41,9 @@ function tabIndex(tabId: string): number {
         :tabindex="activeTab === tab.id ? 0 : -1"
         @click="selectTab(tab.id)"
         @keydown.arrow-right.prevent="selectTab(tabs[(index + 1) % tabs.length]?.id ?? tab.id)"
-        @keydown.arrow-left.prevent="selectTab(tabs[(index - 1 + tabs.length) % tabs.length]?.id ?? tab.id)"
+        @keydown.arrow-left.prevent="
+          selectTab(tabs[(index - 1 + tabs.length) % tabs.length]?.id ?? tab.id)
+        "
       >
         <span class="workflow-tabs__step">{{ index + 1 }}</span>
         <span class="workflow-tabs__label">{{ tab.label }}</span>
