@@ -1,4 +1,11 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ApplicationUser, UserSession } from '@prisma/client';
 import type { AppConfig } from '@ward-comms/config';
 import {
@@ -30,7 +37,10 @@ import { UnitCodeLookupService } from './unit-code-lookup.service.js';
 import { SessionRepository, type SessionWithUser } from './repositories/session.repository.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { WardCodeRepository } from './repositories/ward-code.repository.js';
-import { decryptProviderSecret, encryptProviderSecret } from '../providers/provider-credential-cipher.js';
+import {
+  decryptProviderSecret,
+  encryptProviderSecret,
+} from '../providers/provider-credential-cipher.js';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotpCode } from './totp-verifier.service.js';
 
 export interface RequestContext {
@@ -44,7 +54,13 @@ export interface RequestContext {
 export type LoginOutcome =
   | { status: 'totp_required'; loginTicket: string }
   | { status: 'ward_code_required'; loginTicket: string }
-  | { status: 'ok'; user: AuthUser; tokens?: MobileTokenPair; sessionToken?: string; sessionExpiresAt: Date };
+  | {
+      status: 'ok';
+      user: AuthUser;
+      tokens?: MobileTokenPair;
+      sessionToken?: string;
+      sessionExpiresAt: Date;
+    };
 
 interface TotpTicketPayload extends Record<string, unknown> {
   purpose: 'totp';
@@ -230,7 +246,11 @@ export class AuthService {
     return { user, codeVersionId: codeVersion.id };
   }
 
-  async verifyTotp(loginTicket: string, code: string, context: RequestContext): Promise<LoginOutcome> {
+  async verifyTotp(
+    loginTicket: string,
+    code: string,
+    context: RequestContext,
+  ): Promise<LoginOutcome> {
     if (!validateTotpCodeFormat(code)) {
       throw new UnauthorizedException('Enter the 6-digit code from your authenticator app.');
     }
@@ -246,7 +266,9 @@ export class AuthService {
     }
 
     if (payload.purpose !== 'totp' || payload.deviceId !== context.deviceId) {
-      throw new UnauthorizedException('This sign-in attempt is no longer valid. Please sign in again.');
+      throw new UnauthorizedException(
+        'This sign-in attempt is no longer valid. Please sign in again.',
+      );
     }
 
     const user = await this.users.findById(payload.userId);
@@ -303,7 +325,13 @@ export class AuthService {
   ): Promise<LoginOutcome> {
     if (isTotpEnabled(user)) {
       const loginTicket = signToken<TotpTicketPayload>(
-        { purpose: 'totp', userId: user.id, deviceId: context.deviceId, skipWardBinding, verifiedCodeVersionId },
+        {
+          purpose: 'totp',
+          userId: user.id,
+          deviceId: context.deviceId,
+          skipWardBinding,
+          verifiedCodeVersionId,
+        },
         this.config.session.secret,
         LOGIN_TICKET_TTL_MS,
       );
@@ -342,7 +370,9 @@ export class AuthService {
           ipAddress: context.ipAddress,
           userAgent: context.userAgent,
         });
-        throw new UnauthorizedException('Your unit’s sign-in code changed. Please sign in again with the new code.');
+        throw new UnauthorizedException(
+          'Your unit’s sign-in code changed. Please sign in again with the new code.',
+        );
       }
       await this.audit.record({
         wardId: user.wardId,
@@ -356,7 +386,10 @@ export class AuthService {
       return this.completeLogin(user, verifiedCodeVersionId, context);
     }
     if (activeWardCodeVersion) {
-      const lastVerifiedSession = await this.sessions.findLatestVerifiedForDevice(user.id, context.deviceId);
+      const lastVerifiedSession = await this.sessions.findLatestVerifiedForDevice(
+        user.id,
+        context.deviceId,
+      );
       const wardCodeRequired = requiresWardCodeVerification({
         lastVerifiedWardCodeVersionId: lastVerifiedSession?.wardCodeVersionId ?? null,
         activeWardCodeVersionId: activeWardCodeVersion.id,
@@ -387,7 +420,11 @@ export class AuthService {
     return this.completeLogin(user, null, context);
   }
 
-  async verifyWardCode(loginTicket: string, wardCode: string, context: RequestContext): Promise<LoginOutcome> {
+  async verifyWardCode(
+    loginTicket: string,
+    wardCode: string,
+    context: RequestContext,
+  ): Promise<LoginOutcome> {
     let payload: LoginTicketPayload;
     try {
       payload = verifyToken<LoginTicketPayload>(loginTicket, this.config.session.secret);
@@ -399,7 +436,9 @@ export class AuthService {
     }
 
     if (payload.purpose !== 'ward_code' || payload.deviceId !== context.deviceId) {
-      throw new UnauthorizedException('This sign-in attempt is no longer valid. Please sign in again.');
+      throw new UnauthorizedException(
+        'This sign-in attempt is no longer valid. Please sign in again.',
+      );
     }
 
     const user = await this.users.findById(payload.userId);
@@ -412,7 +451,10 @@ export class AuthService {
       throw new UnauthorizedException('No ward code has been configured for this ward.');
     }
 
-    const wardCodeValid = await this.wardCodeHasher.verify(activeWardCodeVersion.codeHash, wardCode);
+    const wardCodeValid = await this.wardCodeHasher.verify(
+      activeWardCodeVersion.codeHash,
+      wardCode,
+    );
     if (!wardCodeValid) {
       await this.audit.record({
         wardId: user.wardId,
@@ -451,7 +493,14 @@ export class AuthService {
     if (context.clientType === 'mobile') {
       const refreshToken = generateOpaqueToken();
       const refreshTokenHash = hashOpaqueToken(refreshToken);
-      const session = await this.createSessionRow(user.id, refreshTokenHash, refreshTokenHash, wardCodeVersionId, context, MOBILE_REFRESH_TOKEN_TTL_MS);
+      const session = await this.createSessionRow(
+        user.id,
+        refreshTokenHash,
+        refreshTokenHash,
+        wardCodeVersionId,
+        context,
+        MOBILE_REFRESH_TOKEN_TTL_MS,
+      );
 
       const accessToken = this.issueAccessToken(session, user.id);
 
@@ -480,7 +529,14 @@ export class AuthService {
 
     const sessionToken = generateOpaqueToken();
     const sessionTokenHash = hashOpaqueToken(sessionToken);
-    const session = await this.createSessionRow(user.id, sessionTokenHash, null, wardCodeVersionId, context, WEB_SESSION_TTL_MS);
+    const session = await this.createSessionRow(
+      user.id,
+      sessionTokenHash,
+      null,
+      wardCodeVersionId,
+      context,
+      WEB_SESSION_TTL_MS,
+    );
 
     await this.audit.record({
       wardId: user.wardId,
@@ -524,7 +580,10 @@ export class AuthService {
     );
   }
 
-  async refresh(refreshToken: string, context: RequestContext): Promise<{ tokens: MobileTokenPair }> {
+  async refresh(
+    refreshToken: string,
+    context: RequestContext,
+  ): Promise<{ tokens: MobileTokenPair }> {
     const refreshTokenHash = hashOpaqueToken(refreshToken);
     const session = await this.sessions.findByRefreshTokenHash(refreshTokenHash);
 
@@ -534,7 +593,11 @@ export class AuthService {
 
     const newRefreshToken = generateOpaqueToken();
     const newRefreshTokenHash = hashOpaqueToken(newRefreshToken);
-    await this.sessions.rotateRefreshToken(session.id, newRefreshTokenHash, new Date(Date.now() + MOBILE_REFRESH_TOKEN_TTL_MS));
+    await this.sessions.rotateRefreshToken(
+      session.id,
+      newRefreshTokenHash,
+      new Date(Date.now() + MOBILE_REFRESH_TOKEN_TTL_MS),
+    );
 
     const accessToken = this.issueAccessToken(session, session.userId);
 
@@ -556,7 +619,9 @@ export class AuthService {
     };
   }
 
-  async validateAccessToken(accessToken: string): Promise<{ user: AuthUser; session: UserSession }> {
+  async validateAccessToken(
+    accessToken: string,
+  ): Promise<{ user: AuthUser; session: UserSession }> {
     let payload: AccessTokenPayload;
     try {
       payload = verifyToken<AccessTokenPayload>(accessToken, this.config.session.secret);
@@ -626,7 +691,9 @@ export class AuthService {
 
   private decryptTotpSecret(encrypted: string | null): string {
     if (!encrypted) {
-      throw new UnauthorizedException('Two-factor authentication is not configured for this account.');
+      throw new UnauthorizedException(
+        'Two-factor authentication is not configured for this account.',
+      );
     }
     return decryptProviderSecret(encrypted, this.config.providerCredentialsEncryptionKey);
   }
@@ -673,7 +740,11 @@ export class AuthService {
     };
   }
 
-  async confirmTotpEnrollment(userId: string, code: string, context: RequestContext): Promise<void> {
+  async confirmTotpEnrollment(
+    userId: string,
+    code: string,
+    context: RequestContext,
+  ): Promise<void> {
     const user = await this.requireActiveUser(userId);
     if (!validateTotpCodeFormat(code)) {
       throw new UnauthorizedException('Enter the 6-digit code from your authenticator app.');
@@ -703,7 +774,12 @@ export class AuthService {
     });
   }
 
-  async disableTotp(userId: string, password: string, code: string, context: RequestContext): Promise<void> {
+  async disableTotp(
+    userId: string,
+    password: string,
+    code: string,
+    context: RequestContext,
+  ): Promise<void> {
     const user = await this.requireActiveUser(userId);
     if (!isTotpEnabled(user)) {
       throw new ForbiddenException('Two-factor authentication is not enabled.');
@@ -752,7 +828,9 @@ export class AuthService {
     }
 
     if (currentPassword === newPassword) {
-      throw new BadRequestException('Choose a password that is different from your current password.');
+      throw new BadRequestException(
+        'Choose a password that is different from your current password.',
+      );
     }
 
     const passwordHash = await this.passwordHasher.hash(newPassword);
@@ -795,7 +873,11 @@ export class AuthService {
     return this.sessions.listActiveForUser(userId);
   }
 
-  async revokeSession(sessionId: string, requestingUserId: string, context: RequestContext): Promise<void> {
+  async revokeSession(
+    sessionId: string,
+    requestingUserId: string,
+    context: RequestContext,
+  ): Promise<void> {
     const session = await this.sessions.findById(sessionId);
     if (!session || session.userId !== requestingUserId) {
       throw new ForbiddenException('You may only revoke your own sessions.');
@@ -811,11 +893,21 @@ export class AuthService {
     });
   }
 
-  async disableAccount(targetUserId: string, actorUserId: string, context: RequestContext): Promise<void> {
+  /**
+   * Disables an account in the actor's own unit. A user in another unit is
+   * reported as not found, so the endpoint cannot be used to probe other
+   * tenants' user ids.
+   */
+  async disableAccount(
+    targetUserId: string,
+    actor: { userId: string; wardId: string },
+    context: RequestContext,
+  ): Promise<void> {
     const target = await this.users.findById(targetUserId);
-    if (!target) {
-      throw new UnauthorizedException('User not found.');
+    if (!target || target.wardId !== actor.wardId) {
+      throw new NotFoundException('User not found.');
     }
+    const actorUserId = actor.userId;
     await this.users.disable(targetUserId);
     await this.sessions.revokeAllForUser(targetUserId);
     await this.audit.record({
@@ -829,11 +921,17 @@ export class AuthService {
     });
   }
 
-  async enableAccount(targetUserId: string, actorUserId: string, context: RequestContext): Promise<void> {
+  /** Re-enables an account in the actor's own unit (see disableAccount). */
+  async enableAccount(
+    targetUserId: string,
+    actor: { userId: string; wardId: string },
+    context: RequestContext,
+  ): Promise<void> {
     const target = await this.users.findById(targetUserId);
-    if (!target) {
-      throw new UnauthorizedException('User not found.');
+    if (!target || target.wardId !== actor.wardId) {
+      throw new NotFoundException('User not found.');
     }
+    const actorUserId = actor.userId;
     await this.users.enable(targetUserId);
     await this.audit.record({
       wardId: target.wardId,
