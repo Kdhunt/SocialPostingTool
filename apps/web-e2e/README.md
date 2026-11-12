@@ -86,6 +86,20 @@ when something new is added without a test, with no list to keep up to date.
 | `every-page.spec.ts` (walk)  | As each role and as a visitor, **every link is followed** and one page of each kind is opened, including every tab. Each page must load, have a heading and title, show no raw error text, ask the API for nothing the role is refused, log no script errors, and give every link, button and field a readable name. Every page file under `apps/web/app/pages` must be opened by some role. |
 | `every-page.spec.ts` (guard) | **Every button the walk saw** must be named in some other spec, so a new button with no test fails the suite.                                                                                                                                                                                                                                                                                |
 
+### The training manual walkthrough
+
+`training-manual.spec.ts` does what the user training manual tells a new
+user to do, in the same order: sign in, look around, add a person, build an
+audience, write a campaign, submit it, approve it as a second person, send
+it and read the results, then bulletins and administration. It saves a
+screenshot of every step to `apps/web-e2e/.manual/` (not committed). The
+manual's pictures are taken from that folder, so re-run it and replace the
+pictures whenever the screens change:
+
+```bash
+pnpm --filter @ward-comms/web-e2e exec playwright test -c playwright.local.config.ts training-manual
+```
+
 ### How much of the server code the suite runs
 
 ```bash
