@@ -75,6 +75,30 @@ Tests that change things create their own records (unique names), so they can ru
 | `permissions.spec.ts` | **API authorization matrix** for every role and anonymous, public endpoints, no contact data in public responses, **tenant isolation**                                                                                                                                                                                                                                                               |
 | `settings.spec.ts`    | Account page, validation, change email plus confirm from inbox, wrong or reused password, change password then sign in                                                                                                                                                                                                                                                                               |
 
+## Completeness checks
+
+Three specs prove the rest of the suite did not miss anything. They fail
+when something new is added without a test, with no list to keep up to date.
+
+| Spec                         | Proves                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api-authorization.spec.ts`  | **Every route the API registers** (read from its own decorators by `apps/api/scripts/list-routes.ts`) is called as every role and with no session. Each role is refused exactly where it lacks the permission; only the eleven intended public routes answer a visitor; a junk request is never accepted; nothing crashes.                                                                   |
+| `every-page.spec.ts` (walk)  | As each role and as a visitor, **every link is followed** and one page of each kind is opened, including every tab. Each page must load, have a heading and title, show no raw error text, ask the API for nothing the role is refused, log no script errors, and give every link, button and field a readable name. Every page file under `apps/web/app/pages` must be opened by some role. |
+| `every-page.spec.ts` (guard) | **Every button the walk saw** must be named in some other spec, so a new button with no test fails the suite.                                                                                                                                                                                                                                                                                |
+
+### How much of the server code the suite runs
+
+```bash
+pnpm --filter @ward-comms/web-e2e test:e2e:local:coverage
+```
+
+writes `apps/web-e2e/.coverage/report/index.html`. On Nov 12, 2026 the suite
+ran 81% of the lines in `apps/api`, `apps/worker` and `packages/*`. What it
+cannot reach is the code that talks to real providers (SendGrid, Resend,
+SMS, Facebook Graph, OpenAI images): the local stack is simulated on
+purpose, and those adapters are covered by their own unit tests instead.
+Browser-side code is not measured.
+
 ## Known issues the suite documents
 
 **Security tests that fail on purpose (red) until fixed:**

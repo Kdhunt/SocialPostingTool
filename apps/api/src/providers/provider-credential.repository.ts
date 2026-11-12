@@ -57,10 +57,12 @@ export class ProviderCredentialRepository {
     });
   }
 
-  async revoke(wardId: string, id: string): Promise<void> {
-    await this.prisma.client.providerCredential.updateMany({
+  /** Returns false when the ward has no credential with that id. */
+  async revoke(wardId: string, id: string): Promise<boolean> {
+    const result = await this.prisma.client.providerCredential.updateMany({
       where: { id, wardId },
       data: { revokedAt: new Date() },
     });
+    return result.count > 0;
   }
 }

@@ -375,7 +375,7 @@ async function archiveCampaign(): Promise<void> {
 
       <UiAlertBanner v-if="actionError">{{ actionError }}</UiAlertBanner>
 
-      <UiWorkflowTabs v-model="activeTab" :tabs="[...CAMPAIGN_TABS]">
+      <UiWorkflowTabs v-model="activeTab" :tabs="[...CAMPAIGN_TABS]" label="Campaign steps">
         <template #setup>
           <section class="section">
             <h2 class="section__title">Campaign details</h2>

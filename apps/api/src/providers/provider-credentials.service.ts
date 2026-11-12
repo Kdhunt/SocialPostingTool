@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { AppConfig } from '@ward-comms/config';
 import type {
   ProviderCredentialListResponse,
@@ -78,7 +78,12 @@ export class ProviderCredentialsService {
     id: string,
     context: ProviderCredentialActionContext,
   ): Promise<void> {
-    await this.credentials.revoke(wardId, id);
+    // Without this check an unknown id answered "ok" and wrote an audit
+    // record for a credential that never existed.
+    const revoked = await this.credentials.revoke(wardId, id);
+    if (!revoked) {
+      throw new NotFoundException('Provider credential not found.');
+    }
     await this.audit.record({
       wardId,
       actorUserId: context.actorUserId,
