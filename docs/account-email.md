@@ -22,6 +22,11 @@ the delivery worker).
 - Tokens: SHA-256 at rest, 24h verification / 1h reset, max 3 issues per
   user+purpose per 15 minutes (`packages/domain/src/auth/account-token-policy.ts`).
 - Outbox idempotency key: `account-email:{kind}:{userId}:{tokenId}`.
+- Sending: a message is claimed (`Sending`) before the provider call. A
+  sender error that throws is recorded as a retryable failure (back to
+  `Pending` with `nextAttemptAt`), and one failing message does not stop
+  the rest of a drain run; the run still reports the first error so the
+  background-job log shows it.
 - Consent is **not** inferred for account mail — the address is the login
   identity the administrator entered. Campaign sends still require
   `ContactConsent = Granted`.
