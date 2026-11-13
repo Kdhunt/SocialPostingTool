@@ -18,7 +18,11 @@ or live depending on `PROVIDER_MODE`).
   `(FacebookPage, destination)`. Re-starting send reuses the batch;
   reprocessing a job never double-sends (claim guard).
 - **Retries / DLQ** — transient failures retry with exponential backoff
-  up to 5 attempts; permanent failures dead-letter immediately.
+  up to 5 attempts; permanent failures dead-letter immediately. A recipient
+  is claimed (`Sending`) before its provider call and nothing reclaims a
+  `Sending` row, so a provider error that throws is recorded as a
+  `provider_unavailable` attempt and retried rather than left in `Sending`.
+  Live provider calls time out after 10 seconds (see `docs/providers.md`).
 - **Immediate kick** — `send-now` processes up to 25 pending recipients
   in the same API request (same claim guard as the worker). Remaining
   jobs stay on Redis for `/api/cron/process-delivery-queue`.

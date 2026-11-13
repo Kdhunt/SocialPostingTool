@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FacebookPageSendRequest, ProviderSendResult } from '@ward-comms/domain';
+import { fetchProvider, isProviderFailure, type LiveSendOptions } from '../live-provider-call.js';
 
 export interface FacebookGraphCredentials {
   pageAccessToken: string;
@@ -15,6 +16,9 @@ export function parseFacebookGraphCredentials(plaintext: string): FacebookGraphC
 }
 
 export class LiveFacebookPageProviderAdapter {
+  constructor(private readonly options: LiveSendOptions = {}) {}
+
+  /** Never throws: network failures and timeouts come back as transient failures. */
   async post(request: FacebookPageSendRequest, credentials: FacebookGraphCredentials): Promise<ProviderSendResult> {
     const url = new URL(`https://graph.facebook.com/v21.0/${credentials.pageId}/feed`);
     url.searchParams.set('access_token', credentials.pageAccessToken);
@@ -24,11 +28,19 @@ export class LiveFacebookPageProviderAdapter {
     // Posting that id as Graph `link` is rejected by Facebook, so text-only
     // publish is the supported live path until assets have a public URL.
 
-    const response = await fetch(url.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const response = await fetchProvider(
+      'Facebook',
+      url.toString(),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      this.options,
+    );
+    if (isProviderFailure(response)) {
+      return response;
+    }
 
     const payload = (await response.json().catch(() => ({}))) as {
       id?: string;
