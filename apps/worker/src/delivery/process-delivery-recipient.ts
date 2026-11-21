@@ -58,7 +58,7 @@ export async function processDeliveryRecipient(
     data: { attemptCount: attemptNumber },
   });
 
-  const result = await callProvider(deps.providers, {
+  const result = await callProviderSafely(deps.providers, {
     channel: recipient.channel,
     destinationId: recipient.destinationId,
     toAddress: recipient.contactMethod?.value ?? null,
@@ -139,6 +139,26 @@ async function claimForSending(prisma: PrismaClient, deliveryRecipientId: string
     data: { status: 'Sending' },
   });
   return result.count > 0;
+}
+
+/**
+ * The recipient is already claimed ("Sending") at this point, and nothing reclaims a Sending row. An adapter
+ * that throws (network error, credential lookup failure) must therefore become an ordinary transient failure,
+ * so the retry policy schedules another attempt instead of leaving the row and its batch stuck.
+ */
+async function callProviderSafely(
+  providers: DeliveryProviders,
+  input: Parameters<typeof callProvider>[1],
+): Promise<ProviderSendResult> {
+  try {
+    return await callProvider(providers, input);
+  } catch (error) {
+    return {
+      success: false,
+      errorCode: 'provider_unavailable',
+      errorMessage: `The ${input.channel} provider call failed unexpectedly (${error instanceof Error ? error.name : 'unknown error'}).`,
+    };
+  }
 }
 
 async function callProvider(

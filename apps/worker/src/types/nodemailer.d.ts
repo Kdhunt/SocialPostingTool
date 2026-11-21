@@ -19,6 +19,12 @@ declare module 'nodemailer' {
     port?: number;
     secure?: boolean;
     auth?: { user: string; pass: string };
+    /** Milliseconds to wait for the TCP connection. */
+    connectionTimeout?: number;
+    /** Milliseconds to wait for the server greeting after connecting. */
+    greetingTimeout?: number;
+    /** Milliseconds of socket inactivity allowed. */
+    socketTimeout?: number;
   }
 
   export function createTransport(options: TransportOptions): Transporter;

@@ -2,6 +2,7 @@ import type { PrismaClient } from '@ward-comms/database';
 import {
   classifyDeliveryErrorCode,
   decideRetry,
+  type ProviderSendResult,
   type TransactionalEmailAdapter,
 } from '@ward-comms/domain';
 
@@ -40,12 +41,23 @@ export async function processOutboundMessage(
     data: { attemptCount: attemptNumber },
   });
 
-  const result = await deps.email.send({
-    toAddress: message.toAddress,
-    subject: message.subject,
-    body: claimed.body,
-    idempotencyKey: message.idempotencyKey,
-  });
+  // The message is claimed ("Sending") and nothing reclaims a Sending row, so a thrown error must become a
+  // retryable failure rather than leave the email unsent forever.
+  let result: ProviderSendResult;
+  try {
+    result = await deps.email.send({
+      toAddress: message.toAddress,
+      subject: message.subject,
+      body: claimed.body,
+      idempotencyKey: message.idempotencyKey,
+    });
+  } catch (error) {
+    result = {
+      success: false,
+      errorCode: 'provider_unavailable',
+      errorMessage: `The email provider call failed unexpectedly (${error instanceof Error ? error.name : 'unknown error'}).`,
+    };
+  }
 
   if (result.success) {
     await deps.prisma.outboundMessage.update({
@@ -123,9 +135,19 @@ export async function processDueOutboundMessages(
   });
 
   let processed = 0;
+  let firstError: unknown = null;
   for (const row of due) {
-    await processOutboundMessage(deps, row.id);
-    processed += 1;
+    // One message failing (for example a database error) must not hold back the rest of this run; the first
+    // error is still raised afterwards so the background job logs the run as failed.
+    try {
+      await processOutboundMessage(deps, row.id);
+      processed += 1;
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+  if (firstError !== null) {
+    throw firstError;
   }
   return processed;
 }

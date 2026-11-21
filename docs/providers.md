@@ -105,6 +105,32 @@ Adapters normalize failures to domain error codes consumed by
 Missing or expired credentials return `credentials_expired` or
 `unauthorized` permanent errors.
 
+Live adapters never throw. Every live call (SendGrid, Resend, SMTP, Twilio,
+Facebook Graph) has a 10-second limit (`LIVE_PROVIDER_TIMEOUT_MS` in
+`apps/worker/src/providers/live-provider-call.ts`):
+
+- no answer in time → `timeout` (retried);
+- refused, reset or DNS failure → `provider_unavailable` (retried);
+- SMTP: a rejected login → `unauthorized`; a 5xx recipient rejection →
+  `invalid_recipient`; a 4xx recipient rejection (for example greylisting)
+  → `provider_unavailable`, so it is retried rather than dead-lettered.
+
+Error messages for network failures are generic (provider name and a
+system code such as `ECONNREFUSED`), so request URLs and keys never reach
+delivery records. As a second guard, the delivery engine and the account
+email sender treat any thrown error as `provider_unavailable`.
+
+### Testing live mode locally
+
+`apps/worker/src/providers/live-providers.test.ts` runs each live adapter
+against fakes: a recording `fetch` for the HTTP APIs and a real SMTP server
+on 127.0.0.1 (`apps/worker/src/providers/testing/`). It checks the request
+each provider receives, the member footer, every status mapping, network
+failures and timeouts. `apps/worker/src/delivery/live-delivery.integration.test.ts`
+runs a delivery in `PROVIDER_MODE=live` from a stored, encrypted SMTP
+credential to the fake inbox, against the test database. Nothing in these
+tests contacts a real provider.
+
 Duplicate prevention remains the delivery engine's responsibility
 (idempotency keys + claim guard) — adapters return a `providerMessageId`
 on success for audit/storage on `DeliveryAttempt`.

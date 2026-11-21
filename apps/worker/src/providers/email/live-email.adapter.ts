@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { EmailSendRequest, ProviderSendResult } from '@ward-comms/domain';
 import { appendEmailFooter } from '../communication-footer.js';
+import {
+  fetchProvider,
+  isProviderFailure,
+  LIVE_PROVIDER_TIMEOUT_MS,
+  providerTimedOut,
+  providerUnreachable,
+  type LiveSendOptions,
+} from '../live-provider-call.js';
 
 export type EmailProviderKind = 'sendgrid' | 'resend' | 'smtp';
 
@@ -65,32 +73,43 @@ export function parseLiveEmailCredentials(plaintext: string): LiveEmailCredentia
 }
 
 export class LiveEmailProviderAdapter {
+  constructor(private readonly options: LiveSendOptions = {}) {}
+
   async send(request: EmailSendRequest, credentials: LiveEmailCredentials): Promise<ProviderSendResult> {
     const body = appendEmailFooter(request.body);
-    return sendLiveEmailMessage({ toAddress: request.toAddress, subject: request.subject, body }, credentials);
+    return sendLiveEmailMessage(
+      { toAddress: request.toAddress, subject: request.subject, body },
+      credentials,
+      this.options,
+    );
   }
 }
 
-/** Send a finalized body (campaign adapters append the member footer first). */
+/**
+ * Send a finalized body (campaign adapters append the member footer first). Never throws: network failures
+ * and timeouts come back as transient failures so the caller's retry policy handles them.
+ */
 export async function sendLiveEmailMessage(
   request: { toAddress: string; subject: string; body: string },
   credentials: LiveEmailCredentials,
+  options: LiveSendOptions = {},
 ): Promise<ProviderSendResult> {
   if (credentials.provider === 'sendgrid') {
-    return sendViaSendGrid(request, credentials, request.body);
+    return sendViaSendGrid(request, credentials, request.body, options);
   }
   if (credentials.provider === 'resend') {
-    return sendViaResend(request, credentials, request.body);
+    return sendViaResend(request, credentials, request.body, options);
   }
-  return sendViaSmtp(request, credentials, request.body);
+  return sendViaSmtp(request, credentials, request.body, options);
 }
 
 async function sendViaSendGrid(
   request: { toAddress: string; subject: string },
   credentials: SendGridEmailCredentials,
   body: string,
+  options: LiveSendOptions,
 ): Promise<ProviderSendResult> {
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+  const response = await fetchProvider('SendGrid', 'https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${credentials.apiKey}`,
@@ -102,7 +121,10 @@ async function sendViaSendGrid(
       subject: request.subject,
       content: [{ type: 'text/plain', value: body }],
     }),
-  });
+  }, options);
+  if (isProviderFailure(response)) {
+    return response;
+  }
 
   if (response.ok) {
     const messageId = response.headers.get('x-message-id') ?? `sendgrid-${randomUUID()}`;
@@ -127,8 +149,9 @@ async function sendViaResend(
   request: { toAddress: string; subject: string },
   credentials: ResendEmailCredentials,
   body: string,
+  options: LiveSendOptions,
 ): Promise<ProviderSendResult> {
-  const response = await fetch('https://api.resend.com/emails', {
+  const response = await fetchProvider('Resend', 'https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${credentials.apiKey}`,
@@ -140,7 +163,10 @@ async function sendViaResend(
       subject: request.subject,
       text: body,
     }),
-  });
+  }, options);
+  if (isProviderFailure(response)) {
+    return response;
+  }
 
   const payload = (await response.json().catch(() => ({}))) as {
     id?: string;
@@ -170,7 +196,9 @@ async function sendViaSmtp(
   request: { toAddress: string; subject: string },
   credentials: SmtpEmailCredentials,
   body: string,
+  options: LiveSendOptions,
 ): Promise<ProviderSendResult> {
+  const timeoutMs = options.timeoutMs ?? LIVE_PROVIDER_TIMEOUT_MS;
   try {
     const nodemailer = await import('nodemailer');
     const transport = nodemailer.createTransport({
@@ -178,6 +206,10 @@ async function sendViaSmtp(
       port: credentials.port,
       secure: credentials.secure ?? false,
       auth: { user: credentials.user, pass: credentials.pass },
+      // nodemailer's defaults are 2 minutes to connect and 10 minutes of socket idle.
+      connectionTimeout: timeoutMs,
+      greetingTimeout: timeoutMs,
+      socketTimeout: timeoutMs,
     });
     const info = await transport.sendMail({
       from: credentials.fromAddress,
@@ -187,13 +219,34 @@ async function sendViaSmtp(
     });
     return { success: true, providerMessageId: info.messageId ?? `smtp-${randomUUID()}` };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'SMTP send failed.';
-    if (/auth/i.test(message)) {
-      return { success: false, errorCode: 'unauthorized', errorMessage: message };
-    }
-    if (/recipient|address/i.test(message)) {
-      return { success: false, errorCode: 'invalid_recipient', errorMessage: message };
-    }
-    return { success: false, errorCode: 'provider_unavailable', errorMessage: message };
+    return classifySmtpError(error, timeoutMs);
   }
+}
+
+/**
+ * Maps a nodemailer error by its code and SMTP reply code. A 4xx reply (for example greylisting) is temporary,
+ * so it stays retryable even when it is about the recipient.
+ */
+function classifySmtpError(error: unknown, timeoutMs: number): ProviderSendResult {
+  const details = error as { code?: unknown; responseCode?: unknown; message?: unknown } | null;
+  const code = typeof details?.code === 'string' ? details.code : '';
+  const responseCode = typeof details?.responseCode === 'number' ? details.responseCode : null;
+  const message = typeof details?.message === 'string' ? details.message.slice(0, 500) : 'SMTP send failed.';
+  const temporary = responseCode !== null && responseCode >= 400 && responseCode < 500;
+
+  if (code === 'EAUTH') {
+    return { success: false, errorCode: 'unauthorized', errorMessage: 'The SMTP server rejected the username or password.' };
+  }
+  if (code === 'EENVELOPE' || (code === '' && /recipient/i.test(message))) {
+    return temporary
+      ? { success: false, errorCode: 'provider_unavailable', errorMessage: message }
+      : { success: false, errorCode: 'invalid_recipient', errorMessage: message };
+  }
+  if (code === 'ETIMEDOUT' || /timeout/i.test(message)) {
+    return providerTimedOut('The SMTP server', timeoutMs);
+  }
+  if (code === 'ECONNECTION' || code === 'ESOCKET' || code === 'EDNS' || code === 'ECONNREFUSED') {
+    return providerUnreachable('The SMTP server', error, timeoutMs);
+  }
+  return { success: false, errorCode: 'provider_unavailable', errorMessage: message };
 }

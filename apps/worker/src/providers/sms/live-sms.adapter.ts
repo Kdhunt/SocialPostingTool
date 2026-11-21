@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ProviderSendResult, SmsSendRequest } from '@ward-comms/domain';
 import { appendSmsFooter } from '../communication-footer.js';
+import { fetchProvider, isProviderFailure, type LiveSendOptions } from '../live-provider-call.js';
 
 export interface TwilioSmsCredentials {
   accountSid: string;
@@ -21,6 +22,9 @@ export function parseTwilioSmsCredentials(plaintext: string): TwilioSmsCredentia
 }
 
 export class LiveSmsProviderAdapter {
+  constructor(private readonly options: LiveSendOptions = {}) {}
+
+  /** Never throws: network failures and timeouts come back as transient failures. */
   async send(request: SmsSendRequest, credentials: TwilioSmsCredentials): Promise<ProviderSendResult> {
     const body = appendSmsFooter(request.body);
     const url = `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/Messages.json`;
@@ -31,14 +35,22 @@ export class LiveSmsProviderAdapter {
     form.set('From', credentials.fromNumber);
     form.set('Body', body);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+    const response = await fetchProvider(
+      'Twilio',
+      url,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: form.toString(),
       },
-      body: form.toString(),
-    });
+      this.options,
+    );
+    if (isProviderFailure(response)) {
+      return response;
+    }
 
     const payload = (await response.json().catch(() => ({}))) as {
       sid?: string;
